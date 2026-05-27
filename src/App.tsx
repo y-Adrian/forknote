@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MainPanel } from "./components/MainPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -11,27 +11,20 @@ export default function App() {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const setSettings = useAppStore((s) => s.setSettings);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   useEffect(() => {
     init();
   }, [init]);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="brand">Branch Chat</div>
-        <button
-          type="button"
-          className="btn ghost sm"
-          onClick={() => setSettingsOpen(true)}
-        >
-          设置
-        </button>
-      </header>
-
-      <div className="app-workspace">
-        <SessionSidebar />
-        <MainPanel />
-      </div>
+    <div className="app ds-app">
+      <SessionSidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      <MainPanel />
 
       <SettingsPanel
         settings={settings}

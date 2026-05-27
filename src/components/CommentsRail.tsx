@@ -14,6 +14,7 @@ interface Props {
     question: string,
   ) => Promise<void>;
   onFocus: (branchId: NodeId) => void;
+  embedded?: boolean;
 }
 
 export function CommentsRail({
@@ -22,6 +23,7 @@ export function CommentsRail({
   focusBranchId,
   onAskBranch,
   onFocus,
+  embedded = false,
 }: Props) {
   const total = useMemo(() => countBranches(thread.children), [thread.children]);
   const [collapsedIds, setCollapsedIds] = useState<Set<NodeId>>(() => new Set());
@@ -45,27 +47,30 @@ export function CommentsRail({
     setCollapsedIds(new Set(collectBranchIds(thread.children)));
 
   return (
-    <aside className="comments-rail" aria-label="批注">
-      <div className="comments-rail-header">
-        <div className="comments-rail-title">
-          <h2>批注</h2>
-          <span className="comments-count">{total} 条</span>
-        </div>
-        {total > 0 && (
-          <div className="comments-rail-actions">
-            <button type="button" className="btn ghost sm" onClick={expandAll}>
-              全部展开
-            </button>
-            <button type="button" className="btn ghost sm" onClick={collapseAll}>
-              全部收起
-            </button>
+    <div className={`ds-comments-panel${embedded ? " embedded" : ""}`}>
+      {!embedded && (
+        <div className="comments-rail-header">
+          <div className="comments-rail-title">
+            <h2>批注</h2>
+            <span className="comments-count">{total} 条</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {embedded && total > 0 && (
+        <div className="ds-comments-toolbar">
+          <button type="button" className="btn ghost sm" onClick={expandAll}>
+            全部展开
+          </button>
+          <button type="button" className="btn ghost sm" onClick={collapseAll}>
+            全部收起
+          </button>
+        </div>
+      )}
 
       {thread.children.length === 0 ? (
         <p className="comments-empty hint">
-          在左侧正文中拖选文字，点击「针对选中追问」，批注会显示在这里。
+          在回答中拖选文字，点击「针对选中追问」。
         </p>
       ) : (
         <div className="comments-list">
@@ -88,6 +93,6 @@ export function CommentsRail({
           ))}
         </div>
       )}
-    </aside>
+    </div>
   );
 }

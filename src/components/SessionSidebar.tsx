@@ -1,27 +1,19 @@
 import type { MouseEvent } from "react";
+import { groupSessionsByDate } from "../lib/sessionGroups";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
 
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) {
-    return d.toLocaleTimeString("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  return d.toLocaleDateString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-  });
+interface Props {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onOpenSettings: () => void;
 }
 
-export function SessionSidebar() {
+export function SessionSidebar({
+  collapsed,
+  onToggleCollapse,
+  onOpenSettings,
+}: Props) {
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
@@ -29,64 +21,117 @@ export function SessionSidebar() {
   const switchSession = useAppStore((s) => s.switchSession);
   const deleteSession = useAppStore((s) => s.deleteSession);
 
+  const groups = groupSessionsByDate(sessions);
+
   const handleDelete = (e: MouseEvent, id: NodeId) => {
     e.stopPropagation();
-    if (
-      confirm("删除这条会话？批注与回答将一并移除，且无法恢复。")
-    ) {
+    if (confirm("删除这条会话？将无法恢复。")) {
       deleteSession(id);
     }
   };
 
   return (
-    <aside className="session-sidebar" aria-label="会话列表">
-      <div className="session-sidebar-header">
-        <h2>会话</h2>
-        <button
-          type="button"
-          className="btn primary sm"
-          onClick={() => createSession()}
-          disabled={loadingMain}
-        >
-          新建
-        </button>
+    <aside
+      className={`ds-sidebar${collapsed ? " collapsed" : ""}`}
+      aria-label="会话列表"
+    >
+      <div className="ds-sidebar-top">
+        <div className="ds-brand">
+          <span className="ds-brand-icon" aria-hidden>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 3c4.5 2 7 5.5 7 9.5S16.5 19 12 21 5 16 5 12.5 7.5 5 12 3z"
+                fill="currentColor"
+                opacity="0.9"
+              />
+            </svg>
+          </span>
+          {!collapsed && <span className="ds-brand-text">Branch Chat</span>}
+        </div>
+        <div className="ds-sidebar-tools">
+          <button
+            type="button"
+            className="ds-icon-btn"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+            title={collapsed ? "展开侧栏" : "收起侧栏"}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 6h16M4 12h10M4 18h16"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <ul className="session-list">
-        {sessions.map((session) => {
-          const active = session.id === activeSessionId;
-          const hasContent = Boolean(session.thread);
-          return (
-            <li key={session.id}>
-              <button
-                type="button"
-                className={`session-item${active ? " active" : ""}`}
-                onClick={() => switchSession(session.id)}
-              >
-                <span className="session-title">{session.title}</span>
-                <span className="session-meta">
-                  {hasContent ? "已有对话" : "空白"}
-                  {" · "}
-                  {formatTime(session.updatedAt)}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="session-delete"
-                aria-label={`删除会话：${session.title}`}
-                title="删除会话"
-                onClick={(e) => handleDelete(e, session.id)}
-              >
-                ×
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {!collapsed && (
+        <>
+          <button
+            type="button"
+            className="ds-new-chat"
+            onClick={() => createSession()}
+            disabled={loadingMain}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+            开启新对话
+          </button>
 
-      <p className="hint session-hint">
-        每条会话独立保存。选中会话后在右侧提问；批注追问为可选功能。
-      </p>
+          <div className="ds-session-scroll">
+            {groups.map((group) => (
+              <div key={group.label} className="ds-session-group">
+                <div className="ds-session-group-label">{group.label}</div>
+                <ul className="ds-session-list">
+                  {group.sessions.map((session) => {
+                    const active = session.id === activeSessionId;
+                    return (
+                      <li key={session.id} className="ds-session-row">
+                        <button
+                          type="button"
+                          className={`ds-session-item${active ? " active" : ""}`}
+                          onClick={() => switchSession(session.id)}
+                          title={session.title}
+                        >
+                          {session.title}
+                        </button>
+                        <button
+                          type="button"
+                          className="ds-session-more"
+                          aria-label="删除会话"
+                          onClick={(e) => handleDelete(e, session.id)}
+                        >
+                          ×
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          <div className="ds-sidebar-footer">
+            <button
+              type="button"
+              className="ds-footer-user"
+              onClick={onOpenSettings}
+            >
+              <span className="ds-avatar">B</span>
+              <span className="ds-footer-label">设置与 API</span>
+            </button>
+          </div>
+        </>
+      )}
     </aside>
   );
 }
