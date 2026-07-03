@@ -1,12 +1,13 @@
 import type { ChatSession, SessionStore, ThreadRoot } from "../types";
 import { createId } from "./id";
+import { firstUserMessage, normalizeThread } from "./thread";
 
 const STORE_KEY = "branch-chat-sessions-v1";
 const LEGACY_THREAD_KEY = "branch-chat-thread";
 
 export function sessionTitleFromThread(thread: ThreadRoot | null): string {
-  if (!thread?.userQuestion.trim()) return "新会话";
-  const q = thread.userQuestion.trim().replace(/\s+/g, " ");
+  const q = firstUserMessage(thread)?.trim().replace(/\s+/g, " ");
+  if (!q) return "新会话";
   return q.length > 40 ? `${q.slice(0, 40)}…` : q;
 }
 
@@ -36,7 +37,15 @@ export function loadSessionStore(): SessionStore {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as SessionStore;
-      if (parsed.sessions?.length) return parsed;
+      if (parsed.sessions?.length) {
+        return {
+          ...parsed,
+          sessions: parsed.sessions.map((s) => ({
+            ...s,
+            thread: s.thread ? normalizeThread(s.thread) : null,
+          })),
+        };
+      }
     }
   } catch {
     // fall through to migration / default
@@ -44,10 +53,11 @@ export function loadSessionStore(): SessionStore {
 
   const legacy = loadLegacyThread();
   if (legacy) {
+    const normalized = normalizeThread(legacy);
     const session: ChatSession = {
       id: createId(),
-      title: sessionTitleFromThread(legacy),
-      thread: legacy,
+      title: sessionTitleFromThread(normalized),
+      thread: normalized,
       createdAt: legacy.createdAt,
       updatedAt: Date.now(),
     };

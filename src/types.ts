@@ -6,6 +6,12 @@ export interface Anchor {
   quotedText: string;
 }
 
+/** 用户对回答中某个分点的裁决 */
+export type PointVerdict = "accept" | "unsure" | "reject";
+
+/** key = 分点编号（回答中的 N） */
+export type PointVerdictMap = Record<number, PointVerdict>;
+
 export interface BranchNode {
   id: NodeId;
   parentId: NodeId;
@@ -14,14 +20,27 @@ export interface BranchNode {
   assistantMessage: string;
   children: BranchNode[];
   createdAt: number;
+  pointVerdicts?: PointVerdictMap;
+}
+
+export interface ChatMessage {
+  id: NodeId;
+  role: "user" | "assistant";
+  content: string;
+  /** 批注挂在某条助手回复上 */
+  children: BranchNode[];
+  createdAt: number;
+  pointVerdicts?: PointVerdictMap;
 }
 
 export interface ThreadRoot {
   id: NodeId;
-  userQuestion: string;
-  assistantMessage: string;
-  children: BranchNode[];
+  messages: ChatMessage[];
   createdAt: number;
+  /** @deprecated 仅用于旧数据迁移 */
+  userQuestion?: string;
+  assistantMessage?: string;
+  children?: BranchNode[];
 }
 
 /** 一条独立对话（可含批注分支） */

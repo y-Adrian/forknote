@@ -1,51 +1,52 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { countBranches } from "../lib/branches";
+import { useEffect, useRef, useState } from "react";
+import { firstUserMessage } from "../lib/thread";
 import { useAppStore } from "../store/useAppStore";
+import type { NodeId } from "../types";
+import { BranchLogo } from "./BranchLogo";
+import { BranchRail } from "./BranchRail";
 import { ChatComposer } from "./ChatComposer";
-import { CommentsRail } from "./CommentsRail";
 import { SelectableAnswer } from "./SelectableAnswer";
-import { TreeSidebar } from "./TreeSidebar";
 
 export function MainPanel() {
   const thread = useAppStore((s) => s.thread);
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
   const loadingBranchId = useAppStore((s) => s.loadingBranchId);
   const error = useAppStore((s) => s.error);
-  const focus = useAppStore((s) => s.focus);
   const askMain = useAppStore((s) => s.askMain);
   const askBranch = useAppStore((s) => s.askBranch);
-  const setFocus = useAppStore((s) => s.setFocus);
+  const stopGeneration = useAppStore((s) => s.stopGeneration);
 
   const [input, setInput] = useState("");
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [openBranchId, setOpenBranchId] = useState<NodeId | null>(null);
+  const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const branchCount = useMemo(
-    () => (thread ? countBranches(thread.children) : 0),
-    [thread],
-  );
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setInput("");
-    setCommentsOpen(false);
-  }, [thread?.id]);
+    setOpenBranchId(null);
+    closeAllBranchFloats();
+  }, [activeSessionId, closeAllBranchFloats]);
 
   useEffect(() => {
-    if (branchCount > 0) setCommentsOpen(true);
-  }, [branchCount, thread?.id]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread?.messages.length, loadingMain]);
 
   useEffect(() => {
-    if (focus.type === "branch") setCommentsOpen(true);
-  }, [focus]);
-
-  useEffect(() => {
-    if (focus.type === "root") {
-      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      return;
+    if (!loadingBranchId && openBranchId) {
+      requestAnimationFrame(() => {
+        const mark = document.querySelector(
+          `mark.branch-highlight[data-branch-id="${openBranchId}"]`,
+        );
+        mark?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     }
-    const el = document.getElementById(`branch-${focus.branchId}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [focus]);
+  }, [loadingBranchId, openBranchId]);
+
+  const toggleBranch = (branchId: NodeId | null) => {
+    setOpenBranchId(branchId);
+  };
 
   const submit = () => {
     void askMain(input).then(() => setInput(""));
@@ -55,18 +56,12 @@ export function MainPanel() {
     return (
       <main className="ds-main ds-main-empty">
         <div className="ds-empty-center">
-          <div className="ds-empty-logo" aria-hidden>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 3c4.5 2 7 5.5 7 9.5S16.5 19 12 21 5 16 5 12.5 7.5 5 12 3z"
-                fill="currentColor"
-              />
-            </svg>
-          </div>
+          <BranchLogo iconOnly className="ds-empty-brand" />
           <ChatComposer
             value={input}
             onChange={setInput}
             onSubmit={submit}
+            onStop={stopGeneration}
             loading={loadingMain}
           />
           {error && <p className="ds-error">{error}</p>}
@@ -75,85 +70,62 @@ export function MainPanel() {
     );
   }
 
+  const title = firstUserMessage(thread) || "对话";
+
   return (
-    <main className="ds-main">
+    <main className="ds-main ds-main-chat">
       <header className="ds-chat-header">
-        <h1 className="ds-chat-title">{thread.userQuestion}</h1>
-        {branchCount > 0 && (
-          <button
-            type="button"
-            className={`ds-comments-toggle${commentsOpen ? " active" : ""}`}
-            onClick={() => setCommentsOpen((v) => !v)}
-          >
-            批注 {branchCount}
-          </button>
-        )}
+        <h1 className="ds-chat-title">{title}</h1>
       </header>
 
       <div className="ds-chat-body">
         <div className="ds-chat-scroll" ref={scrollRef}>
           <div className="ds-messages">
-            <div className="ds-bubble ds-bubble-user">
-              <p>{thread.userQuestion}</p>
-            </div>
-
-            <div className="ds-bubble ds-bubble-assistant">
-              {thread.assistantMessage ? (
-                <SelectableAnswer
-                  parentId={thread.id}
-                  parentContent={thread.assistantMessage}
-                  content={thread.assistantMessage}
-                  onAskBranch={askBranch}
-                  branchLoading={loadingBranchId !== null}
-                  compact
-                />
+            {thread.messages.map((msg) =>
+              msg.role === "user" ? (
+                <div key={msg.id} data-msg-id={msg.id} className="ds-bubble ds-bubble-user">
+                  <p>{msg.content}</p>
+                </div>
               ) : (
-                <p className="ds-muted">正在思考…</p>
-              )}
-            </div>
+                <div key={msg.id} data-msg-id={msg.id} className="ds-bubble ds-bubble-assistant">
+                  {msg.content ? (
+                    <SelectableAnswer
+                      parentId={msg.id}
+                      parentContent={msg.content}
+                      content={msg.content}
+                      branches={msg.children}
+                      onAskBranch={askBranch}
+                      branchLoading={loadingBranchId !== null}
+                      activeBranchId={openBranchId}
+                      onToggleBranch={toggleBranch}
+                      compact
+                      pointVerdicts={msg.pointVerdicts}
+                    />
+                  ) : (
+                    <div className="ds-typing" aria-label="正在思考">
+                      <span /><span /><span />
+                    </div>
+                  )}
+                </div>
+              ),
+            )}
+            <div ref={bottomRef} />
           </div>
         </div>
-
-        {commentsOpen && branchCount > 0 && (
-          <>
-            <button
-              type="button"
-              className="ds-drawer-backdrop"
-              aria-label="关闭批注"
-              onClick={() => setCommentsOpen(false)}
-            />
-            <aside className="ds-comments-drawer">
-              <div className="ds-drawer-header">
-                <h2>批注</h2>
-                <button
-                  type="button"
-                  className="ds-icon-btn"
-                  onClick={() => setCommentsOpen(false)}
-                  aria-label="关闭"
-                >
-                  ×
-                </button>
-              </div>
-              <TreeSidebar
-                thread={thread}
-                focus={focus}
-                onFocus={setFocus}
-                compact
-              />
-              <CommentsRail
-                thread={thread}
-                loadingBranchId={loadingBranchId}
-                focusBranchId={
-                  focus.type === "branch" ? focus.branchId : undefined
-                }
-                onAskBranch={askBranch}
-                onFocus={(id) => setFocus({ type: "branch", branchId: id })}
-                embedded
-              />
-            </aside>
-          </>
-        )}
+        <BranchRail thread={thread} scrollRef={scrollRef} />
       </div>
+
+      <footer className="ds-chat-footer">
+        <ChatComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={submit}
+          onStop={stopGeneration}
+          loading={loadingMain}
+          compact
+          placeholder="继续对话…"
+        />
+      </footer>
 
       {error && <p className="ds-error ds-error-bar">{error}</p>}
     </main>

@@ -1,8 +1,5 @@
 import { create } from "zustand";
-import {
-  buildBranchQuestionMessages,
-  buildMainQuestionMessages,
-} from "../lib/contextBuilder";
+import { buildBranchQuestionMessages, buildConversationMessages } from "../lib/contextBuilder";
 import { createId } from "../lib/id";
 import { streamChat } from "../lib/openai";
 import {
@@ -12,13 +9,29 @@ import {
   sessionTitleFromThread,
 } from "../lib/storage";
 import { isLikelyLocalEndpoint, loadSettings } from "../lib/settings";
+import {
+  appendBranchToMessage,
+  findAssistantMessageForBranch,
+  findBranchInThread,
+  normalizeThread,
+  patchBranchInThread,
+  patchMessage,
+} from "../lib/thread";
+import {
+  nextFloatZIndex,
+  popBranchFloat,
+  pushBranchFloat,
+  type BranchFloatEntry,
+} from "../lib/branchFloat";
 import type {
   Anchor,
   ApiSettings,
   BranchNode,
+  ChatMessage,
   ChatSession,
   FocusTarget,
   NodeId,
+  PointVerdict,
   ThreadRoot,
 } from "../types";
 
@@ -32,12 +45,30 @@ interface AppState {
   loadingMain: boolean;
   loadingBranchId: NodeId | null;
   error: string | null;
+  branchFloatStack: BranchFloatEntry[];
+  /** 递增后关闭所有划选追问浮层 */
+  floatOverlayDismissToken: number;
 
   init: () => void;
   setSettings: (settings: ApiSettings) => void;
   setSettingsOpen: (open: boolean) => void;
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
+  stopGeneration: () => void;
+  /** 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则取消 */
+  setPointVerdict: (
+    targetId: NodeId,
+    pointIndex: number,
+    verdict: PointVerdict,
+  ) => void;
+
+  openBranchFloat: (
+    branchId: NodeId,
+    rect: DOMRect,
+    parentBranchId?: NodeId | null,
+  ) => void;
+  closeBranchFloat: (branchId: NodeId) => void;
+  closeAllBranchFloats: () => void;
 
   createSession: () => void;
   switchSession: (sessionId: NodeId) => void;
@@ -49,7 +80,7 @@ interface AppState {
     parentContent: string,
     anchor: Anchor,
     question: string,
-  ) => Promise<void>;
+  ) => Promise<NodeId | void>;
 }
 
 function getActiveSession(state: AppState): ChatSession | undefined {
@@ -70,12 +101,13 @@ function upsertActiveSession(
 ): ChatSession[] {
   if (!activeSessionId) return sessions;
   const now = Date.now();
+  const normalized = thread ? normalizeThread(thread) : null;
   return sessions.map((s) =>
     s.id === activeSessionId
       ? {
           ...s,
-          thread,
-          title: sessionTitleFromThread(thread),
+          thread: normalized,
+          title: sessionTitleFromThread(normalized),
           updatedAt: now,
         }
       : s,
@@ -98,43 +130,15 @@ function appendChild(
   }));
 }
 
-function patchBranch(
-  nodes: BranchNode[],
-  branchId: NodeId,
-  patch: Partial<BranchNode>,
-): BranchNode[] {
-  return nodes.map((node) => {
-    if (node.id === branchId) {
-      return { ...node, ...patch };
-    }
-    return {
-      ...node,
-      children: patchBranch(node.children, branchId, patch),
-    };
-  });
-}
-
-function findBranch(
-  nodes: BranchNode[],
-  id: NodeId,
-): BranchNode | undefined {
-  for (const node of nodes) {
-    if (node.id === id) return node;
-    const found = findBranch(node.children, id);
-    if (found) return found;
-  }
-  return undefined;
-}
+// Module-level abort controllers — not in Zustand state (no re-render needed)
+let mainAbortCtrl: AbortController | null = null;
+let branchAbortCtrl: AbortController | null = null;
 
 function requireApiKey(settings: ApiSettings): string | null {
-  if (
-    settings.apiKey ||
-    import.meta.env.VITE_OPENAI_API_KEY ||
-    isLikelyLocalEndpoint(settings.baseUrl)
-  ) {
+  if (settings.apiKey.trim() || isLikelyLocalEndpoint(settings.baseUrl)) {
     return null;
   }
-  return "请先在设置中填写 API Key";
+  return "请先在设置中填写 DeepSeek API Key（platform.deepseek.com），或改用 Ollama 等本地模型";
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -147,16 +151,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadingMain: false,
   loadingBranchId: null,
   error: null,
+  branchFloatStack: [],
+  floatOverlayDismissToken: 0,
 
   init: () => {
     const store = loadSessionStore();
     const active =
       store.sessions.find((s) => s.id === store.activeSessionId) ??
       store.sessions[0];
+    const thread = active?.thread ? normalizeThread(active.thread) : null;
     set({
       sessions: store.sessions,
       activeSessionId: active?.id ?? null,
-      thread: active?.thread ?? null,
+      thread,
     });
   },
 
@@ -164,6 +171,83 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setFocus: (focus) => set({ focus }),
   clearError: () => set({ error: null }),
+
+  stopGeneration: () => {
+    mainAbortCtrl?.abort();
+    branchAbortCtrl?.abort();
+    mainAbortCtrl = null;
+    branchAbortCtrl = null;
+  },
+
+  setPointVerdict: (targetId, pointIndex, verdict) => {
+    const { thread, sessions, activeSessionId } = get();
+    if (!thread) return;
+
+    const toggle = (
+      current: Record<number, PointVerdict> | undefined,
+    ): Record<number, PointVerdict> => {
+      const next = { ...(current ?? {}) };
+      if (next[pointIndex] === verdict) {
+        delete next[pointIndex]; // 再次点击同一按钮 = 取消裁决
+      } else {
+        next[pointIndex] = verdict;
+      }
+      return next;
+    };
+
+    let nextThread: ThreadRoot;
+    const msg = thread.messages.find((m) => m.id === targetId);
+    if (msg) {
+      nextThread = patchMessage(thread, targetId, {
+        pointVerdicts: toggle(msg.pointVerdicts),
+      });
+    } else {
+      const branch = findBranchInThread(thread, targetId);
+      if (!branch) return;
+      nextThread = patchBranchInThread(thread, targetId, {
+        pointVerdicts: toggle(branch.pointVerdicts),
+      });
+    }
+
+    const nextSessions = upsertActiveSession(
+      sessions,
+      activeSessionId,
+      nextThread,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ thread: nextThread, sessions: nextSessions });
+  },
+
+  openBranchFloat: (branchId, rect, parentBranchId = null) => {
+    if (typeof document !== "undefined") {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
+    set((state) => {
+      const zIndex = nextFloatZIndex(state.branchFloatStack);
+      return {
+        branchFloatStack: pushBranchFloat(
+          state.branchFloatStack,
+          branchId,
+          rect,
+          parentBranchId,
+          zIndex,
+        ),
+        floatOverlayDismissToken: state.floatOverlayDismissToken + 1,
+      };
+    });
+  },
+
+  closeBranchFloat: (branchId) => {
+    set((state) => ({
+      branchFloatStack: popBranchFloat(state.branchFloatStack, branchId),
+    }));
+  },
+
+  closeAllBranchFloats: () =>
+    set((state) => ({
+      branchFloatStack: [],
+      floatOverlayDismissToken: state.floatOverlayDismissToken + 1,
+    })),
 
   createSession: () => {
     const { sessions, activeSessionId, thread } = get();
@@ -177,6 +261,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       thread: null,
       focus: { type: "root" },
       error: null,
+      branchFloatStack: [],
     });
   },
 
@@ -188,13 +273,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const target = nextSessions.find((s) => s.id === sessionId);
     if (!target) return;
 
+    const nextThread = target.thread ? normalizeThread(target.thread) : null;
     persistSessions(nextSessions, sessionId);
     set({
       sessions: nextSessions,
       activeSessionId: sessionId,
-      thread: target.thread,
+      thread: nextThread,
       focus: { type: "root" },
       error: null,
+      branchFloatStack: [],
     });
   },
 
@@ -209,6 +296,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         thread: null,
         focus: { type: "root" },
         error: null,
+        branchFloatStack: [],
       });
       return;
     }
@@ -224,12 +312,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? nextSessions[0]?.id ?? null
         : activeSessionId;
     const active = nextSessions.find((s) => s.id === nextActive);
+    const nextThread = active?.thread ? normalizeThread(active.thread) : null;
 
     persistSessions(nextSessions, nextActive);
     set({
       sessions: nextSessions,
       activeSessionId: nextActive,
-      thread: active?.thread ?? null,
+      thread: nextThread,
       focus: { type: "root" },
       error: null,
     });
@@ -239,7 +328,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const trimmed = question.trim();
     if (!trimmed) return;
 
-    const { settings, activeSessionId, sessions } = get();
+    const { settings, activeSessionId, sessions, thread: existingThread } =
+      get();
     const authError = requireApiKey(settings);
     if (authError) {
       set({ error: authError, settingsOpen: true });
@@ -252,19 +342,38 @@ export const useAppStore = create<AppState>((set, get) => ({
       const session = createEmptySession();
       currentSessions = [session, ...currentSessions];
       sessionId = session.id;
-      set({
-        sessions: currentSessions,
-        activeSessionId: sessionId,
-      });
+      set({ sessions: currentSessions, activeSessionId: sessionId });
     }
 
-    const thread: ThreadRoot = {
+    const now = Date.now();
+    const userMsg: ChatMessage = {
       id: createId(),
-      userQuestion: trimmed,
-      assistantMessage: "",
+      role: "user",
+      content: trimmed,
       children: [],
-      createdAt: Date.now(),
+      createdAt: now,
     };
+    const assistantMsg: ChatMessage = {
+      id: createId(),
+      role: "assistant",
+      content: "",
+      children: [],
+      createdAt: now,
+    };
+
+    let thread: ThreadRoot;
+    if (existingThread) {
+      thread = normalizeThread({
+        ...existingThread,
+        messages: [...existingThread.messages, userMsg, assistantMsg],
+      });
+    } else {
+      thread = {
+        id: createId(),
+        messages: [userMsg, assistantMsg],
+        createdAt: now,
+      };
+    }
 
     const nextSessions = upsertActiveSession(
       currentSessions,
@@ -280,15 +389,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       focus: { type: "root" },
     });
 
+    const assistantId = assistantMsg.id;
+
+    mainAbortCtrl?.abort();
+    mainAbortCtrl = new AbortController();
+    const signal = mainAbortCtrl.signal;
+
     try {
-      const messages = buildMainQuestionMessages(trimmed);
-      await streamChat(settings, messages, (delta) => {
+      const apiMessages = buildConversationMessages(thread);
+      await streamChat(settings, apiMessages, (delta) => {
         const current = get().thread;
         if (!current) return;
-        const next = {
-          ...current,
-          assistantMessage: current.assistantMessage + delta,
-        };
+        const next = patchMessage(current, assistantId, {
+          content:
+            (current.messages.find((m) => m.id === assistantId)?.content ??
+              "") + delta,
+        });
         const updatedSessions = upsertActiveSession(
           get().sessions,
           get().activeSessionId,
@@ -296,17 +412,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         );
         persistSessions(updatedSessions, get().activeSessionId);
         set({ thread: next, sessions: updatedSessions });
-      });
+      }, signal);
     } catch (e) {
-      set({
-        error: e instanceof Error ? e.message : "主回答请求失败",
-      });
+      if ((e as Error)?.name !== "AbortError") {
+        set({ error: e instanceof Error ? e.message : "回答请求失败" });
+      }
     } finally {
+      mainAbortCtrl = null;
       set({ loadingMain: false });
     }
   },
 
-  askBranch: async (parentId, parentContent, anchor, question) => {
+  askBranch: async (parentId, _parentContent, anchor, question) => {
     const trimmed = question.trim();
     if (!trimmed) return;
 
@@ -329,16 +446,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdAt: Date.now(),
     };
 
+    const parentMessage = thread.messages.find((m) => m.id === parentId);
     let nextThread: ThreadRoot;
-    if (parentId === thread.id) {
-      nextThread = {
-        ...thread,
-        children: [...thread.children, branch],
-      };
+
+    if (parentMessage) {
+      nextThread = appendBranchToMessage(thread, parentId, branch);
     } else {
+      const rootMsg = findAssistantMessageForBranch(thread, parentId);
+      if (!rootMsg) return;
       nextThread = {
         ...thread,
-        children: appendChild(thread.children, parentId, branch),
+        messages: thread.messages.map((m) =>
+          m.id === rootMsg.id
+            ? {
+                ...m,
+                children: appendChild(m.children, parentId, branch),
+              }
+            : m,
+        ),
       };
     }
 
@@ -353,42 +478,48 @@ export const useAppStore = create<AppState>((set, get) => ({
       thread: nextThread,
       loadingBranchId: branch.id,
       error: null,
-      focus: { type: "branch", branchId: branch.id },
     });
 
-    try {
-      const messages = buildBranchQuestionMessages(
-        thread,
-        parentContent,
-        parentId,
-        anchor.quotedText,
-        trimmed,
-      );
-      await streamChat(settings, messages, (delta) => {
-        const current = get().thread;
-        if (!current) return;
-        const updated: ThreadRoot = {
-          ...current,
-          children: patchBranch(current.children, branch.id, {
-            assistantMessage:
-              (findBranch(current.children, branch.id)?.assistantMessage ??
-                "") + delta,
-          }),
-        };
-        const updatedSessions = upsertActiveSession(
-          get().sessions,
-          get().activeSessionId,
-          updated,
+    const branchId = branch.id;
+
+    branchAbortCtrl?.abort();
+    branchAbortCtrl = new AbortController();
+    const branchSignal = branchAbortCtrl.signal;
+
+    void (async () => {
+      try {
+        const messages = buildBranchQuestionMessages(
+          nextThread,
+          parentId,
+          anchor.quotedText,
+          trimmed,
         );
-        persistSessions(updatedSessions, get().activeSessionId);
-        set({ thread: updated, sessions: updatedSessions });
-      });
-    } catch (e) {
-      set({
-        error: e instanceof Error ? e.message : "分支回答请求失败",
-      });
-    } finally {
-      set({ loadingBranchId: null });
-    }
+        await streamChat(settings, messages, (delta) => {
+          const current = get().thread;
+          if (!current) return;
+          const updated = patchBranchInThread(current, branchId, {
+            assistantMessage:
+              (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
+              delta,
+          });
+          const updatedSessions = upsertActiveSession(
+            get().sessions,
+            get().activeSessionId,
+            updated,
+          );
+          persistSessions(updatedSessions, get().activeSessionId);
+          set({ thread: updated, sessions: updatedSessions });
+        }, branchSignal);
+      } catch (e) {
+        if ((e as Error)?.name !== "AbortError") {
+          set({ error: e instanceof Error ? e.message : "分支回答请求失败" });
+        }
+      } finally {
+        branchAbortCtrl = null;
+        set({ loadingBranchId: null });
+      }
+    })();
+
+    return branchId;
   },
 }));

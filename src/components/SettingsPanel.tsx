@@ -9,6 +9,13 @@ interface Props {
   onSave: (settings: ApiSettings) => void;
 }
 
+const CLOUD_PRESET = {
+  label: "DeepSeek",
+  baseUrl: "https://api.deepseek.com",
+  model: "deepseek-chat",
+  hint: "在 platform.deepseek.com 创建 API Key 并粘贴到下方",
+};
+
 const LOCAL_PRESETS: Array<{
   label: string;
   baseUrl: string;
@@ -61,6 +68,25 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
           任意 <strong>OpenAI 兼容</strong> 接口均可（云端或本机）。开发时建议勾选
           「使用本地代理」，请求经 <code>/openai</code> 转发到你填写的 Base URL。
         </p>
+
+        <div className="preset-row">
+          <span className="preset-label">云端：</span>
+          <button
+            type="button"
+            className="btn ghost sm"
+            title={CLOUD_PRESET.hint}
+            onClick={() =>
+              setDraft({
+                ...draft,
+                baseUrl: CLOUD_PRESET.baseUrl,
+                model: CLOUD_PRESET.model,
+                useProxy: true,
+              })
+            }
+          >
+            {CLOUD_PRESET.label}
+          </button>
+        </div>
 
         <div className="preset-row">
           <span className="preset-label">本地预设：</span>

@@ -1,4 +1,5 @@
 import type { ApiSettings } from "../types";
+import { formatApiError } from "./apiError";
 import {
   isLikelyLocalEndpoint,
   proxyTargetFromBaseUrl,
@@ -24,8 +25,9 @@ export async function streamChat(
     headers["X-Branch-Chat-Target"] = proxyTargetFromBaseUrl(settings.baseUrl);
   }
   // 本机服务通常不需要 Key；避免 localStorage 里残留的云端 Key 被误带上
-  if (settings.apiKey && !isLikelyLocalEndpoint(settings.baseUrl)) {
-    headers.Authorization = `Bearer ${settings.apiKey}`;
+  const apiKey = settings.apiKey.trim();
+  if (apiKey && !isLikelyLocalEndpoint(settings.baseUrl)) {
+    headers.Authorization = `Bearer ${apiKey}`;
   }
 
   const response = await fetch(url, {
@@ -42,9 +44,7 @@ export async function streamChat(
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(
-      `API ${response.status}: ${errText.slice(0, 300) || response.statusText}`,
-    );
+    throw new Error(formatApiError(response.status, errText));
   }
 
   if (!response.body) {

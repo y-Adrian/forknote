@@ -1,112 +1,79 @@
-import { useCallback, useRef, useState } from "react";
-import type { Anchor, NodeId } from "../types";
-import { clearSelection, getSelectionInContainer } from "../lib/selection";
-import { BranchPopover } from "./BranchPopover";
-import { MarkdownBody } from "./MarkdownBody";
-import { SelectionToolbar } from "./SelectionToolbar";
+import { useRef } from "react";
+import type { Anchor, BranchNode, NodeId, PointVerdictMap } from "../types";
+import { getHighlightRect } from "../lib/domHighlight";
+import { useAppStore } from "../store/useAppStore";
+import { SelectableMarkdown } from "./SelectableMarkdown";
 
 interface Props {
   parentId: NodeId;
   parentContent: string;
   content: string;
+  branches?: BranchNode[];
   onAskBranch: (
     parentId: NodeId,
     parentContent: string,
     anchor: Anchor,
     question: string,
-  ) => Promise<void>;
+  ) => Promise<NodeId | void>;
   branchLoading: boolean;
-  focusId?: NodeId;
-  /** 批注栏内使用更紧凑的正文样式 */
+  activeBranchId?: NodeId | null;
+  onToggleBranch?: (branchId: NodeId | null) => void;
   compact?: boolean;
+  pointVerdicts?: PointVerdictMap;
 }
 
 export function SelectableAnswer({
   parentId,
   parentContent,
   content,
+  branches = [],
   onAskBranch,
   branchLoading,
-  focusId,
+  activeBranchId: _activeBranchId = null,
+  onToggleBranch = () => {},
   compact = false,
+  pointVerdicts,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [toolbar, setToolbar] = useState<{ top: number; left: number } | null>(
-    null,
-  );
-  const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null);
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [question, setQuestion] = useState("");
+  const openBranchFloat = useAppStore((s) => s.openBranchFloat);
+  const closeBranchFloat = useAppStore((s) => s.closeBranchFloat);
+  const branchFloatStack = useAppStore((s) => s.branchFloatStack);
 
-  const handleMouseUp = useCallback(() => {
+  const isBranchOpen = (branchId: string) =>
+    branchFloatStack.some((e) => e.branchId === branchId);
+
+  const handleHighlightClick = (branchId: string) => {
     const el = containerRef.current;
-    if (!el) return;
+    const rect = el ? getHighlightRect(el, branchId) : null;
+    if (!rect) return;
 
-    const info = getSelectionInContainer(el);
-    if (!info) {
-      setToolbar(null);
-      return;
+    if (isBranchOpen(branchId)) {
+      closeBranchFloat(branchId);
+      onToggleBranch(null);
+    } else {
+      openBranchFloat(branchId, rect, null);
+      onToggleBranch(branchId);
     }
-
-    setPendingAnchor({
-      startOffset: info.startOffset,
-      endOffset: info.endOffset,
-      quotedText: info.quotedText,
-    });
-    setToolbar({
-      top: info.rect.bottom + window.scrollY + 8,
-      left: info.rect.left + window.scrollX,
-    });
-  }, []);
-
-  const openPopover = () => {
-    if (!pendingAnchor) return;
-    setPopoverOpen(true);
-    setToolbar(null);
-    clearSelection();
-  };
-
-  const closePopover = () => {
-    setPopoverOpen(false);
-    setQuestion("");
-    setPendingAnchor(null);
-  };
-
-  const submit = async () => {
-    if (!pendingAnchor || !question.trim()) return;
-    await onAskBranch(parentId, parentContent, pendingAnchor, question);
-    closePopover();
   };
 
   return (
-    <>
-      <div
-        ref={containerRef}
-        className={`answer-body selectable${compact ? " answer-body-compact" : ""}${focusId ? " is-focus" : ""}`}
-        data-answer-id={parentId}
-        onMouseUp={handleMouseUp}
-      >
-        <MarkdownBody content={content} />
-      </div>
-
-      {toolbar && (
-        <SelectionToolbar
-          top={toolbar.top}
-          left={toolbar.left}
-          onAsk={openPopover}
-        />
-      )}
-
-      {popoverOpen && pendingAnchor && (
-        <BranchPopover
-          quotedText={pendingAnchor.quotedText}
-          question={question}
-          loading={branchLoading}
-          onQuestionChange={setQuestion}
-          onSubmit={submit}
-          onClose={closePopover}
-        />
-      )}
-    </>
+    <div ref={containerRef}>
+      <SelectableMarkdown
+        content={content}
+        branches={branches}
+        loading={branchLoading}
+        compact={compact}
+        verdictTargetId={parentId}
+        pointVerdicts={pointVerdicts}
+        onAsk={(anchor, question) =>
+          onAskBranch(parentId, parentContent, anchor, question)
+        }
+        onBranchOpened={(id, rect) => {
+          openBranchFloat(id, rect, null);
+          onToggleBranch(id);
+        }}
+        onHighlightClick={handleHighlightClick}
+      />
+    </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { BranchLogo } from "./BranchLogo";
 import { groupSessionsByDate } from "../lib/sessionGroups";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
@@ -37,16 +38,7 @@ export function SessionSidebar({
     >
       <div className="ds-sidebar-top">
         <div className="ds-brand">
-          <span className="ds-brand-icon" aria-hidden>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 3c4.5 2 7 5.5 7 9.5S16.5 19 12 21 5 16 5 12.5 7.5 5 12 3z"
-                fill="currentColor"
-                opacity="0.9"
-              />
-            </svg>
-          </span>
-          {!collapsed && <span className="ds-brand-text">Branch Chat</span>}
+          <BranchLogo collapsed={collapsed} />
         </div>
         <div className="ds-sidebar-tools">
           <button
@@ -125,9 +117,25 @@ export function SessionSidebar({
               type="button"
               className="ds-footer-user"
               onClick={onOpenSettings}
+              title="设置与 API"
             >
               <span className="ds-avatar">B</span>
-              <span className="ds-footer-label">设置与 API</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           </div>
         </>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BranchFloatLayer } from "./components/BranchFloatLayer";
 import { MainPanel } from "./components/MainPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -25,6 +26,7 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <MainPanel />
+      <BranchFloatLayer />
 
       <SettingsPanel
         settings={settings}

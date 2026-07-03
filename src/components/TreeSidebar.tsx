@@ -51,8 +51,11 @@ function BranchTreeItems({
 
 export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
   const rootActive = focus.type === "root";
+  const assistantWithBranches = thread.messages.filter(
+    (m) => m.role === "assistant" && m.children.length > 0,
+  );
 
-  if (thread.children.length === 0 && compact) {
+  if (assistantWithBranches.length === 0 && compact) {
     return null;
   }
 
@@ -65,17 +68,18 @@ export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
             type="button"
             className={`ds-tree-item${rootActive ? " active" : ""}`}
             onClick={() => onFocus({ type: "root" })}
-            title={thread.userQuestion}
           >
-            <span className="ds-tree-q">正文</span>
+            <span className="ds-tree-q">对话正文</span>
           </button>
-          {thread.children.length > 0 && (
-            <BranchTreeItems
-              nodes={thread.children}
-              focus={focus}
-              onFocus={onFocus}
-            />
-          )}
+          {assistantWithBranches.map((msg) => (
+            <li key={msg.id}>
+              <BranchTreeItems
+                nodes={msg.children}
+                focus={focus}
+                onFocus={onFocus}
+              />
+            </li>
+          ))}
         </li>
       </ul>
     </div>

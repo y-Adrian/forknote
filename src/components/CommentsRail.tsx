@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import type { Anchor, NodeId, ThreadRoot } from "../types";
-import { collectBranchIds, countBranches } from "../lib/branches";
+import type { Anchor, BranchNode, NodeId, ThreadRoot } from "../types";
+import {
+  collectBranchIds,
+  countBranchesInThread,
+} from "../lib/branches";
 import { CommentCard } from "./CommentCard";
 
 interface Props {
@@ -17,6 +20,20 @@ interface Props {
   embedded?: boolean;
 }
 
+function topLevelBranches(thread: ThreadRoot): BranchNode[] {
+  return thread.messages.flatMap((m) =>
+    m.role === "assistant" ? m.children : [],
+  );
+}
+
+function allBranchIds(thread: ThreadRoot): NodeId[] {
+  const ids: NodeId[] = [];
+  for (const m of thread.messages) {
+    ids.push(...collectBranchIds(m.children));
+  }
+  return ids;
+}
+
 export function CommentsRail({
   thread,
   loadingBranchId,
@@ -25,7 +42,8 @@ export function CommentsRail({
   onFocus,
   embedded = false,
 }: Props) {
-  const total = useMemo(() => countBranches(thread.children), [thread.children]);
+  const branches = useMemo(() => topLevelBranches(thread), [thread]);
+  const total = useMemo(() => countBranchesInThread(thread), [thread]);
   const [collapsedIds, setCollapsedIds] = useState<Set<NodeId>>(() => new Set());
 
   const isCollapsed = useCallback(
@@ -43,8 +61,7 @@ export function CommentsRail({
   }, []);
 
   const expandAll = () => setCollapsedIds(new Set());
-  const collapseAll = () =>
-    setCollapsedIds(new Set(collectBranchIds(thread.children)));
+  const collapseAll = () => setCollapsedIds(new Set(allBranchIds(thread)));
 
   return (
     <div className={`ds-comments-panel${embedded ? " embedded" : ""}`}>
@@ -68,13 +85,13 @@ export function CommentsRail({
         </div>
       )}
 
-      {thread.children.length === 0 ? (
+      {branches.length === 0 ? (
         <p className="comments-empty hint">
           在回答中拖选文字，点击「针对选中追问」。
         </p>
       ) : (
         <div className="comments-list">
-          {thread.children.map((node, i) => (
+          {branches.map((node, i) => (
             <CommentCard
               key={node.id}
               node={node}
