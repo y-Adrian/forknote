@@ -73,6 +73,8 @@ interface AppState {
   createSession: () => void;
   switchSession: (sessionId: NodeId) => void;
   deleteSession: (sessionId: NodeId) => void;
+  /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
+  renameSession: (sessionId: NodeId, title: string) => boolean;
 
   askMain: (question: string) => Promise<void>;
   askBranch: (
@@ -107,7 +109,8 @@ function upsertActiveSession(
       ? {
           ...s,
           thread: normalized,
-          title: sessionTitleFromThread(normalized),
+          // 用户重命名过的标题不再被首条消息覆盖
+          title: s.titleLocked ? s.title : sessionTitleFromThread(normalized),
           updatedAt: now,
         }
       : s,
@@ -138,7 +141,7 @@ function requireApiKey(settings: ApiSettings): string | null {
   if (settings.apiKey.trim() || isLikelyLocalEndpoint(settings.baseUrl)) {
     return null;
   }
-  return "请先在设置中填写 DeepSeek API Key（platform.deepseek.com），或改用 Ollama 等本地模型";
+  return "Add a DeepSeek API Key in settings (platform.deepseek.com), or switch to a local model such as Ollama";
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -324,6 +327,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+
+  renameSession: (sessionId, title) => {
+    const trimmed = title.trim().replace(/\s+/g, " ");
+    if (!trimmed) return false;
+
+    const display =
+      trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+    const { sessions, activeSessionId } = get();
+    const nextSessions = sessions.map((s) =>
+      s.id === sessionId
+        ? {
+            ...s,
+            title: display,
+            titleLocked: true,
+            updatedAt: Date.now(),
+          }
+        : s,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+    return true;
+  },
+
   askMain: async (question) => {
     const trimmed = question.trim();
     if (!trimmed) return;
@@ -415,7 +441,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }, signal);
     } catch (e) {
       if ((e as Error)?.name !== "AbortError") {
-        set({ error: e instanceof Error ? e.message : "回答请求失败" });
+        set({ error: e instanceof Error ? e.message : "Answer request failed" });
       }
     } finally {
       mainAbortCtrl = null;
@@ -494,25 +520,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           anchor.quotedText,
           trimmed,
         );
-        await streamChat(settings, messages, (delta) => {
-          const current = get().thread;
-          if (!current) return;
-          const updated = patchBranchInThread(current, branchId, {
-            assistantMessage:
-              (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
-              delta,
-          });
-          const updatedSessions = upsertActiveSession(
-            get().sessions,
-            get().activeSessionId,
-            updated,
-          );
-          persistSessions(updatedSessions, get().activeSessionId);
-          set({ thread: updated, sessions: updatedSessions });
-        }, branchSignal);
+        await streamChat(
+          settings,
+          messages,
+          (delta) => {
+            const current = get().thread;
+            if (!current) return;
+            const updated = patchBranchInThread(current, branchId, {
+              assistantMessage:
+                (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
+                delta,
+            });
+            const updatedSessions = upsertActiveSession(
+              get().sessions,
+              get().activeSessionId,
+              updated,
+            );
+            persistSessions(updatedSessions, get().activeSessionId);
+            set({ thread: updated, sessions: updatedSessions });
+          },
+          { signal: branchSignal, temperature: 0.3 },
+        );
       } catch (e) {
         if ((e as Error)?.name !== "AbortError") {
-          set({ error: e instanceof Error ? e.message : "分支回答请求失败" });
+          set({ error: e instanceof Error ? e.message : "Fork answer request failed" });
         }
       } finally {
         branchAbortCtrl = null;

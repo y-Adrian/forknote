@@ -21,15 +21,15 @@ export function BranchPopover({
         className="modal branch-popover"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label="分支追问"
+        aria-label="Ask about selection"
       >
-        <h3>针对选中内容追问</h3>
-        <blockquote className="quote-preview">「{quotedText}」</blockquote>
+        <h3>Ask about selection</h3>
+        <blockquote className="quote-preview">“{quotedText}”</blockquote>
         <textarea
           rows={3}
           value={question}
           onChange={(e) => onQuestionChange(e.target.value)}
-          placeholder="输入你的疑问…"
+          placeholder="Enter your question…"
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -38,10 +38,10 @@ export function BranchPopover({
             }
           }}
         />
-        <p className="hint">⌘/Ctrl + Enter 提交</p>
+        <p className="hint">⌘/Ctrl + Enter to submit</p>
         <div className="modal-actions">
           <button type="button" className="btn ghost" onClick={onClose}>
-            取消
+            Cancel
           </button>
           <button
             type="button"
@@ -49,7 +49,7 @@ export function BranchPopover({
             disabled={loading || !question.trim()}
             onClick={onSubmit}
           >
-            {loading ? "生成中…" : "提交"}
+            {loading ? "Generating…" : "Submit"}
           </button>
         </div>
       </div>

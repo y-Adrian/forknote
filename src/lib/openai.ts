@@ -11,12 +11,23 @@ export type ChatMessage = {
   content: string;
 };
 
+export type StreamChatOptions = {
+  signal?: AbortSignal;
+  /** 默认 0.6；追问澄清建议更低，减少发散 */
+  temperature?: number;
+};
+
 export async function streamChat(
   settings: ApiSettings,
   messages: ChatMessage[],
   onDelta: (text: string) => void,
-  signal?: AbortSignal,
+  options?: StreamChatOptions | AbortSignal,
 ): Promise<string> {
+  // 兼容旧调用：第 4 参直接传 AbortSignal
+  const opts: StreamChatOptions =
+    options instanceof AbortSignal ? { signal: options } : (options ?? {});
+  const temperature = opts.temperature ?? 0.6;
+
   const url = `${resolveApiUrl(settings)}/chat/completions`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -33,12 +44,12 @@ export async function streamChat(
   const response = await fetch(url, {
     method: "POST",
     headers,
-    signal,
+    signal: opts.signal,
     body: JSON.stringify({
       model: settings.model,
       messages,
       stream: true,
-      temperature: 0.6,
+      temperature,
     }),
   });
 
@@ -48,7 +59,7 @@ export async function streamChat(
   }
 
   if (!response.body) {
-    throw new Error("响应体为空");
+    throw new Error("Empty response body");
   }
 
   const reader = response.body.getReader();

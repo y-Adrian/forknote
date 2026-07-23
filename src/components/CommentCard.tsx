@@ -53,19 +53,19 @@ export function CommentCard({
         onClick={() => onFocus(node.id)}
       >
         <div className="comment-meta">
-          <span className="comment-badge">批注 {indexLabel}</span>
+          <span className="comment-badge">Comment {indexLabel}</span>
           <button
             type="button"
             className="comment-toggle"
             aria-expanded={showBody}
-            aria-label={showBody ? "收起回答" : "展开回答"}
+            aria-label={showBody ? "Collapse answer" : "Expand answer"}
             onClick={(e) => {
               e.stopPropagation();
               if (!isLoading) onToggleExpand(node.id);
             }}
           >
             <span className="comment-chevron" aria-hidden />
-            {showBody ? "收起" : "展开"}
+            {showBody ? "Collapse" : "Expand"}
           </button>
         </div>
 
@@ -95,7 +95,7 @@ export function CommentCard({
             />
           ) : (
             <div className="answer-body answer-body-compact">
-              <p className="muted">{isLoading ? "正在生成…" : ""}</p>
+              <p className="muted">{isLoading ? "Generating…" : ""}</p>
             </div>
           )}
 
@@ -123,7 +123,9 @@ export function CommentCard({
 
       {!showBody && node.children.length > 0 && (
         <p className="comment-nested-hint muted">
-          含 {node.children.length} 条回复批注，展开后可见
+          {node.children.length === 1
+            ? "1 nested reply — expand to view"
+            : `${node.children.length} nested replies — expand to view`}
         </p>
       )}
     </article>

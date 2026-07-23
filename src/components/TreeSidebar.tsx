@@ -61,7 +61,7 @@ export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
 
   return (
     <div className={`ds-tree-nav${compact ? " compact" : ""}`}>
-      {!compact && <h3 className="ds-tree-heading">目录</h3>}
+      {!compact && <h3 className="ds-tree-heading">Outline</h3>}
       <ul className="ds-tree-root">
         <li>
           <button
@@ -69,7 +69,7 @@ export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
             className={`ds-tree-item${rootActive ? " active" : ""}`}
             onClick={() => onFocus({ type: "root" })}
           >
-            <span className="ds-tree-q">对话正文</span>
+            <span className="ds-tree-q">Main conversation</span>
           </button>
           {assistantWithBranches.map((msg) => (
             <li key={msg.id}>

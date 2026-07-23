@@ -29,14 +29,14 @@ const TRUNK_R = 5.5;
 const NODE_R  = 4.5;
 
 // ── Colors ─────────────────────────────────────────────────
-const C_TRUNK_LINE  = "rgba(91,110,245,0.18)";
-const C_TRUNK_NODE  = "#5b6ef5";
-const C_TRUNK_PLAIN = "rgba(80,80,180,0.28)";
-const C_CURVE       = "rgba(139,86,230,0.68)";
-const C_CURVE_OPEN  = "rgba(192,132,252,0.95)";
-const C_LEAF        = "rgba(123,66,188,0.62)";
-const C_LEAF_OPEN   = "#a855f7";
-const C_LEAF_RING   = "rgba(216,180,254,0.70)";
+const C_TRUNK_LINE  = "rgba(45,212,191,0.18)";
+const C_TRUNK_NODE  = "#2dd4bf";
+const C_TRUNK_PLAIN = "rgba(45,180,160,0.28)";
+const C_CURVE       = "rgba(45,212,191,0.55)";
+const C_CURVE_OPEN  = "rgba(94,234,212,0.95)";
+const C_LEAF        = "rgba(20,184,166,0.65)";
+const C_LEAF_OPEN   = "#2dd4bf";
+const C_LEAF_RING   = "rgba(153,246,228,0.70)";
 
 // ── DFS layout ─────────────────────────────────────────────
 /**
@@ -128,7 +128,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
   if (msgs.length === 0) return null;
 
   return (
-    <div className="ds-branch-rail" aria-label="分支结构图">
+    <div className="ds-branch-rail" aria-label="Fork structure">
       <svg
         ref={svgRef}
         width={RAIL_W}
@@ -164,7 +164,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
               <circle
                 cx={TRUNK_X} cy={forkY} r={TRUNK_R}
                 fill={hasBranch ? C_TRUNK_NODE : C_TRUNK_PLAIN}
-                stroke={hasBranch ? "rgba(139,157,255,0.5)" : "none"}
+                stroke={hasBranch ? "rgba(153,246,228,0.5)" : "none"}
                 strokeWidth="1.5"
               />
               {/* Small horizontal tick when there are branches */}
@@ -172,7 +172,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
                 <line
                   x1={TRUNK_X} y1={forkY}
                   x2={TRUNK_X + X_STEP * 0.6} y2={forkY}
-                  stroke="rgba(91,110,245,0.35)"
+                  stroke="rgba(45,212,191,0.35)"
                   strokeWidth="1.5"
                   strokeLinecap="round"
                 />
@@ -214,7 +214,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
                       y={n.y + 3.5}
                       fontSize="9"
                       fontFamily="system-ui,sans-serif"
-                      fill={open ? "rgba(216,180,254,0.85)" : "rgba(150,120,200,0.65)"}
+                      fill={open ? "rgba(204,251,241,0.9)" : "rgba(130,180,170,0.7)"}
                       style={{ pointerEvents: "none", userSelect: "none" }}
                     >
                       {label}{n.branch.userQuestion.length > 10 ? "…" : ""}

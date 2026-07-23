@@ -15,18 +15,18 @@ export function formatApiError(status: number, errText: string): string {
 
   if (status === 401) {
     return [
-      "API 401：鉴权失败（DeepSeek governor）。",
-      "请检查：① 在 platform.deepseek.com 创建并复制 API Key；",
-      "② 设置里 Base URL 为 https://api.deepseek.com，Model 为 deepseek-chat；",
-      "③ Key 无首尾空格、不是 OpenAI 的 sk- 密钥；④ 保存后重试。",
-      detail ? `服务端：${detail}` : "",
+      "API 401: Authentication failed (DeepSeek governor).",
+      "Check: (1) Create and copy an API Key at platform.deepseek.com;",
+      "(2) In settings, Base URL is https://api.deepseek.com and Model is deepseek-chat;",
+      "(3) Key has no leading/trailing spaces and is not an OpenAI sk- key; (4) Save and retry.",
+      detail ? `Server: ${detail}` : "",
     ]
       .filter(Boolean)
       .join(" ");
   }
 
   if (status === 402) {
-    return `API 402：账户余额不足，请在 DeepSeek 控制台充值。${detail ? `（${detail}）` : ""}`;
+    return `API 402: Insufficient balance — top up in the DeepSeek console.${detail ? ` (${detail})` : ""}`;
   }
 
   return `API ${status}: ${detail}`;
