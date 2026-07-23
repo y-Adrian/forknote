@@ -107,6 +107,7 @@ function formatHits(hits: SearchHit[]): string {
 export async function executeToolCall(
   call: AgentToolCall,
   sidecarUrl: string,
+  signal?: AbortSignal,
 ): Promise<{
   ok: boolean;
   resultText: string;
@@ -114,10 +115,13 @@ export async function executeToolCall(
   change?: Omit<AgentFileChange, "at">;
 }> {
   try {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
     switch (call.tool) {
       case "list_dir": {
         const path = call.path?.trim() || ".";
-        const { entries } = await listDir(path, sidecarUrl);
+        const { entries } = await listDir(path, sidecarUrl, signal);
         const lines = entries.map(
           (e) => `${e.type === "dir" ? "dir " : "file"} ${e.path}`,
         );
@@ -136,7 +140,7 @@ export async function executeToolCall(
             activity: { kind: "error", message: "read_file missing path" },
           };
         }
-        const { content, size } = await readFile(path, sidecarUrl);
+        const { content, size } = await readFile(path, sidecarUrl, signal);
         return {
           ok: true,
           resultText: content,
@@ -162,7 +166,7 @@ export async function executeToolCall(
             activity: { kind: "error", message: "write_file missing content" },
           };
         }
-        const { size } = await writeFile(path, call.content, sidecarUrl);
+        const { size } = await writeFile(path, call.content, sidecarUrl, signal);
         return {
           ok: true,
           resultText: `Wrote ${path} (${size} bytes)`,
@@ -183,6 +187,7 @@ export async function executeToolCall(
           query,
           call.path?.trim() || ".",
           sidecarUrl,
+          signal,
         );
         return {
           ok: true,
@@ -202,6 +207,14 @@ export async function executeToolCall(
         };
     }
   } catch (e) {
+    if (
+      (e instanceof Error && e.name === "AbortError") ||
+      (typeof DOMException !== "undefined" &&
+        e instanceof DOMException &&
+        e.name === "AbortError")
+    ) {
+      throw e;
+    }
     const msg = e instanceof Error ? e.message : "Tool failed";
     return {
       ok: false,

@@ -84,7 +84,8 @@ interface AppState {
   clearAgentLog: () => void;
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
-  stopGeneration: () => void;
+  /** Abort in-flight generation. Returns the stopped main prompt to restore in the composer. */
+  stopGeneration: () => string | null;
   /**
    * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认采纳）。
    * 切换离开存疑时会清掉对应 doubt。
@@ -177,6 +178,79 @@ function appendChild(
 // Module-level abort controllers — not in Zustand state (no re-render needed)
 let mainAbortCtrl: AbortController | null = null;
 let branchAbortCtrl: AbortController | null = null;
+
+/** In-flight main turn — rolled back synchronously on Stop so UI doesn't wait on hung streams. */
+let activeMainTurn: {
+  userId: NodeId;
+  assistantId: NodeId;
+  prompt: string;
+  ctrl: AbortController;
+} | null = null;
+
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof Error && e.name === "AbortError") ||
+    (typeof DOMException !== "undefined" &&
+      e instanceof DOMException &&
+      e.name === "AbortError")
+  );
+}
+
+/** Reject when `signal` aborts so tool fetches can be interrupted promptly. */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
+function rollbackMainTurn(
+  get: () => AppState,
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  turn: { userId: NodeId; assistantId: NodeId },
+): void {
+  const current = get().thread;
+  if (!current) return;
+  const msgs = current.messages;
+  const last = msgs[msgs.length - 1];
+  const prev = msgs[msgs.length - 2];
+  if (last?.id !== turn.assistantId || prev?.id !== turn.userId) return;
+
+  const remaining = msgs.slice(0, -2);
+  const nextThread: ThreadRoot | null =
+    remaining.length === 0 ? null : { ...current, messages: remaining };
+  const updatedSessions = upsertActiveSession(
+    get().sessions,
+    get().activeSessionId,
+    nextThread,
+  );
+  persistSessions(updatedSessions, get().activeSessionId);
+  set({
+    thread: nextThread,
+    sessions: updatedSessions,
+    agentActivity: [],
+    agentChanges: [],
+  });
+}
 
 function requireApiKey(settings: ApiSettings): string | null {
   if (settings.apiKey.trim() || isLikelyLocalEndpoint(settings.baseUrl)) {
@@ -273,10 +347,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   stopGeneration: () => {
-    mainAbortCtrl?.abort();
-    branchAbortCtrl?.abort();
+    const turn = activeMainTurn;
+    const ctrl = mainAbortCtrl;
+    const branchCtrl = branchAbortCtrl;
+
+    // Abort first so in-flight fetch/reader/tool calls start unwinding
+    ctrl?.abort();
+    branchCtrl?.abort();
+
+    // Roll back the incomplete main turn immediately (don't wait for hung finally)
+    if (turn && turn.ctrl === ctrl) {
+      rollbackMainTurn(get, set, turn);
+      activeMainTurn = null;
+    }
+
     mainAbortCtrl = null;
     branchAbortCtrl = null;
+    set({ loadingMain: false, loadingBranchId: null });
+    return turn?.prompt ?? null;
   },
 
   setPointVerdict: (targetId, pointIndex, verdict) => {
@@ -509,6 +597,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const trimmed = question.trim();
     if (!trimmed) return;
 
+    // Prevent double-submit races (composer loading prop may lag one frame)
+    if (get().loadingMain) return;
+
     const { settings, activeSessionId, sessions, thread: existingThread } =
       get();
     const authError = requireApiKey(settings);
@@ -573,12 +664,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     const assistantId = assistantMsg.id;
+    const userId = userMsg.id;
 
     mainAbortCtrl?.abort();
-    mainAbortCtrl = new AbortController();
-    const signal = mainAbortCtrl.signal;
+    const ctrl = new AbortController();
+    mainAbortCtrl = ctrl;
+    activeMainTurn = {
+      userId,
+      assistantId,
+      prompt: trimmed,
+      ctrl,
+    };
+    const signal = ctrl.signal;
 
     const patchAssistantContent = (content: string) => {
+      // Ignore late patches after this request was aborted/superseded
+      if (activeMainTurn?.ctrl !== ctrl || signal.aborted) return;
       const current = get().thread;
       if (!current) return;
       const next = patchMessage(current, assistantId, { content });
@@ -627,6 +728,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           signal,
         );
 
+        if (signal.aborted) break;
+
         const calls = projectRoot ? parseToolCalls(roundText) : [];
         const cleanedRound = stripToolCalls(roundText);
 
@@ -651,7 +754,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         for (const call of calls) {
           if (signal.aborted) break;
-          const executed = await executeToolCall(call, sidecarUrl);
+          const executed = await abortable(
+            executeToolCall(call, sidecarUrl, signal),
+            signal,
+          );
+          if (signal.aborted) break;
           const activity: AgentActivity = {
             id: createId(),
             at: Date.now(),
@@ -669,6 +776,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           apiMessages.push(toolResultMessage(call, executed.resultText));
         }
 
+        if (signal.aborted) break;
+
         round += 1;
         if (round >= MAX_AGENT_ROUNDS) {
           const note =
@@ -678,12 +787,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     } catch (e) {
-      if ((e as Error)?.name !== "AbortError") {
+      if (!isAbortError(e)) {
         set({ error: e instanceof Error ? e.message : "Answer request failed" });
       }
     } finally {
-      mainAbortCtrl = null;
-      set({ loadingMain: false });
+      // Stop may have already rolled back; this is a safety net if abort came from elsewhere
+      if (signal.aborted && activeMainTurn?.ctrl === ctrl) {
+        rollbackMainTurn(get, set, { userId, assistantId });
+      }
+      if (activeMainTurn?.ctrl === ctrl) {
+        activeMainTurn = null;
+      }
+      // Don't clobber a newer in-flight request
+      if (mainAbortCtrl === ctrl) {
+        mainAbortCtrl = null;
+        set({ loadingMain: false });
+      }
     }
   },
 
@@ -747,8 +866,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const branchId = branch.id;
 
     branchAbortCtrl?.abort();
-    branchAbortCtrl = new AbortController();
-    const branchSignal = branchAbortCtrl.signal;
+    const branchCtrl = new AbortController();
+    branchAbortCtrl = branchCtrl;
+    const branchSignal = branchCtrl.signal;
 
     void (async () => {
       try {
@@ -762,6 +882,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           settings,
           messages,
           (delta) => {
+          if (branchAbortCtrl !== branchCtrl || branchSignal.aborted) return;
           const current = get().thread;
           if (!current) return;
           const updated = patchBranchInThread(current, branchId, {
@@ -780,12 +901,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           { signal: branchSignal, temperature: 0.3 },
         );
       } catch (e) {
-        if ((e as Error)?.name !== "AbortError") {
+        if (!isAbortError(e)) {
           set({ error: e instanceof Error ? e.message : "Fork answer request failed" });
         }
       } finally {
-        branchAbortCtrl = null;
-        set({ loadingBranchId: null });
+        if (branchAbortCtrl === branchCtrl) {
+          branchAbortCtrl = null;
+          set({ loadingBranchId: null });
+        }
       }
     })();
 

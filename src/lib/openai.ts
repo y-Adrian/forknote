@@ -67,34 +67,61 @@ export async function streamChat(
   let buffer = "";
   let full = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  const throwIfAborted = () => {
+    if (opts.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+  };
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+  // Proxy streams sometimes ignore fetch abort until the reader is cancelled.
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  opts.signal?.addEventListener("abort", onAbort);
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === "[DONE]") continue;
+  try {
+    throwIfAborted();
+    while (true) {
+      throwIfAborted();
+      const { done, value } = await reader.read();
+      if (done) break;
+      throwIfAborted();
 
-      try {
-        const json = JSON.parse(data) as {
-          choices?: Array<{ delta?: { content?: string } }>;
-        };
-        const delta = json.choices?.[0]?.delta?.content;
-        if (delta) {
-          full += delta;
-          onDelta(delta);
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === "[DONE]") continue;
+
+        try {
+          const json = JSON.parse(data) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+          };
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            onDelta(delta);
+          }
+        } catch {
+          // skip malformed chunks
         }
-      } catch {
-        // skip malformed chunks
       }
     }
+  } catch (e) {
+    try {
+      await reader.cancel();
+    } catch {
+      // ignore cancel errors
+    }
+    throw e;
+  } finally {
+    opts.signal?.removeEventListener("abort", onAbort);
   }
 
+  throwIfAborted();
   return full;
 }

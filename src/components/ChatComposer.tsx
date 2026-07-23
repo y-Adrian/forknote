@@ -64,7 +64,11 @@ export function ChatComposer({
             <button
               type="button"
               className="fn-stop-btn"
-              onClick={onStop}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onStop?.();
+              }}
               aria-label="Stop generating"
               title="Stop generating"
             >
