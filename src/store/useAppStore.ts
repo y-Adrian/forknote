@@ -1,17 +1,28 @@
 import { create } from "zustand";
 import {
+  agentCallFromOpenAI,
   buildCodingToolsSystem,
+  collectToolCalls,
   executeToolCall,
+  inferCreateFilePath,
   MAX_AGENT_ROUNDS,
-  parseToolCalls,
+  nativeToolResultMessage,
+  PROJECT_OPENAI_TOOLS,
   stripToolCalls,
+  synthesizeWriteFromReply,
   toolResultMessage,
   type AgentActivity,
   type AgentFileChange,
+  type AgentToolCall,
 } from "../lib/agentTools";
 import { buildBranchQuestionMessages, buildConversationMessages } from "../lib/contextBuilder";
 import { createId } from "../lib/id";
-import { streamChat, type ChatMessage as ApiChatMessage } from "../lib/openai";
+import {
+  isToolsUnsupportedError,
+  streamChat,
+  type ChatMessage as ApiChatMessage,
+  type ToolCall,
+} from "../lib/openai";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
   closeProject as sidecarCloseProject,
@@ -84,7 +95,8 @@ interface AppState {
   clearAgentLog: () => void;
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
-  stopGeneration: () => void;
+  /** Abort in-flight generation. Returns the stopped main prompt to restore in the composer. */
+  stopGeneration: () => string | null;
   /**
    * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认采纳）。
    * 切换离开存疑时会清掉对应 doubt。
@@ -177,6 +189,79 @@ function appendChild(
 // Module-level abort controllers — not in Zustand state (no re-render needed)
 let mainAbortCtrl: AbortController | null = null;
 let branchAbortCtrl: AbortController | null = null;
+
+/** In-flight main turn — rolled back synchronously on Stop so UI doesn't wait on hung streams. */
+let activeMainTurn: {
+  userId: NodeId;
+  assistantId: NodeId;
+  prompt: string;
+  ctrl: AbortController;
+} | null = null;
+
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof Error && e.name === "AbortError") ||
+    (typeof DOMException !== "undefined" &&
+      e instanceof DOMException &&
+      e.name === "AbortError")
+  );
+}
+
+/** Reject when `signal` aborts so tool fetches can be interrupted promptly. */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
+function rollbackMainTurn(
+  get: () => AppState,
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  turn: { userId: NodeId; assistantId: NodeId },
+): void {
+  const current = get().thread;
+  if (!current) return;
+  const msgs = current.messages;
+  const last = msgs[msgs.length - 1];
+  const prev = msgs[msgs.length - 2];
+  if (last?.id !== turn.assistantId || prev?.id !== turn.userId) return;
+
+  const remaining = msgs.slice(0, -2);
+  const nextThread: ThreadRoot | null =
+    remaining.length === 0 ? null : { ...current, messages: remaining };
+  const updatedSessions = upsertActiveSession(
+    get().sessions,
+    get().activeSessionId,
+    nextThread,
+  );
+  persistSessions(updatedSessions, get().activeSessionId);
+  set({
+    thread: nextThread,
+    sessions: updatedSessions,
+    agentActivity: [],
+    agentChanges: [],
+  });
+}
 
 function requireApiKey(settings: ApiSettings): string | null {
   if (settings.apiKey.trim() || isLikelyLocalEndpoint(settings.baseUrl)) {
@@ -273,10 +358,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   stopGeneration: () => {
-    mainAbortCtrl?.abort();
-    branchAbortCtrl?.abort();
+    const turn = activeMainTurn;
+    const ctrl = mainAbortCtrl;
+    const branchCtrl = branchAbortCtrl;
+
+    // Abort first so in-flight fetch/reader/tool calls start unwinding
+    ctrl?.abort();
+    branchCtrl?.abort();
+
+    // Roll back the incomplete main turn immediately (don't wait for hung finally)
+    if (turn && turn.ctrl === ctrl) {
+      rollbackMainTurn(get, set, turn);
+      activeMainTurn = null;
+    }
+
     mainAbortCtrl = null;
     branchAbortCtrl = null;
+    set({ loadingMain: false, loadingBranchId: null });
+    return turn?.prompt ?? null;
   },
 
   setPointVerdict: (targetId, pointIndex, verdict) => {
@@ -509,6 +608,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const trimmed = question.trim();
     if (!trimmed) return;
 
+    // Prevent double-submit races (composer loading prop may lag one frame)
+    if (get().loadingMain) return;
+
     const { settings, activeSessionId, sessions, thread: existingThread } =
       get();
     const authError = requireApiKey(settings);
@@ -573,12 +675,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     const assistantId = assistantMsg.id;
+    const userId = userMsg.id;
 
     mainAbortCtrl?.abort();
-    mainAbortCtrl = new AbortController();
-    const signal = mainAbortCtrl.signal;
+    const ctrl = new AbortController();
+    mainAbortCtrl = ctrl;
+    activeMainTurn = {
+      userId,
+      assistantId,
+      prompt: trimmed,
+      ctrl,
+    };
+    const signal = ctrl.signal;
 
     const patchAssistantContent = (content: string) => {
+      // Ignore late patches after this request was aborted/superseded
+      if (activeMainTurn?.ctrl !== ctrl || signal.aborted) return;
       const current = get().thread;
       if (!current) return;
       const next = patchMessage(current, assistantId, { content });
@@ -593,6 +705,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const { projectRoot, sidecarUrl } = get();
+      const createPathEarly = inferCreateFilePath(trimmed);
+      if (createPathEarly && !projectRoot) {
+        set({
+          loadingMain: false,
+          error:
+            "Open a local project first (Open project), then ask to create the file — e.g. connect /Users/debris/cursor/code-test.",
+        });
+        // Roll back the empty turn so the prompt can stay editable
+        rollbackMainTurn(get, set, { userId, assistantId });
+        if (mainAbortCtrl === ctrl) {
+          mainAbortCtrl = null;
+          activeMainTurn = null;
+        }
+        return;
+      }
+
       const codingToolsSystem = projectRoot
         ? buildCodingToolsSystem(projectRoot)
         : null;
@@ -601,43 +729,146 @@ export const useAppStore = create<AppState>((set, get) => ({
         codingToolsSystem,
       });
 
+      const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
+      if (createPath) {
+        apiMessages.push({
+          role: "system",
+          content: `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`,
+        });
+      }
+
       let visibleContent = "";
       let round = 0;
+      let useNativeTools = Boolean(projectRoot);
+      let forcedWrite = Boolean(createPath && projectRoot);
 
       while (round < MAX_AGENT_ROUNDS) {
         if (signal.aborted) break;
 
         let roundText = "";
-        await streamChat(
-          settings,
-          apiMessages,
-          (delta) => {
-            roundText += delta;
-            const cleaned = stripToolCalls(roundText);
-            if (cleaned.length > 0) {
-              patchAssistantContent(
-                visibleContent
-                  ? `${visibleContent}\n\n${cleaned}`.trim()
-                  : cleaned,
-              );
-            } else if (!visibleContent && projectRoot) {
-              patchAssistantContent("Using project tools…");
-            }
-          },
-          signal,
-        );
+        let streamResult: Awaited<ReturnType<typeof streamChat>>;
+        try {
+          streamResult = await streamChat(
+            settings,
+            apiMessages,
+            (delta) => {
+              roundText += delta;
+              const cleaned = stripToolCalls(roundText);
+              if (cleaned.length > 0) {
+                patchAssistantContent(
+                  visibleContent
+                    ? `${visibleContent}\n\n${cleaned}`.trim()
+                    : cleaned,
+                );
+              } else if (!visibleContent && projectRoot) {
+                patchAssistantContent(
+                  createPath
+                    ? `Creating ${createPath}…`
+                    : "Using project tools…",
+                );
+              }
+            },
+            {
+              signal,
+              temperature: projectRoot ? 0.2 : 0.6,
+              tools: useNativeTools ? PROJECT_OPENAI_TOOLS : undefined,
+              toolChoice:
+                useNativeTools && forcedWrite && round === 0
+                  ? { type: "function", function: { name: "write_file" } }
+                  : useNativeTools
+                    ? "auto"
+                    : undefined,
+            },
+          );
+        } catch (e) {
+          if (useNativeTools && isToolsUnsupportedError(e)) {
+            // Provider rejected tools — fall back to text protocol once.
+            useNativeTools = false;
+            forcedWrite = false;
+            continue;
+          }
+          throw e;
+        }
 
-        const calls = projectRoot ? parseToolCalls(roundText) : [];
+        if (signal.aborted) break;
+
+        roundText = streamResult.content || roundText;
+
+        type PendingCall = {
+          agent: AgentToolCall;
+          native?: ToolCall;
+        };
+        const pending: PendingCall[] = [];
+
+        if (streamResult.toolCalls.length > 0) {
+          for (const tc of streamResult.toolCalls) {
+            const agent = agentCallFromOpenAI(tc);
+            if (agent) {
+              // If user named a file, pin write_file path to it when model omits/wrong path
+              if (
+                createPath &&
+                agent.tool === "write_file" &&
+                (!agent.path || agent.path === "." || agent.path === "file")
+              ) {
+                agent.path = createPath;
+              }
+              pending.push({ agent, native: tc });
+            }
+          }
+        } else if (projectRoot) {
+          for (const agent of collectToolCalls(roundText)) {
+            pending.push({ agent });
+          }
+        }
+
+        // Guaranteed fallback: user asked for a named file, model only pasted code
+        if (
+          createPath &&
+          projectRoot &&
+          !pending.some((p) => p.agent.tool === "write_file")
+        ) {
+          const synthetic = synthesizeWriteFromReply(trimmed, roundText);
+          if (synthetic) {
+            pending.push({ agent: synthetic });
+          }
+        }
+
         const cleanedRound = stripToolCalls(roundText);
 
-        if (calls.length === 0) {
+        if (pending.length === 0) {
+          // One nudge if create intent and model ignored tools/fences
+          if (createPath && projectRoot && round === 0) {
+            apiMessages.push({
+              role: "assistant",
+              content: cleanedRound || roundText || "",
+            });
+            apiMessages.push({
+              role: "user",
+              content: `请立刻调用 write_file，path="${createPath}"，content=完整源码。不要只贴代码。`,
+            });
+            visibleContent = cleanedRound;
+            patchAssistantContent(
+              visibleContent || `Creating ${createPath}…`,
+            );
+            round += 1;
+            forcedWrite = useNativeTools;
+            continue;
+          }
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent);
           break;
         }
 
-        // Persist assistant tool-call turn for the model, keep UI clean
-        apiMessages.push({ role: "assistant", content: roundText });
+        if (streamResult.toolCalls.length > 0) {
+          apiMessages.push({
+            role: "assistant",
+            content: cleanedRound || "",
+            tool_calls: streamResult.toolCalls,
+          });
+        } else {
+          apiMessages.push({ role: "assistant", content: roundText || "" });
+        }
+
         if (cleanedRound) {
           visibleContent = visibleContent
             ? `${visibleContent}\n\n${cleanedRound}`.trim()
@@ -645,13 +876,26 @@ export const useAppStore = create<AppState>((set, get) => ({
           patchAssistantContent(visibleContent);
         } else {
           patchAssistantContent(
-            visibleContent || "Using project tools…",
+            visibleContent ||
+              (createPath ? `Creating ${createPath}…` : "Using project tools…"),
           );
         }
 
-        for (const call of calls) {
+        let wroteTarget = false;
+        for (const item of pending) {
           if (signal.aborted) break;
-          const executed = await executeToolCall(call, sidecarUrl);
+          const executed = await abortable(
+            executeToolCall(item.agent, sidecarUrl, signal, projectRoot),
+            signal,
+          );
+          if (signal.aborted) break;
+          if (
+            item.agent.tool === "write_file" &&
+            executed.ok &&
+            (item.agent.path === createPath || !createPath)
+          ) {
+            wroteTarget = true;
+          }
           const activity: AgentActivity = {
             id: createId(),
             at: Date.now(),
@@ -666,7 +910,29 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ]
               : s.agentChanges,
           }));
-          apiMessages.push(toolResultMessage(call, executed.resultText));
+
+          if (item.native) {
+            apiMessages.push(
+              nativeToolResultMessage(
+                item.native.id,
+                item.native.function.name,
+                executed.resultText,
+              ),
+            );
+          } else {
+            apiMessages.push(toolResultMessage(item.agent, executed.resultText));
+          }
+        }
+
+        if (signal.aborted) break;
+
+        // After a successful create-file write, ask for a short summary then stop looping tools
+        if (createPath && wroteTarget) {
+          apiMessages.push({
+            role: "user",
+            content: `文件 ${createPath} 已写入。请用一两句中文确认路径与作用，不要再调用工具。`,
+          });
+          forcedWrite = false;
         }
 
         round += 1;
@@ -678,12 +944,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     } catch (e) {
-      if ((e as Error)?.name !== "AbortError") {
+      if (!isAbortError(e)) {
         set({ error: e instanceof Error ? e.message : "Answer request failed" });
       }
     } finally {
-      mainAbortCtrl = null;
-      set({ loadingMain: false });
+      // Stop may have already rolled back; this is a safety net if abort came from elsewhere
+      if (signal.aborted && activeMainTurn?.ctrl === ctrl) {
+        rollbackMainTurn(get, set, { userId, assistantId });
+      }
+      if (activeMainTurn?.ctrl === ctrl) {
+        activeMainTurn = null;
+      }
+      // Don't clobber a newer in-flight request
+      if (mainAbortCtrl === ctrl) {
+        mainAbortCtrl = null;
+        set({ loadingMain: false });
+      }
     }
   },
 
@@ -747,8 +1023,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const branchId = branch.id;
 
     branchAbortCtrl?.abort();
-    branchAbortCtrl = new AbortController();
-    const branchSignal = branchAbortCtrl.signal;
+    const branchCtrl = new AbortController();
+    branchAbortCtrl = branchCtrl;
+    const branchSignal = branchCtrl.signal;
 
     void (async () => {
       try {
@@ -762,6 +1039,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           settings,
           messages,
           (delta) => {
+          if (branchAbortCtrl !== branchCtrl || branchSignal.aborted) return;
           const current = get().thread;
           if (!current) return;
           const updated = patchBranchInThread(current, branchId, {
@@ -780,12 +1058,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           { signal: branchSignal, temperature: 0.3 },
         );
       } catch (e) {
-        if ((e as Error)?.name !== "AbortError") {
+        if (!isAbortError(e)) {
           set({ error: e instanceof Error ? e.message : "Fork answer request failed" });
         }
       } finally {
-        branchAbortCtrl = null;
-        set({ loadingBranchId: null });
+        if (branchAbortCtrl === branchCtrl) {
+          branchAbortCtrl = null;
+          set({ loadingBranchId: null });
+        }
       }
     })();
 

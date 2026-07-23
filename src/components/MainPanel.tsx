@@ -64,6 +64,7 @@ export function MainPanel({ onOpenProject }: Props) {
   const submit = () => {
     const saved = input.trim();
     if (!saved) return;
+    if (useAppStore.getState().loadingMain) return;
     lastSentPromptRef.current = saved;
     setInput("");
     void (async () => {
@@ -71,17 +72,22 @@ export function MainPanel({ onOpenProject }: Props) {
       // askMain runs sync until first await; early exits (auth) leave loadingMain false
       await Promise.resolve();
       if (!useAppStore.getState().loadingMain) {
-        setInput(saved);
+        // Auth failure or rejected while already loading — restore draft
+        if (lastSentPromptRef.current === saved) setInput(saved);
         return;
       }
       await pending;
+      // After Stop, askMain rolls back the turn; keep restored composer text
     })();
   };
 
   const handleStop = () => {
-    stopGeneration();
-    const last = lastSentPromptRef.current;
-    if (last) setInput(last);
+    const restored = stopGeneration();
+    const text = restored || lastSentPromptRef.current;
+    if (text) {
+      lastSentPromptRef.current = text;
+      setInput(text);
+    }
   };
 
   if (!thread) {
@@ -168,7 +174,7 @@ export function MainPanel({ onOpenProject }: Props) {
         <div className="ds-chat-column">
           <div className="ds-chat-scroll" ref={scrollRef}>
             <div className="ds-messages">
-              {thread.messages.map((msg) =>
+              {thread.messages.map((msg, index) =>
                 msg.role === "user" ? (
                   <div
                     key={msg.id}
@@ -197,13 +203,13 @@ export function MainPanel({ onOpenProject }: Props) {
                         pointVerdicts={msg.pointVerdicts}
                         pointDoubts={msg.pointDoubts}
                       />
-                    ) : (
+                    ) : loadingMain && index === thread.messages.length - 1 ? (
                       <div className="ds-typing" aria-label="Thinking">
                         <span />
                         <span />
                         <span />
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 ),
               )}

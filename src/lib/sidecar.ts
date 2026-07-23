@@ -83,18 +83,20 @@ export async function closeProject(
 export async function listDir(
   relPath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
 ): Promise<{ path: string; entries: FsEntry[] }> {
   const q = new URLSearchParams({ path: relPath });
-  const res = await fetch(`${base(sidecarUrl)}/fs/list?${q}`);
+  const res = await fetch(`${base(sidecarUrl)}/fs/list?${q}`, { signal });
   return parseJson(res);
 }
 
 export async function readFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
 ): Promise<{ path: string; content: string; size: number }> {
   const q = new URLSearchParams({ path: relPath });
-  const res = await fetch(`${base(sidecarUrl)}/fs/read?${q}`);
+  const res = await fetch(`${base(sidecarUrl)}/fs/read?${q}`, { signal });
   return parseJson(res);
 }
 
@@ -102,11 +104,13 @@ export async function writeFile(
   relPath: string,
   content: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
 ): Promise<{ path: string; size: number; written: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/write`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path: relPath, content }),
+    signal,
   });
   return parseJson(res);
 }
@@ -114,11 +118,13 @@ export async function writeFile(
 export async function mkdir(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
 ): Promise<{ path: string; created: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/mkdir`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path: relPath }),
+    signal,
   });
   return parseJson(res);
 }
@@ -127,11 +133,13 @@ export async function searchFiles(
   query: string,
   subpath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
 ): Promise<{ query: string; hits: SearchHit[]; truncated: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, path: subpath }),
+    signal,
   });
   return parseJson(res);
 }

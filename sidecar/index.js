@@ -57,25 +57,58 @@ async function readBody(req) {
 }
 
 /**
- * Resolve a user path relative to project root. Rejects traversal and absolute escapes.
+ * Resolve a user path relative to project root.
+ * Absolute paths are accepted only when they point inside the open project
+ * (converted to relative). Otherwise rejected with a clear error.
  * @param {string} rel
  */
 function resolveSafe(rel) {
   if (!projectRoot) {
     throw Object.assign(new Error("No project open"), { status: 400 });
   }
-  const input = String(rel ?? ".").trim() || ".";
-  if (path.isAbsolute(input)) {
-    throw Object.assign(new Error("Absolute paths are not allowed"), {
-      status: 400,
-    });
+  const root = path.resolve(projectRoot);
+  let input = String(rel ?? ".").trim() || ".";
+
+  // Normalize model typos: "//foo.c", "///src/a.cpp" → treat as project-relative
+  // (real UNC "//server/share" is not used for local sidecar paths)
+  if (/^\/\/+/.test(input) && !/^\/\/[^/]+\/[^/]/.test(input)) {
+    input = input.replace(/^\/+/, "") || ".";
   }
+
+  // "/src/foo" or "/file.cpp" — project-relative with a mistaken leading slash
+  if (
+    input.startsWith("/") &&
+    !input.startsWith("//") &&
+    !/^\/(?:Users|home|private|var|tmp|etc|Volumes|mnt|opt)\b/i.test(input)
+  ) {
+    input = input.replace(/^\/+/, "") || ".";
+  }
+
+  // Full absolute path → allow only if inside project root
+  if (path.isAbsolute(input)) {
+    const abs = path.resolve(input);
+    const relToRoot = path.relative(root, abs);
+    if (!relToRoot.startsWith("..") && !path.isAbsolute(relToRoot)) {
+      return {
+        root,
+        resolved: abs,
+        relative: relToRoot.split(path.sep).join("/") || ".",
+      };
+    }
+    throw Object.assign(
+      new Error(
+        `Absolute paths outside the project are not allowed. Use a path relative to the project root, e.g. "array_and_subarrays.cpp" or "src/main.cpp" (project: ${root}). Received: ${String(rel).trim()}`,
+      ),
+      { status: 400 },
+    );
+  }
+
   if (input.split(/[/\\]/).some((seg) => seg === "..")) {
     throw Object.assign(new Error("Path traversal (..) is not allowed"), {
       status: 400,
     });
   }
-  const root = path.resolve(projectRoot);
+
   const resolved = path.resolve(root, input);
   const relToRoot = path.relative(root, resolved);
   if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
@@ -83,13 +116,26 @@ function resolveSafe(rel) {
       status: 400,
     });
   }
-  return { root, resolved, relative: relToRoot.split(path.sep).join("/") || "." };
+  return {
+    root,
+    resolved,
+    relative: relToRoot.split(path.sep).join("/") || ".",
+  };
 }
 
 async function handleOpen(body) {
   const raw = String(body?.path ?? "").trim();
   if (!raw) {
     throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  // Reject relative paths with a clear hint (UI asks for absolute path).
+  if (!path.isAbsolute(raw)) {
+    throw Object.assign(
+      new Error(
+        `Use an absolute path, e.g. /Users/you/projects/my-app (received relative: "${raw}")`,
+      ),
+      { status: 400 },
+    );
   }
   const resolved = path.resolve(raw);
   let stat;
@@ -176,8 +222,15 @@ async function handleWrite(body) {
     );
   }
   const { resolved, relative } = resolveSafe(filePath);
-  await fs.mkdir(path.dirname(resolved), { recursive: true });
-  await fs.writeFile(resolved, body.content, "utf8");
+  try {
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, body.content, "utf8");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to write file";
+    throw Object.assign(new Error(`Cannot write ${relative}: ${msg}`), {
+      status: 500,
+    });
+  }
   return { path: relative, size: bytes, written: true };
 }
 
