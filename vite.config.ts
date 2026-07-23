@@ -55,6 +55,11 @@ export default defineConfig(({ mode }) => {
             return originOf(normalizeApiRoot(header || defaultRoot));
           },
         },
+        "/sidecar": {
+          target: "http://127.0.0.1:8787",
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/sidecar/, "") || "/",
+        },
       },
     },
   };
