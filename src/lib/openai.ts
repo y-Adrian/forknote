@@ -22,7 +22,7 @@ export async function streamChat(
     "Content-Type": "application/json",
   };
   if (settings.useProxy) {
-    headers["X-Branch-Chat-Target"] = proxyTargetFromBaseUrl(settings.baseUrl);
+    headers["X-Forknote-Target"] = proxyTargetFromBaseUrl(settings.baseUrl);
   }
   // 本机服务通常不需要 Key；避免 localStorage 里残留的云端 Key 被误带上
   const apiKey = settings.apiKey.trim();

@@ -1,26 +1,23 @@
 import type { CSSProperties } from "react";
 
 interface Props {
-  /** 侧栏收起：仅显示图标 */
   collapsed?: boolean;
-  /** 仅图标（与侧栏收起一致，用于空状态等） */
   iconOnly?: boolean;
-  /** 图标高度（px），默认随侧栏变量 */
   iconHeight?: number;
   className?: string;
+  /** 空状态等场景显示完整品牌字 */
+  showWordmark?: boolean;
 }
 
-const BRAND = "#7B42BC";
-const ICON_VB_W = 118;
-const ICON_VB_H = 198;
-
-export function BranchLogo({
+/** ForkNote mark: Clarify Cards — main note + floating clarify card */
+export function ForkNoteLogo({
   collapsed = false,
   iconOnly = false,
   iconHeight,
   className = "",
+  showWordmark = false,
 }: Props) {
-  const hideWordmark = collapsed || iconOnly;
+  const hideWordmark = (collapsed || iconOnly) && !showWordmark;
 
   const svgStyle: CSSProperties | undefined = iconHeight
     ? { height: iconHeight, width: "auto" }
@@ -28,40 +25,75 @@ export function BranchLogo({
 
   return (
     <div
-      className={`ds-brand-logo${collapsed ? " is-collapsed" : ""}${iconOnly ? " is-icon-only" : ""}${className ? ` ${className}` : ""}`}
+      className={`fn-brand-logo${collapsed ? " is-collapsed" : ""}${iconOnly ? " is-icon-only" : ""}${className ? ` ${className}` : ""}`}
     >
       <svg
-        className="ds-brand-icon-svg"
+        className="fn-brand-icon"
         style={svgStyle}
-        viewBox={`0 0 ${ICON_VB_W} ${ICON_VB_H}`}
+        viewBox="0 0 64 64"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        aria-hidden={hideWordmark}
-        role={hideWordmark ? "img" : undefined}
-        aria-label={hideWordmark ? "Branch Chat" : undefined}
+        role="img"
+        aria-label="ForkNote"
       >
-        <g fill={BRAND}>
-          <path
-            d="M20 42h34a12 12 0 0 1 12 12v44a12 12 0 0 1-12 12H32l-8 50 18-50H20a12 12 0 0 1-12-12V54a12 12 0 0 1 12-12z"
-            fill="none"
-            stroke={BRAND}
-            strokeWidth="9"
-            strokeLinejoin="round"
-          />
-          <path d="M58 34c22-4 44 8 50 32 6.5 26-10 52-36 56-14 2-26-4-32-14 16-6 28-20 30-36 2.5-18-10-34-28-38z" />
-          <path
-            d="M68 44c12 10 16 24 12 38-3 12-12 22-24 26 2-10 6-18 14-24 6-5 10-12 11-20 1.5-9-4-16-13-20z"
-            opacity="0.32"
-          />
-          <circle cx="33" cy="74" r="5.2" />
-          <circle cx="49" cy="74" r="5.2" />
-          <circle cx="65" cy="74" r="5.2" />
-        </g>
+        {/* Main note card */}
+        <rect
+          x="5"
+          y="7"
+          width="38"
+          height="28"
+          rx="6"
+          fill="currentColor"
+          fillOpacity="0.1"
+          stroke="currentColor"
+          strokeWidth="2.2"
+        />
+        <rect x="11" y="14" width="6.5" height="6.5" rx="1.4" fill="currentColor" />
+        <path
+          d="M21.5 15.8h15M21.5 21.2h10"
+          stroke="currentColor"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+        />
+
+        {/* Link curve: main → floating clarify card */}
+        <path
+          d="M13 35C13 46 18 48 26 44"
+          stroke="currentColor"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          fill="none"
+        />
+
+        {/* Floating clarify card */}
+        <rect
+          x="26"
+          y="33"
+          width="31"
+          height="22"
+          rx="5.5"
+          fill="currentColor"
+          fillOpacity="0.1"
+          stroke="currentColor"
+          strokeWidth="2.2"
+        />
+        <rect x="31.5" y="39" width="5.2" height="5.2" rx="1.2" fill="currentColor" />
+        <path
+          d="M40 40.5h11.5M40 45.2h8"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
       </svg>
 
-      <span className="ds-brand-wordmark" aria-hidden={hideWordmark}>
-        Branch Chat
-      </span>
+      {!hideWordmark && (
+        <span className="fn-brand-wordmark">
+          Fork<span className="fn-brand-note">Note</span>
+        </span>
+      )}
     </div>
   );
 }
+
+/** @deprecated use ForkNoteLogo */
+export const BranchLogo = ForkNoteLogo;

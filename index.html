@@ -3,13 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Branch Chat · 对话</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&display=swap"
-      rel="stylesheet"
+    <meta
+      name="description"
+      content="ForkNote — Clarify as you read, verdict by point, turn AI answers into research notes that fit reality."
     />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>ForkNote</title>
+    <script>
+      (function () {
+        try {
+          var key = "forknote-theme";
+          var theme = localStorage.getItem(key);
+          if (theme !== "light" && theme !== "dark") {
+            theme = window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+          }
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
