@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BranchFloatLayer } from "./components/BranchFloatLayer";
 import { MainPanel } from "./components/MainPanel";
+import { ProjectPanel } from "./components/ProjectPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { useAppStore } from "./store/useAppStore";
@@ -11,6 +12,8 @@ export default function App() {
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const setSettings = useAppStore((s) => s.setSettings);
+  const projectOpen = useAppStore((s) => s.projectOpen);
+  const setProjectOpen = useAppStore((s) => s.setProjectOpen);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -24,8 +27,9 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenProject={() => setProjectOpen(true)}
       />
-      <MainPanel />
+      <MainPanel onOpenProject={() => setProjectOpen(true)} />
       <BranchFloatLayer />
 
       <SettingsPanel
@@ -33,6 +37,10 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onSave={setSettings}
+      />
+      <ProjectPanel
+        open={projectOpen}
+        onClose={() => setProjectOpen(false)}
       />
     </div>
   );

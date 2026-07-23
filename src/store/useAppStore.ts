@@ -1,7 +1,22 @@
 import { create } from "zustand";
+import {
+  buildCodingToolsSystem,
+  executeToolCall,
+  MAX_AGENT_ROUNDS,
+  parseToolCalls,
+  stripToolCalls,
+  toolResultMessage,
+  type AgentActivity,
+  type AgentFileChange,
+} from "../lib/agentTools";
 import { buildBranchQuestionMessages, buildConversationMessages } from "../lib/contextBuilder";
 import { createId } from "../lib/id";
-import { streamChat } from "../lib/openai";
+import { streamChat, type ChatMessage as ApiChatMessage } from "../lib/openai";
+import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
+import {
+  closeProject as sidecarCloseProject,
+  openProject as sidecarOpenProject,
+} from "../lib/sidecar";
 import {
   createEmptySession,
   loadSessionStore,
@@ -43,6 +58,7 @@ interface AppState {
   thread: ThreadRoot | null;
   settings: ApiSettings;
   settingsOpen: boolean;
+  projectOpen: boolean;
   focus: FocusTarget;
   loadingMain: boolean;
   loadingBranchId: NodeId | null;
@@ -51,9 +67,21 @@ interface AppState {
   /** 递增后关闭所有划选追问浮层 */
   floatOverlayDismissToken: number;
 
+  /** Bound local project absolute path (via sidecar), or null */
+  projectRoot: string | null;
+  sidecarUrl: string;
+  projectError: string | null;
+  agentActivity: AgentActivity[];
+  agentChanges: AgentFileChange[];
+
   init: () => void;
   setSettings: (settings: ApiSettings) => void;
   setSettingsOpen: (open: boolean) => void;
+  setProjectOpen: (open: boolean) => void;
+  setSidecarUrl: (url: string) => void;
+  openProject: (absPath: string, quiet?: boolean) => Promise<void>;
+  disconnectProject: () => void;
+  clearAgentLog: () => void;
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
   stopGeneration: () => void;
@@ -163,12 +191,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   thread: null,
   settings: loadSettings(),
   settingsOpen: false,
+  projectOpen: false,
   focus: { type: "root" },
   loadingMain: false,
   loadingBranchId: null,
   error: null,
   branchFloatStack: [],
   floatOverlayDismissToken: 0,
+  projectRoot: null,
+  sidecarUrl: loadProjectPrefs().sidecarUrl,
+  projectError: null,
+  agentActivity: [],
+  agentChanges: [],
 
   init: () => {
     const store = loadSessionStore();
@@ -176,15 +210,65 @@ export const useAppStore = create<AppState>((set, get) => ({
       store.sessions.find((s) => s.id === store.activeSessionId) ??
       store.sessions[0];
     const thread = active?.thread ? normalizeThread(active.thread) : null;
+    const prefs = loadProjectPrefs();
     set({
       sessions: store.sessions,
       activeSessionId: active?.id ?? null,
       thread,
+      sidecarUrl: prefs.sidecarUrl,
     });
+    // Best-effort reconnect to last project if sidecar is up
+    if (prefs.lastPath) {
+      void get().openProject(prefs.lastPath, true);
+    }
   },
 
   setSettings: (settings) => set({ settings }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setProjectOpen: (open) => set({ projectOpen: open }),
+  setSidecarUrl: (url) => {
+    const next = url.trim() || "/sidecar";
+    saveProjectPrefs({ sidecarUrl: next });
+    set({ sidecarUrl: next });
+  },
+  openProject: async (absPath, quiet = false) => {
+    const path = absPath.trim();
+    if (!path) {
+      if (!quiet) set({ projectError: "Enter a project absolute path" });
+      return;
+    }
+    const { sidecarUrl } = get();
+    try {
+      const { root } = await sidecarOpenProject(path, sidecarUrl);
+      saveProjectPrefs({ lastPath: root, sidecarUrl });
+      set({
+        projectRoot: root,
+        projectError: null,
+        agentActivity: [],
+        agentChanges: [],
+      });
+    } catch (e) {
+      set({
+        projectRoot: null,
+        projectError: quiet
+          ? null
+          : e instanceof Error
+            ? e.message
+            : "Could not reach sidecar (run npm run sidecar first)",
+      });
+    }
+  },
+  disconnectProject: () => {
+    const { sidecarUrl } = get();
+    void sidecarCloseProject(sidecarUrl).catch(() => undefined);
+    set({
+      projectRoot: null,
+      projectError: null,
+      agentActivity: [],
+      agentChanges: [],
+    });
+  },
+  clearAgentLog: () => set({ agentActivity: [], agentChanges: [] }),
   setFocus: (focus) => set({ focus }),
   clearError: () => set({ error: null }),
 
@@ -399,7 +483,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-
   renameSession: (sessionId, title) => {
     const trimmed = title.trim().replace(/\s+/g, " ");
     if (!trimmed) return false;
@@ -485,6 +568,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       loadingMain: true,
       error: null,
       focus: { type: "root" },
+      agentActivity: [],
+      agentChanges: [],
     });
 
     const assistantId = assistantMsg.id;
@@ -493,24 +578,105 @@ export const useAppStore = create<AppState>((set, get) => ({
     mainAbortCtrl = new AbortController();
     const signal = mainAbortCtrl.signal;
 
+    const patchAssistantContent = (content: string) => {
+      const current = get().thread;
+      if (!current) return;
+      const next = patchMessage(current, assistantId, { content });
+      const updatedSessions = upsertActiveSession(
+        get().sessions,
+        get().activeSessionId,
+        next,
+      );
+      persistSessions(updatedSessions, get().activeSessionId);
+      set({ thread: next, sessions: updatedSessions });
+    };
+
     try {
-      const apiMessages = buildConversationMessages(thread);
-      await streamChat(settings, apiMessages, (delta) => {
-        const current = get().thread;
-        if (!current) return;
-        const next = patchMessage(current, assistantId, {
-          content:
-            (current.messages.find((m) => m.id === assistantId)?.content ??
-              "") + delta,
-        });
-        const updatedSessions = upsertActiveSession(
-          get().sessions,
-          get().activeSessionId,
-          next,
+      const { projectRoot, sidecarUrl } = get();
+      const codingToolsSystem = projectRoot
+        ? buildCodingToolsSystem(projectRoot)
+        : null;
+      const apiMessages: ApiChatMessage[] = buildConversationMessages(thread, {
+        projectRoot,
+        codingToolsSystem,
+      });
+
+      let visibleContent = "";
+      let round = 0;
+
+      while (round < MAX_AGENT_ROUNDS) {
+        if (signal.aborted) break;
+
+        let roundText = "";
+        await streamChat(
+          settings,
+          apiMessages,
+          (delta) => {
+            roundText += delta;
+            const cleaned = stripToolCalls(roundText);
+            if (cleaned.length > 0) {
+              patchAssistantContent(
+                visibleContent
+                  ? `${visibleContent}\n\n${cleaned}`.trim()
+                  : cleaned,
+              );
+            } else if (!visibleContent && projectRoot) {
+              patchAssistantContent("Using project tools…");
+            }
+          },
+          signal,
         );
-        persistSessions(updatedSessions, get().activeSessionId);
-        set({ thread: next, sessions: updatedSessions });
-      }, signal);
+
+        const calls = projectRoot ? parseToolCalls(roundText) : [];
+        const cleanedRound = stripToolCalls(roundText);
+
+        if (calls.length === 0) {
+          visibleContent = cleanedRound;
+          patchAssistantContent(visibleContent);
+          break;
+        }
+
+        // Persist assistant tool-call turn for the model, keep UI clean
+        apiMessages.push({ role: "assistant", content: roundText });
+        if (cleanedRound) {
+          visibleContent = visibleContent
+            ? `${visibleContent}\n\n${cleanedRound}`.trim()
+            : cleanedRound;
+          patchAssistantContent(visibleContent);
+        } else {
+          patchAssistantContent(
+            visibleContent || "Using project tools…",
+          );
+        }
+
+        for (const call of calls) {
+          if (signal.aborted) break;
+          const executed = await executeToolCall(call, sidecarUrl);
+          const activity: AgentActivity = {
+            id: createId(),
+            at: Date.now(),
+            ...executed.activity,
+          };
+          set((s) => ({
+            agentActivity: [...s.agentActivity, activity],
+            agentChanges: executed.change
+              ? [
+                  ...s.agentChanges,
+                  { ...executed.change, at: Date.now() },
+                ]
+              : s.agentChanges,
+          }));
+          apiMessages.push(toolResultMessage(call, executed.resultText));
+        }
+
+        round += 1;
+        if (round >= MAX_AGENT_ROUNDS) {
+          const note =
+            "\n\n(Reached the tool-round limit. Continue from the results so far, or send another message.)";
+          visibleContent = (visibleContent || cleanedRound) + note;
+          patchAssistantContent(visibleContent.trim());
+        }
+      }
     } catch (e) {
       if ((e as Error)?.name !== "AbortError") {
         set({ error: e instanceof Error ? e.message : "Answer request failed" });
@@ -596,21 +762,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           settings,
           messages,
           (delta) => {
-            const current = get().thread;
-            if (!current) return;
-            const updated = patchBranchInThread(current, branchId, {
-              assistantMessage:
-                (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
-                delta,
-            });
-            const updatedSessions = upsertActiveSession(
-              get().sessions,
-              get().activeSessionId,
-              updated,
-            );
-            persistSessions(updatedSessions, get().activeSessionId);
-            set({ thread: updated, sessions: updatedSessions });
-          },
+          const current = get().thread;
+          if (!current) return;
+          const updated = patchBranchInThread(current, branchId, {
+            assistantMessage:
+              (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
+              delta,
+          });
+          const updatedSessions = upsertActiveSession(
+            get().sessions,
+            get().activeSessionId,
+            updated,
+          );
+          persistSessions(updatedSessions, get().activeSessionId);
+          set({ thread: updated, sessions: updatedSessions });
+        },
           { signal: branchSignal, temperature: 0.3 },
         );
       } catch (e) {

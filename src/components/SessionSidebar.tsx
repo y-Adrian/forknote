@@ -15,6 +15,7 @@ interface Props {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onOpenSettings: () => void;
+  onOpenProject: () => void;
 }
 
 function ThemeToggleButton({
@@ -64,10 +65,12 @@ export function SessionSidebar({
   collapsed,
   onToggleCollapse,
   onOpenSettings,
+  onOpenProject,
 }: Props) {
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
+  const projectRoot = useAppStore((s) => s.projectRoot);
   const createSession = useAppStore((s) => s.createSession);
   const switchSession = useAppStore((s) => s.switchSession);
   const deleteSession = useAppStore((s) => s.deleteSession);
@@ -307,6 +310,18 @@ export function SessionSidebar({
           <div className="ds-sidebar-footer">
             <button
               type="button"
+              className="ds-footer-user fn-project-btn"
+              onClick={onOpenProject}
+              title={projectRoot ? `Project: ${projectRoot}` : "Open local project"}
+              aria-label={projectRoot ? "Project connected" : "Open local project"}
+            >
+              <span className={`fn-project-dot${projectRoot ? " is-on" : ""}`} aria-hidden />
+              <span className="fn-project-btn-label">
+                {projectRoot ? "Project" : "Open project"}
+              </span>
+            </button>
+            <button
+              type="button"
               className="ds-footer-user fn-settings-btn"
               onClick={onOpenSettings}
               title="API settings"
@@ -354,6 +369,22 @@ export function SessionSidebar({
             </svg>
           </button>
           <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
+          <button
+            type="button"
+            className="ds-icon-btn"
+            onClick={onOpenProject}
+            aria-label="Open local project"
+            title={projectRoot ? `Project: ${projectRoot}` : "Open local project"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v7A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5v-9z"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
           <button
             type="button"
             className="ds-icon-btn"

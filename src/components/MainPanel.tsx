@@ -6,14 +6,20 @@ import type { NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
 import { ChatComposer } from "./ChatComposer";
+import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
 
-export function MainPanel() {
+interface Props {
+  onOpenProject: () => void;
+}
+
+export function MainPanel({ onOpenProject }: Props) {
   const thread = useAppStore((s) => s.thread);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
   const loadingBranchId = useAppStore((s) => s.loadingBranchId);
   const error = useAppStore((s) => s.error);
+  const projectRoot = useAppStore((s) => s.projectRoot);
   const askMain = useAppStore((s) => s.askMain);
   const askBranch = useAppStore((s) => s.askBranch);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
@@ -102,13 +108,19 @@ export function MainPanel() {
             </li>
           </ol>
 
+          <ProjectStatusBar onOpenProject={onOpenProject} />
+
           <ChatComposer
             value={input}
             onChange={setInput}
             onSubmit={submit}
             onStop={handleStop}
             loading={loadingMain}
-            placeholder={undefined}
+            placeholder={
+              projectRoot
+                ? "Ask about the project, e.g. read package.json and add a note to the README…"
+                : undefined
+            }
           />
           {error && <p className="ds-error">{error}</p>}
         </div>
@@ -128,6 +140,19 @@ export function MainPanel() {
           </h1>
         </div>
         <div className="fn-chat-header-meta">
+          {projectRoot && (
+            <button
+              type="button"
+              className="fn-project-chip is-connected"
+              title={projectRoot}
+              onClick={onOpenProject}
+            >
+              <span className="fn-project-dot" aria-hidden />
+              <span className="fn-project-chip-label">
+                {projectRoot.split(/[/\\]/).filter(Boolean).slice(-2).join("/")}
+              </span>
+            </button>
+          )}
           {forkCount > 0 && (
             <span
               className="fn-fork-chip"
@@ -187,6 +212,7 @@ export function MainPanel() {
           </div>
 
           <footer className="ds-chat-footer">
+            <ProjectStatusBar onOpenProject={onOpenProject} />
             <ChatComposer
               value={input}
               onChange={setInput}
@@ -194,7 +220,11 @@ export function MainPanel() {
               onStop={handleStop}
               loading={loadingMain}
               compact
-              placeholder="Continue the main thread…"
+              placeholder={
+                projectRoot
+                  ? "Continue the main thread, or ask the assistant to read/write project files…"
+                  : "Continue the main thread…"
+              }
             />
           </footer>
         </div>
