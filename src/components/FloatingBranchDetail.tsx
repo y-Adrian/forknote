@@ -127,22 +127,22 @@ export function FloatingBranchDetail({
       ref={panelRef}
       className={`float-panel float-panel-detail float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}`}
       role="dialog"
-      aria-label={`Branch 详情${depthLabel}`}
+      aria-label={`Fork${depthLabel}`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
       <header className="float-panel-detail-header">
         <div className="float-panel-detail-title">
-          <h3>Branch{depthLabel}</h3>
+          <h3>Fork{depthLabel}</h3>
           {depth > 0 && (
-            <span className="float-panel-depth-badge">嵌套批注</span>
+            <span className="float-panel-depth-badge">Nested</span>
           )}
         </div>
         <button
           type="button"
           className="ds-icon-btn"
           onClick={onClose}
-          aria-label="关闭"
+          aria-label="Close"
         >
           ×
         </button>
@@ -153,16 +153,16 @@ export function FloatingBranchDetail({
           {branch.anchor.quotedText}
         </div>
         <div className="float-branch-row float-branch-row-inline">
-          <span className="float-branch-label">问</span>
+          <span className="float-branch-label">question</span>
           <p className="float-branch-text float-branch-text-wrap">
             {branch.userQuestion}
           </p>
         </div>
         <div className="float-branch-row float-branch-row-answer">
-          <span className="float-branch-label">答</span>
+          <span className="float-branch-label">answer</span>
           <div ref={answerRef} className="float-branch-answer-scroll">
             {isLoadingThis && !hasAnswer ? (
-              <p className="ds-muted">正在思考…</p>
+              <p className="ds-muted">Thinking…</p>
             ) : hasAnswer ? (
               <SelectableMarkdown
                 content={branch.assistantMessage}
@@ -175,6 +175,7 @@ export function FloatingBranchDetail({
                 className="float-branch-selectable"
                 verdictTargetId={branch.id}
                 pointVerdicts={branch.pointVerdicts}
+                pointDoubts={branch.pointDoubts}
                 onAsk={(anchor, question) =>
                   askBranch(
                     branch.id,
@@ -197,19 +198,19 @@ export function FloatingBranchDetail({
           value={followUp}
           onChange={(e) => setFollowUp(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="继续追问（将打开子级浮窗）…"
+          placeholder="Short follow-up opens a nested fork…"
           disabled={branchLoading}
-          aria-label="继续追问"
+          aria-label="Follow-up"
         />
         <div className="float-panel-detail-footer-actions">
-          <span className="hint">⌘/Ctrl + Enter 发送</span>
+          <span className="hint">Keep it short · ⌘/Ctrl + Enter to send</span>
           <button
             type="button"
             className="btn primary"
             disabled={branchLoading || !followUp.trim()}
             onClick={() => void submitFollowUp()}
           >
-            {branchLoading ? "生成中…" : "发送"}
+            {branchLoading ? "Generating…" : "Send"}
           </button>
         </div>
       </footer>

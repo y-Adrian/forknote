@@ -68,8 +68,8 @@ export function CommentsRail({
       {!embedded && (
         <div className="comments-rail-header">
           <div className="comments-rail-title">
-            <h2>批注</h2>
-            <span className="comments-count">{total} 条</span>
+            <h2>Comments</h2>
+            <span className="comments-count">{total}</span>
           </div>
         </div>
       )}
@@ -77,17 +77,17 @@ export function CommentsRail({
       {embedded && total > 0 && (
         <div className="ds-comments-toolbar">
           <button type="button" className="btn ghost sm" onClick={expandAll}>
-            全部展开
+            Expand all
           </button>
           <button type="button" className="btn ghost sm" onClick={collapseAll}>
-            全部收起
+            Collapse all
           </button>
         </div>
       )}
 
       {branches.length === 0 ? (
         <p className="comments-empty hint">
-          在回答中拖选文字，点击「针对选中追问」。
+          Drag-select text in an answer, then click “Clarify this”.
         </p>
       ) : (
         <div className="comments-list">

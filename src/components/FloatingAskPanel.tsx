@@ -25,6 +25,14 @@ export function FloatingAskPanel({
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
 
@@ -49,18 +57,18 @@ export function FloatingAskPanel({
       ref={panelRef}
       className="float-panel float-panel-ask"
       role="dialog"
-      aria-label="针对选中内容追问"
+      aria-label="Clarify selection"
       style={{ zIndex }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <h3>针对选中内容追问</h3>
+      <h3>Clarify selection</h3>
       <div className="quote-snippet">{quotedText}</div>
       <textarea
         rows={3}
         value={question}
         onChange={(e) => onQuestionChange(e.target.value)}
-        placeholder="输入你的疑问…"
+        placeholder="What’s unclear here? e.g. What does this sentence mean?"
         autoFocus
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
@@ -69,10 +77,10 @@ export function FloatingAskPanel({
           }
         }}
       />
-      <p className="hint">Enter 提交 · Shift+Enter 换行</p>
+      <p className="hint">Keep it short, few new concepts · Enter to submit · Shift+Enter for new line</p>
       <div className="modal-actions">
         <button type="button" className="btn ghost" onClick={onClose}>
-          取消
+          Cancel
         </button>
         <button
           type="button"
@@ -84,7 +92,7 @@ export function FloatingAskPanel({
             onSubmit();
           }}
         >
-          {loading ? "生成中…" : "提交"}
+          {loading ? "Generating…" : "Submit"}
         </button>
       </div>
     </div>

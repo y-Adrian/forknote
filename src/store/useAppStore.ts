@@ -31,7 +31,9 @@ import type {
   ChatSession,
   FocusTarget,
   NodeId,
+  PointDoubtMap,
   PointVerdict,
+  PointVerdictMap,
   ThreadRoot,
 } from "../types";
 
@@ -55,11 +57,22 @@ interface AppState {
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
   stopGeneration: () => void;
-  /** 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则取消 */
+  /**
+   * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认采纳）。
+   * 切换离开存疑时会清掉对应 doubt。
+   */
   setPointVerdict: (
     targetId: NodeId,
     pointIndex: number,
     verdict: PointVerdict,
+  ) => void;
+  /**
+   * 写入存疑文案。非空 → 保持/设为 unsure；空串 → 取消存疑（回到默认采纳）。
+   */
+  setPointDoubt: (
+    targetId: NodeId,
+    pointIndex: number,
+    doubt: string,
   ) => void;
 
   openBranchFloat: (
@@ -73,6 +86,8 @@ interface AppState {
   createSession: () => void;
   switchSession: (sessionId: NodeId) => void;
   deleteSession: (sessionId: NodeId) => void;
+  /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
+  renameSession: (sessionId: NodeId, title: string) => boolean;
 
   askMain: (question: string) => Promise<void>;
   askBranch: (
@@ -107,7 +122,8 @@ function upsertActiveSession(
       ? {
           ...s,
           thread: normalized,
-          title: sessionTitleFromThread(normalized),
+          // 用户重命名过的标题不再被首条消息覆盖
+          title: s.titleLocked ? s.title : sessionTitleFromThread(normalized),
           updatedAt: now,
         }
       : s,
@@ -138,7 +154,7 @@ function requireApiKey(settings: ApiSettings): string | null {
   if (settings.apiKey.trim() || isLikelyLocalEndpoint(settings.baseUrl)) {
     return null;
   }
-  return "请先在设置中填写 DeepSeek API Key（platform.deepseek.com），或改用 Ollama 等本地模型";
+  return "Add a DeepSeek API Key in settings (platform.deepseek.com), or switch to a local model such as Ollama";
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -183,30 +199,89 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { thread, sessions, activeSessionId } = get();
     if (!thread) return;
 
-    const toggle = (
-      current: Record<number, PointVerdict> | undefined,
-    ): Record<number, PointVerdict> => {
-      const next = { ...(current ?? {}) };
-      if (next[pointIndex] === verdict) {
-        delete next[pointIndex]; // 再次点击同一按钮 = 取消裁决
+    const apply = (
+      currentVerdicts: PointVerdictMap | undefined,
+      currentDoubts: PointDoubtMap | undefined,
+    ): { pointVerdicts: PointVerdictMap; pointDoubts: PointDoubtMap } => {
+      const nextVerdicts = { ...(currentVerdicts ?? {}) };
+      const nextDoubts = { ...(currentDoubts ?? {}) };
+      if (nextVerdicts[pointIndex] === verdict) {
+        delete nextVerdicts[pointIndex];
+        delete nextDoubts[pointIndex];
       } else {
-        next[pointIndex] = verdict;
+        nextVerdicts[pointIndex] = verdict;
+        if (verdict !== "unsure") {
+          delete nextDoubts[pointIndex];
+        }
       }
-      return next;
+      return { pointVerdicts: nextVerdicts, pointDoubts: nextDoubts };
     };
 
     let nextThread: ThreadRoot;
     const msg = thread.messages.find((m) => m.id === targetId);
     if (msg) {
-      nextThread = patchMessage(thread, targetId, {
-        pointVerdicts: toggle(msg.pointVerdicts),
-      });
+      nextThread = patchMessage(
+        thread,
+        targetId,
+        apply(msg.pointVerdicts, msg.pointDoubts),
+      );
     } else {
       const branch = findBranchInThread(thread, targetId);
       if (!branch) return;
-      nextThread = patchBranchInThread(thread, targetId, {
-        pointVerdicts: toggle(branch.pointVerdicts),
-      });
+      nextThread = patchBranchInThread(
+        thread,
+        targetId,
+        apply(branch.pointVerdicts, branch.pointDoubts),
+      );
+    }
+
+    const nextSessions = upsertActiveSession(
+      sessions,
+      activeSessionId,
+      nextThread,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ thread: nextThread, sessions: nextSessions });
+  },
+
+  setPointDoubt: (targetId, pointIndex, doubt) => {
+    const { thread, sessions, activeSessionId } = get();
+    if (!thread) return;
+
+    const trimmed = doubt.trim();
+
+    const apply = (
+      currentVerdicts: PointVerdictMap | undefined,
+      currentDoubts: PointDoubtMap | undefined,
+    ): { pointVerdicts: PointVerdictMap; pointDoubts: PointDoubtMap } => {
+      const nextVerdicts = { ...(currentVerdicts ?? {}) };
+      const nextDoubts = { ...(currentDoubts ?? {}) };
+      if (trimmed) {
+        nextVerdicts[pointIndex] = "unsure";
+        nextDoubts[pointIndex] = trimmed;
+      } else {
+        delete nextVerdicts[pointIndex];
+        delete nextDoubts[pointIndex];
+      }
+      return { pointVerdicts: nextVerdicts, pointDoubts: nextDoubts };
+    };
+
+    let nextThread: ThreadRoot;
+    const msg = thread.messages.find((m) => m.id === targetId);
+    if (msg) {
+      nextThread = patchMessage(
+        thread,
+        targetId,
+        apply(msg.pointVerdicts, msg.pointDoubts),
+      );
+    } else {
+      const branch = findBranchInThread(thread, targetId);
+      if (!branch) return;
+      nextThread = patchBranchInThread(
+        thread,
+        targetId,
+        apply(branch.pointVerdicts, branch.pointDoubts),
+      );
     }
 
     const nextSessions = upsertActiveSession(
@@ -324,6 +399,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+
+  renameSession: (sessionId, title) => {
+    const trimmed = title.trim().replace(/\s+/g, " ");
+    if (!trimmed) return false;
+
+    const display =
+      trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+    const { sessions, activeSessionId } = get();
+    const nextSessions = sessions.map((s) =>
+      s.id === sessionId
+        ? {
+            ...s,
+            title: display,
+            titleLocked: true,
+            updatedAt: Date.now(),
+          }
+        : s,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+    return true;
+  },
+
   askMain: async (question) => {
     const trimmed = question.trim();
     if (!trimmed) return;
@@ -415,7 +513,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }, signal);
     } catch (e) {
       if ((e as Error)?.name !== "AbortError") {
-        set({ error: e instanceof Error ? e.message : "回答请求失败" });
+        set({ error: e instanceof Error ? e.message : "Answer request failed" });
       }
     } finally {
       mainAbortCtrl = null;
@@ -494,25 +592,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           anchor.quotedText,
           trimmed,
         );
-        await streamChat(settings, messages, (delta) => {
-          const current = get().thread;
-          if (!current) return;
-          const updated = patchBranchInThread(current, branchId, {
-            assistantMessage:
-              (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
-              delta,
-          });
-          const updatedSessions = upsertActiveSession(
-            get().sessions,
-            get().activeSessionId,
-            updated,
-          );
-          persistSessions(updatedSessions, get().activeSessionId);
-          set({ thread: updated, sessions: updatedSessions });
-        }, branchSignal);
+        await streamChat(
+          settings,
+          messages,
+          (delta) => {
+            const current = get().thread;
+            if (!current) return;
+            const updated = patchBranchInThread(current, branchId, {
+              assistantMessage:
+                (findBranchInThread(current, branchId)?.assistantMessage ?? "") +
+                delta,
+            });
+            const updatedSessions = upsertActiveSession(
+              get().sessions,
+              get().activeSessionId,
+              updated,
+            );
+            persistSessions(updatedSessions, get().activeSessionId);
+            set({ thread: updated, sessions: updatedSessions });
+          },
+          { signal: branchSignal, temperature: 0.3 },
+        );
       } catch (e) {
         if ((e as Error)?.name !== "AbortError") {
-          set({ error: e instanceof Error ? e.message : "分支回答请求失败" });
+          set({ error: e instanceof Error ? e.message : "Fork answer request failed" });
         }
       } finally {
         branchAbortCtrl = null;

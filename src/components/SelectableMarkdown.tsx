@@ -12,7 +12,7 @@ import {
   FLOAT_Z_BASE,
   FLOAT_Z_TOOLBAR_OFFSET,
 } from "../lib/branchFloat";
-import type { Anchor, BranchNode, PointVerdictMap } from "../types";
+import type { Anchor, BranchNode, PointDoubtMap, PointVerdictMap } from "../types";
 import {
   applyBranchHighlights,
   clearHighlights,
@@ -41,6 +41,7 @@ interface Props {
   /** 传入后启用分点裁决 UI；值为消息 id 或分支 id */
   verdictTargetId?: string;
   pointVerdicts?: PointVerdictMap;
+  pointDoubts?: PointDoubtMap;
 }
 
 export function SelectableMarkdown({
@@ -57,8 +58,10 @@ export function SelectableMarkdown({
   className = "",
   verdictTargetId,
   pointVerdicts,
+  pointDoubts,
 }: Props) {
   const setPointVerdict = useAppStore((s) => s.setPointVerdict);
+  const setPointDoubt = useAppStore((s) => s.setPointDoubt);
   const stackTopZ = useAppStore((s) =>
     s.branchFloatStack.length > 0
       ? Math.max(...s.branchFloatStack.map((e) => e.zIndex))
@@ -173,7 +176,9 @@ export function SelectableMarkdown({
           <PointizedAnswer
             content={content}
             verdicts={pointVerdicts}
+            doubts={pointDoubts}
             onVerdict={(idx, v) => setPointVerdict(verdictTargetId, idx, v)}
+            onDoubt={(idx, doubt) => setPointDoubt(verdictTargetId, idx, doubt)}
           />
         ) : (
           <MarkdownBody content={content} />

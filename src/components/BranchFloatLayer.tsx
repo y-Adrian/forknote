@@ -26,7 +26,7 @@ export function BranchFloatLayer() {
       <button
         type="button"
         className={`float-dismiss-layer${stack.length > 1 ? " is-behind-stack" : ""}`}
-        aria-label="关闭全部批注浮窗"
+        aria-label="Close all fork panels"
         onClick={closeAllBranchFloats}
       />
       {sortedStack.map((entry) => (

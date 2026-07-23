@@ -35,8 +35,8 @@ export function groupSessionsByDate(sessions: ChatSession[]): SessionGroup[] {
   }
 
   const groups: SessionGroup[] = [];
-  if (today.length) groups.push({ label: "今天", sessions: today });
-  if (week.length) groups.push({ label: "7 天内", sessions: week });
+  if (today.length) groups.push({ label: "Today", sessions: today });
+  if (week.length) groups.push({ label: "Previous 7 days", sessions: week });
   for (const [label, list] of [...older.entries()].sort((a, b) =>
     b[0].localeCompare(a[0]),
   )) {

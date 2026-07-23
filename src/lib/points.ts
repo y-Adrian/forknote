@@ -1,4 +1,4 @@
-import type { PointVerdict, PointVerdictMap } from "../types";
+import type { PointDoubtMap, PointVerdict, PointVerdictMap } from "../types";
 
 /**
  * 分点回答协议：
@@ -70,20 +70,23 @@ export function hasPoints(content: string): boolean {
 }
 
 export const VERDICT_LABELS: Record<PointVerdict, string> = {
-  accept: "采纳",
-  unsure: "不置可否",
-  reject: "拒绝",
+  accept: "Accept",
+  unsure: "Doubt",
+  reject: "Reject",
 };
 
 /**
  * 构建带裁决标注的回答文本，用于发给模型的上下文：
- * - 拒绝的分点剔除正文，仅留一行标记，防止模型继续沿错误方向展开
- * - 采纳的分点标注 ✅，提示模型这是已确认的结论
- * - 未裁决/不置可否保持原样
+ * - 缺省 / 采纳 → 视为已采纳（含正文）
+ * - 不采纳 → 剔除正文，仅留拒绝标记
+ * - 存疑 → 保留正文，并附上用户疑问
+ *
+ * 若没有任何裁决记录，直接返回原文（全部隐含采纳）。
  */
 export function annotateContentWithVerdicts(
   content: string,
   verdicts: PointVerdictMap | undefined,
+  doubts?: PointDoubtMap,
 ): string {
   if (!verdicts || Object.keys(verdicts).length === 0) return content;
 
@@ -96,11 +99,19 @@ export function annotateContentWithVerdicts(
   for (const p of parsed.points) {
     const v = verdicts[p.index];
     if (v === "reject") {
-      parts.push(`【${p.index}】（用户已拒绝此点，内容已省略，请勿再基于此点展开）`);
-    } else if (v === "accept") {
-      parts.push(`【${p.index}】（用户已采纳✅）${p.content}`);
+      parts.push(
+        `【${p.index}】（用户已拒绝此点，内容已省略，请勿再基于此点展开）`,
+      );
+    } else if (v === "unsure") {
+      const doubt = doubts?.[p.index]?.trim();
+      if (doubt) {
+        parts.push(`【${p.index}】（用户存疑：${doubt}）${p.content}`);
+      } else {
+        parts.push(`【${p.index}】（用户存疑）${p.content}`);
+      }
     } else {
-      parts.push(`【${p.index}】${p.content}`);
+      // accept 或未标记 → 默认采纳
+      parts.push(`【${p.index}】（用户已采纳✅）${p.content}`);
     }
   }
 

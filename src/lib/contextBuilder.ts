@@ -36,7 +36,11 @@ function formatAncestorChain(ancestors: BranchNode[]): string {
         `选中：「${truncate(node.anchor.quotedText, 80)}」`,
         `问：${truncate(node.userQuestion, ANCESTOR_QUESTION_MAX)}`,
         `答：${truncate(
-          annotateContentWithVerdicts(node.assistantMessage, node.pointVerdicts),
+          annotateContentWithVerdicts(
+            node.assistantMessage,
+            node.pointVerdicts,
+            node.pointDoubts,
+          ),
           ANCESTOR_ANSWER_MAX,
         )}`,
       ].join("\n");
@@ -51,7 +55,7 @@ const CHAT_SYSTEM = `你是友好、准确的对话助手。请用中文回答�
 2. 每个分点应自成一体：一个结论、一个步骤或一个判断，便于用户逐点采纳或拒绝。
 3. 分点前可以有 1～2 句简短引导；不要在分点之外添加大段结论。
 4. 分点数量按内容定，一般 3～8 个；简单问题可以少于 3 个。
-5. 若用户在上下文中标记了「已拒绝」的分点，不要再基于该点展开；「已采纳✅」的分点视为已确认的事实。
+5. 若用户在上下文中标记了「已拒绝」的分点，不要再基于该点展开；「已采纳✅」的分点视为已确认的事实；「用户存疑」的分点请重点回应括号内的疑问。
 
 示例格式：
 下面从三个方面分析这个问题。
@@ -62,19 +66,34 @@ const CHAT_SYSTEM = `你是友好、准确的对话助手。请用中文回答�
 
 【3】第三个观点……`;
 
+export type ConversationOptions = {
+  /** When set, append coding tool instructions for the local project sidecar. */
+  projectRoot?: string | null;
+  codingToolsSystem?: string | null;
+};
+
 export function buildConversationMessages(
   thread: ThreadRoot,
+  options?: ConversationOptions,
 ): ApiChatMessage[] {
   const completed = thread.messages.filter(
     (m) => m.content.trim().length > 0,
   );
+  const system =
+    options?.projectRoot && options.codingToolsSystem
+      ? CHAT_SYSTEM + options.codingToolsSystem
+      : CHAT_SYSTEM;
   return [
-    { role: "system", content: CHAT_SYSTEM },
+    { role: "system", content: system },
     ...completed.map((m) => ({
       role: m.role as "user" | "assistant",
       content:
         m.role === "assistant"
-          ? annotateContentWithVerdicts(m.content, m.pointVerdicts)
+          ? annotateContentWithVerdicts(
+              m.content,
+              m.pointVerdicts,
+              m.pointDoubts,
+            )
           : m.content,
     })),
   ];
@@ -87,7 +106,11 @@ export function resolveBranchAttachContext(
 ): { assistantContent: string; ancestors: BranchNode[] } | null {
   for (const msg of thread.messages) {
     if (msg.role !== "assistant") continue;
-    const annotated = annotateContentWithVerdicts(msg.content, msg.pointVerdicts);
+    const annotated = annotateContentWithVerdicts(
+      msg.content,
+      msg.pointVerdicts,
+      msg.pointDoubts,
+    );
     if (msg.id === attachParentId) {
       return { assistantContent: annotated, ancestors: [] };
     }
@@ -107,7 +130,7 @@ export function buildBranchQuestionMessages(
 ) {
   const ctx = resolveBranchAttachContext(thread, attachParentId);
   if (!ctx) {
-    throw new Error("无法解析分支上下文");
+    throw new Error("Could not resolve fork context");
   }
 
   const { assistantContent: parentContent, ancestors } = ctx;
@@ -118,35 +141,53 @@ export function buildBranchQuestionMessages(
       m.role === "user"
         ? `用户：${truncate(m.content, 400)}`
         : `助手：${truncate(
-            annotateContentWithVerdicts(m.content, m.pointVerdicts),
+            annotateContentWithVerdicts(
+              m.content,
+              m.pointVerdicts,
+              m.pointDoubts,
+            ),
             400,
           )}`,
     )
     .join("\n\n");
 
-  const system = `你是「选中追问」助手。用户正在阅读对话里的一条助手回复，并针对其中选中的一小段文字提问；同一选中片段下可能有多轮追问。
+  const system = `你是「选中澄清」助手（Forknote）。用户正在阅读一篇可能较长的回答，对其中一小段选中文字临时卡住了，需要立刻弄懂，然后回到主线继续读。
 
-规则：
-1. 只回答当前子问题，不要重复整段对话；若存在上级分支摘要，请结合其上下文连贯作答。
-2. 保持精炼，回答拆分为若干可独立判断的分点，每个分点以「【N】」开头（N 从 1 开始，位于行首），便于用户逐点采纳或拒绝；简单问题可只有 1～2 个分点。
-3. 若子问题与选中片段关系不大，先指出这一点，再尽量回答。
-4. 上下文中标记「已拒绝」的分点不要再展开；「已采纳✅」的分点视为已确认。
-5. 使用中文。`;
+目标：用最短篇幅把「选中内容」讲清楚，让用户能继续往下读，而不是开启新的知识树。
 
-  const user = `【会话摘要】
+硬性规则：
+1. 只解释当前选中片段与当前子问题；不要复述整段主回答，不要写教程式长文。
+2. 篇幅：默认 2～5 句，或至多【1】【2】【3】三个短分点（【N】必须在行首）。能一句说清就不要拆点。
+3. 少引入新概念。若必须出现陌生术语，每个术语只用一句白话解释，且全文新术语不超过 2 个。
+4. 禁止：延伸阅读、相关推荐、「你还可以了解…」、开放式下一问清单、大段背景史、对比多个方案除非用户明确要求。
+5. 结尾收束：解释完即停。不要邀请继续追问；若问题超出选中片段，一句点明「这超出当前选中范围」后给最小必要答案。
+6. 若存在上级分支摘要，只吸收已澄清结论，不要重复上级已说过的定义。
+7. 上下文里「已拒绝」的点勿再展开；「已采纳✅」视为已确认事实；「用户存疑」请重点回应括号内的疑问。
+8. 使用中文，语气直接。`;
+
+  const depthHint =
+    ancestors.length >= 2
+      ? `\n（提示：这已是第 ${ancestors.length + 1} 层澄清，请比上一层更短，只补缺口，不要再开新概念。）`
+      : "";
+
+  const user = `【任务类型】选中澄清（读中打断，不是新开话题）
+
+【会话摘要】
 ${conversation || `（首问）${firstUserMessage(thread)}`}
 
-【当前这条助手回复】
-${parentContent}
+【主回答（仅供定位，勿整段复述）】
+${truncate(parentContent, 900)}
 
-【上级分支摘要】
+【上级澄清摘要】
 ${formatAncestorChain(ancestors)}
 
 【当前选中原文】
 「${anchorQuoted}」
 
 【当前子问题】
-${userQuestion}`;
+${userQuestion}${depthHint}
+
+请直接给出简明澄清。`;
 
   return [
     { role: "system" as const, content: system },
