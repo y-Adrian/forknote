@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+  <!-- Clarify Cards mark: main note + floating clarify card -->
+  <rect
+    x="5"
+    y="7"
+    width="38"
+    height="28"
+    rx="6"
+    fill="#3db8a8"
+    fill-opacity="0.12"
+    stroke="#3db8a8"
+    stroke-width="2.2"
+  />
+  <rect x="11" y="14" width="6.5" height="6.5" rx="1.4" fill="#3db8a8" />
+  <path
+    d="M21.5 15.8h15M21.5 21.2h10"
+    stroke="#3db8a8"
+    stroke-width="2.1"
+    stroke-linecap="round"
+  />
+  <path
+    d="M13 35C13 46 18 48 26 44"
+    stroke="#3db8a8"
+    stroke-width="2.3"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <rect
+    x="26"
+    y="33"
+    width="31"
+    height="22"
+    rx="5.5"
+    fill="#3db8a8"
+    fill-opacity="0.12"
+    stroke="#3db8a8"
+    stroke-width="2.2"
+  />
+  <rect x="31.5" y="39" width="5.2" height="5.2" rx="1.2" fill="#3db8a8" />
+  <path
+    d="M40 40.5h11.5M40 45.2h8"
+    stroke="#3db8a8"
+    stroke-width="2"
+    stroke-linecap="round"
+  />
+</svg>

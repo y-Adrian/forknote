@@ -1,6 +1,7 @@
 import type { ApiSettings } from "../types";
 
-const STORAGE_KEY = "branch-chat-settings";
+const STORAGE_KEY = "forknote-settings";
+const LEGACY_STORAGE_KEY = "branch-chat-settings";
 
 function envApiKey(): string {
   return (import.meta.env.VITE_OPENAI_API_KEY || "").trim();
@@ -27,9 +28,21 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
   return merged;
 }
 
+function readStoredSettingsRaw(): string | null {
+  const current = localStorage.getItem(STORAGE_KEY);
+  if (current) return current;
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (legacy) {
+    localStorage.setItem(STORAGE_KEY, legacy);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return legacy;
+  }
+  return null;
+}
+
 export function loadSettings(): ApiSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readStoredSettingsRaw();
     if (!raw) return normalizeApiSettings({});
     const parsed = JSON.parse(raw) as Partial<ApiSettings>;
     const fromStorage = { ...parsed };
@@ -58,16 +71,23 @@ export function loadSettings(): ApiSettings {
 
 export function saveSettings(settings: ApiSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeApiSettings(settings)));
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
 }
 
+/**
+ * OpenAI-client style API root. Appends `/v1` unless the URL already ends with
+ * a version segment (`/v1`, `/v3`, `/v4`, …) — e.g. Zhipu `/api/paas/v4`,
+ * Volcengine Ark `/api/v3`.
+ */
 export function normalizeBaseUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/$/, "");
-  return base.endsWith("/v1") ? base : `${base}/v1`;
+  if (/\/v\d+$/i.test(base)) return base;
+  return `${base}/v1`;
 }
 
-/** Host root for Vite dev proxy (no /v1 suffix). */
+/** Full API root for Vite proxy target (includes /v1 or /vN). */
 export function proxyTargetFromBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/$/, "").replace(/\/v1$/, "");
+  return normalizeBaseUrl(baseUrl);
 }
 
 export function isLikelyLocalEndpoint(baseUrl: string): boolean {
