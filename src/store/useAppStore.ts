@@ -1,17 +1,28 @@
 import { create } from "zustand";
 import {
+  agentCallFromOpenAI,
   buildCodingToolsSystem,
+  collectToolCalls,
   executeToolCall,
+  inferCreateFilePath,
   MAX_AGENT_ROUNDS,
-  parseToolCalls,
+  nativeToolResultMessage,
+  PROJECT_OPENAI_TOOLS,
   stripToolCalls,
+  synthesizeWriteFromReply,
   toolResultMessage,
   type AgentActivity,
   type AgentFileChange,
+  type AgentToolCall,
 } from "../lib/agentTools";
 import { buildBranchQuestionMessages, buildConversationMessages } from "../lib/contextBuilder";
 import { createId } from "../lib/id";
-import { streamChat, type ChatMessage as ApiChatMessage } from "../lib/openai";
+import {
+  isToolsUnsupportedError,
+  streamChat,
+  type ChatMessage as ApiChatMessage,
+  type ToolCall,
+} from "../lib/openai";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
   closeProject as sidecarCloseProject,
@@ -694,6 +705,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const { projectRoot, sidecarUrl } = get();
+      const createPathEarly = inferCreateFilePath(trimmed);
+      if (createPathEarly && !projectRoot) {
+        set({
+          loadingMain: false,
+          error:
+            "Open a local project first (Open project), then ask to create the file — e.g. connect /Users/debris/cursor/code-test.",
+        });
+        // Roll back the empty turn so the prompt can stay editable
+        rollbackMainTurn(get, set, { userId, assistantId });
+        if (mainAbortCtrl === ctrl) {
+          mainAbortCtrl = null;
+          activeMainTurn = null;
+        }
+        return;
+      }
+
       const codingToolsSystem = projectRoot
         ? buildCodingToolsSystem(projectRoot)
         : null;
@@ -702,45 +729,146 @@ export const useAppStore = create<AppState>((set, get) => ({
         codingToolsSystem,
       });
 
+      const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
+      if (createPath) {
+        apiMessages.push({
+          role: "system",
+          content: `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`,
+        });
+      }
+
       let visibleContent = "";
       let round = 0;
+      let useNativeTools = Boolean(projectRoot);
+      let forcedWrite = Boolean(createPath && projectRoot);
 
       while (round < MAX_AGENT_ROUNDS) {
         if (signal.aborted) break;
 
         let roundText = "";
-        await streamChat(
-          settings,
-          apiMessages,
-          (delta) => {
-            roundText += delta;
-            const cleaned = stripToolCalls(roundText);
-            if (cleaned.length > 0) {
-              patchAssistantContent(
-                visibleContent
-                  ? `${visibleContent}\n\n${cleaned}`.trim()
-                  : cleaned,
-              );
-            } else if (!visibleContent && projectRoot) {
-              patchAssistantContent("Using project tools…");
-            }
-          },
-          signal,
-        );
+        let streamResult: Awaited<ReturnType<typeof streamChat>>;
+        try {
+          streamResult = await streamChat(
+            settings,
+            apiMessages,
+            (delta) => {
+              roundText += delta;
+              const cleaned = stripToolCalls(roundText);
+              if (cleaned.length > 0) {
+                patchAssistantContent(
+                  visibleContent
+                    ? `${visibleContent}\n\n${cleaned}`.trim()
+                    : cleaned,
+                );
+              } else if (!visibleContent && projectRoot) {
+                patchAssistantContent(
+                  createPath
+                    ? `Creating ${createPath}…`
+                    : "Using project tools…",
+                );
+              }
+            },
+            {
+              signal,
+              temperature: projectRoot ? 0.2 : 0.6,
+              tools: useNativeTools ? PROJECT_OPENAI_TOOLS : undefined,
+              toolChoice:
+                useNativeTools && forcedWrite && round === 0
+                  ? { type: "function", function: { name: "write_file" } }
+                  : useNativeTools
+                    ? "auto"
+                    : undefined,
+            },
+          );
+        } catch (e) {
+          if (useNativeTools && isToolsUnsupportedError(e)) {
+            // Provider rejected tools — fall back to text protocol once.
+            useNativeTools = false;
+            forcedWrite = false;
+            continue;
+          }
+          throw e;
+        }
 
         if (signal.aborted) break;
 
-        const calls = projectRoot ? parseToolCalls(roundText) : [];
+        roundText = streamResult.content || roundText;
+
+        type PendingCall = {
+          agent: AgentToolCall;
+          native?: ToolCall;
+        };
+        const pending: PendingCall[] = [];
+
+        if (streamResult.toolCalls.length > 0) {
+          for (const tc of streamResult.toolCalls) {
+            const agent = agentCallFromOpenAI(tc);
+            if (agent) {
+              // If user named a file, pin write_file path to it when model omits/wrong path
+              if (
+                createPath &&
+                agent.tool === "write_file" &&
+                (!agent.path || agent.path === "." || agent.path === "file")
+              ) {
+                agent.path = createPath;
+              }
+              pending.push({ agent, native: tc });
+            }
+          }
+        } else if (projectRoot) {
+          for (const agent of collectToolCalls(roundText)) {
+            pending.push({ agent });
+          }
+        }
+
+        // Guaranteed fallback: user asked for a named file, model only pasted code
+        if (
+          createPath &&
+          projectRoot &&
+          !pending.some((p) => p.agent.tool === "write_file")
+        ) {
+          const synthetic = synthesizeWriteFromReply(trimmed, roundText);
+          if (synthetic) {
+            pending.push({ agent: synthetic });
+          }
+        }
+
         const cleanedRound = stripToolCalls(roundText);
 
-        if (calls.length === 0) {
+        if (pending.length === 0) {
+          // One nudge if create intent and model ignored tools/fences
+          if (createPath && projectRoot && round === 0) {
+            apiMessages.push({
+              role: "assistant",
+              content: cleanedRound || roundText || "",
+            });
+            apiMessages.push({
+              role: "user",
+              content: `请立刻调用 write_file，path="${createPath}"，content=完整源码。不要只贴代码。`,
+            });
+            visibleContent = cleanedRound;
+            patchAssistantContent(
+              visibleContent || `Creating ${createPath}…`,
+            );
+            round += 1;
+            forcedWrite = useNativeTools;
+            continue;
+          }
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent);
           break;
         }
 
-        // Persist assistant tool-call turn for the model, keep UI clean
-        apiMessages.push({ role: "assistant", content: roundText });
+        if (streamResult.toolCalls.length > 0) {
+          apiMessages.push({
+            role: "assistant",
+            content: cleanedRound || "",
+            tool_calls: streamResult.toolCalls,
+          });
+        } else {
+          apiMessages.push({ role: "assistant", content: roundText || "" });
+        }
+
         if (cleanedRound) {
           visibleContent = visibleContent
             ? `${visibleContent}\n\n${cleanedRound}`.trim()
@@ -748,17 +876,26 @@ export const useAppStore = create<AppState>((set, get) => ({
           patchAssistantContent(visibleContent);
         } else {
           patchAssistantContent(
-            visibleContent || "Using project tools…",
+            visibleContent ||
+              (createPath ? `Creating ${createPath}…` : "Using project tools…"),
           );
         }
 
-        for (const call of calls) {
+        let wroteTarget = false;
+        for (const item of pending) {
           if (signal.aborted) break;
           const executed = await abortable(
-            executeToolCall(call, sidecarUrl, signal),
+            executeToolCall(item.agent, sidecarUrl, signal, projectRoot),
             signal,
           );
           if (signal.aborted) break;
+          if (
+            item.agent.tool === "write_file" &&
+            executed.ok &&
+            (item.agent.path === createPath || !createPath)
+          ) {
+            wroteTarget = true;
+          }
           const activity: AgentActivity = {
             id: createId(),
             at: Date.now(),
@@ -773,10 +910,30 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ]
               : s.agentChanges,
           }));
-          apiMessages.push(toolResultMessage(call, executed.resultText));
+
+          if (item.native) {
+            apiMessages.push(
+              nativeToolResultMessage(
+                item.native.id,
+                item.native.function.name,
+                executed.resultText,
+              ),
+            );
+          } else {
+            apiMessages.push(toolResultMessage(item.agent, executed.resultText));
+          }
         }
 
         if (signal.aborted) break;
+
+        // After a successful create-file write, ask for a short summary then stop looping tools
+        if (createPath && wroteTarget) {
+          apiMessages.push({
+            role: "user",
+            content: `文件 ${createPath} 已写入。请用一两句中文确认路径与作用，不要再调用工具。`,
+          });
+          forcedWrite = false;
+        }
 
         round += 1;
         if (round >= MAX_AGENT_ROUNDS) {

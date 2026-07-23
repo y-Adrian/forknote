@@ -22,7 +22,14 @@ export function SelectionToolbar({
         ...(zIndex !== undefined ? { zIndex } : {}),
       }}
     >
-      <button type="button" className="fn-clarify-btn" onClick={onAsk}>
+      <button
+        type="button"
+        className="fn-clarify-btn"
+        // Keep the text selection when pressing the button (otherwise the
+        // toolbar dismisses before click and Clarify never opens).
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onAsk}
+      >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
           <path
             d="M8 12h.01M12 12h.01M16 12h.01M9 19H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v6a2 2 0 01-2 2h-5l-4 4z"

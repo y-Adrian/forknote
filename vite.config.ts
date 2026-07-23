@@ -35,6 +35,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
+      host: "127.0.0.1",
+      port: 5173,
+      strictPort: true,
       proxy: {
         "/openai": {
           // Origin-only target. Versioned path (/v1, /v3, /v4, …) is applied

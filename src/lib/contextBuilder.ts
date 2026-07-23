@@ -66,6 +66,16 @@ const CHAT_SYSTEM = `你是友好、准确的对话助手。请用中文回答�
 
 【3】第三个观点……`;
 
+/** When a local project is bound, prefer tools over pointized essays. */
+const PROJECT_CHAT_SYSTEM = `你是本地项目编程助手。请用中文简短说明。
+
+硬性规则：
+1. 用户已绑定本地项目。创建/修改文件时，必须使用函数工具（write_file / mkdir / read_file / list_dir / search_files）。
+2. 只把代码贴在 Markdown 里不会写入磁盘。
+3. 路径用相对项目根的相对路径（如 soft/hello.c），不要用绝对路径。
+4. 需要了解项目时先 list_dir / read_file / search_files，再 write_file。
+5. 工具执行完后再用简短中文总结；可用【N】分点，但不要用分点代替工具调用。`;
+
 export type ConversationOptions = {
   /** When set, append coding tool instructions for the local project sidecar. */
   projectRoot?: string | null;
@@ -79,10 +89,10 @@ export function buildConversationMessages(
   const completed = thread.messages.filter(
     (m) => m.content.trim().length > 0,
   );
-  const system =
-    options?.projectRoot && options.codingToolsSystem
-      ? CHAT_SYSTEM + options.codingToolsSystem
-      : CHAT_SYSTEM;
+  const bound = Boolean(options?.projectRoot && options.codingToolsSystem);
+  const system = bound
+    ? PROJECT_CHAT_SYSTEM + (options?.codingToolsSystem ?? "")
+    : CHAT_SYSTEM;
   return [
     { role: "system", content: system },
     ...completed.map((m) => ({

@@ -50,7 +50,7 @@ export function SelectableMarkdown({
   onAsk,
   loading = false,
   disabled = false,
-  fixedToolbar = false,
+  fixedToolbar: _fixedToolbar = false,
   overlayZBase,
   onHighlightClick,
   onBranchOpened,
@@ -89,11 +89,54 @@ export function SelectableMarkdown({
     setAskAnchorRect(null);
   }, []);
 
+  const dismissToolbar = useCallback(() => {
+    setToolbar(null);
+    // Keep pendingAnchor only while ask popover is open
+    if (!popoverOpen) {
+      setPendingAnchor(null);
+    }
+  }, [popoverOpen]);
+
   useEffect(() => {
     closePopover();
     setToolbar(null);
     clearSelection();
   }, [dismissToken, closePopover]);
+
+  // Dismiss "Clarify this" when the user cancels the selection (click elsewhere).
+  useEffect(() => {
+    if (!toolbar || popoverOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.(".fn-selection-toolbar, .selection-toolbar")) {
+        return;
+      }
+      dismissToolbar();
+    };
+
+    const onSelectionChange = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      // Defer: clicking the toolbar may briefly collapse selection before preventDefault.
+      window.setTimeout(() => {
+        if (popoverOpen) return;
+        if (getSelectionInContainer(el)) return;
+        const active = document.activeElement as Element | null;
+        if (active?.closest?.(".fn-selection-toolbar, .selection-toolbar")) {
+          return;
+        }
+        dismissToolbar();
+      }, 0);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, [toolbar, popoverOpen, dismissToolbar]);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -109,7 +152,7 @@ export function SelectableMarkdown({
 
     const info = getSelectionInContainer(el);
     if (!info) {
-      setToolbar(null);
+      dismissToolbar();
       return;
     }
 
@@ -122,7 +165,7 @@ export function SelectableMarkdown({
     const centerX = info.rect.left + info.rect.width / 2;
     // Always use viewport coords — toolbar is always portaled as position:fixed
     setToolbar({ top: info.rect.bottom + 4, left: centerX });
-  }, [disabled, fixedToolbar, loading]);
+  }, [disabled, dismissToolbar, loading]);
 
   const handleContentClick = useCallback(
     (e: MouseEvent) => {
