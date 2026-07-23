@@ -175,7 +175,8 @@ export function FloatingBranchDetail({
                 className="float-branch-selectable"
                 verdictTargetId={branch.id}
                 pointVerdicts={branch.pointVerdicts}
-                                onAsk={(anchor, question) =>
+                pointDoubts={branch.pointDoubts}
+                onAsk={(anchor, question) =>
                   askBranch(
                     branch.id,
                     parentMessage.content,

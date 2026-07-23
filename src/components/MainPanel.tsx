@@ -170,6 +170,7 @@ export function MainPanel() {
                         onToggleBranch={toggleBranch}
                         compact
                         pointVerdicts={msg.pointVerdicts}
+                        pointDoubts={msg.pointDoubts}
                       />
                     ) : (
                       <div className="ds-typing" aria-label="Thinking">

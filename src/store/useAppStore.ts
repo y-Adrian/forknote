@@ -31,7 +31,9 @@ import type {
   ChatSession,
   FocusTarget,
   NodeId,
+  PointDoubtMap,
   PointVerdict,
+  PointVerdictMap,
   ThreadRoot,
 } from "../types";
 
@@ -55,11 +57,22 @@ interface AppState {
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
   stopGeneration: () => void;
-  /** 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则取消 */
+  /**
+   * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认采纳）。
+   * 切换离开存疑时会清掉对应 doubt。
+   */
   setPointVerdict: (
     targetId: NodeId,
     pointIndex: number,
     verdict: PointVerdict,
+  ) => void;
+  /**
+   * 写入存疑文案。非空 → 保持/设为 unsure；空串 → 取消存疑（回到默认采纳）。
+   */
+  setPointDoubt: (
+    targetId: NodeId,
+    pointIndex: number,
+    doubt: string,
   ) => void;
 
   openBranchFloat: (
@@ -186,30 +199,89 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { thread, sessions, activeSessionId } = get();
     if (!thread) return;
 
-    const toggle = (
-      current: Record<number, PointVerdict> | undefined,
-    ): Record<number, PointVerdict> => {
-      const next = { ...(current ?? {}) };
-      if (next[pointIndex] === verdict) {
-        delete next[pointIndex]; // 再次点击同一按钮 = 取消裁决
+    const apply = (
+      currentVerdicts: PointVerdictMap | undefined,
+      currentDoubts: PointDoubtMap | undefined,
+    ): { pointVerdicts: PointVerdictMap; pointDoubts: PointDoubtMap } => {
+      const nextVerdicts = { ...(currentVerdicts ?? {}) };
+      const nextDoubts = { ...(currentDoubts ?? {}) };
+      if (nextVerdicts[pointIndex] === verdict) {
+        delete nextVerdicts[pointIndex];
+        delete nextDoubts[pointIndex];
       } else {
-        next[pointIndex] = verdict;
+        nextVerdicts[pointIndex] = verdict;
+        if (verdict !== "unsure") {
+          delete nextDoubts[pointIndex];
+        }
       }
-      return next;
+      return { pointVerdicts: nextVerdicts, pointDoubts: nextDoubts };
     };
 
     let nextThread: ThreadRoot;
     const msg = thread.messages.find((m) => m.id === targetId);
     if (msg) {
-      nextThread = patchMessage(thread, targetId, {
-        pointVerdicts: toggle(msg.pointVerdicts),
-      });
+      nextThread = patchMessage(
+        thread,
+        targetId,
+        apply(msg.pointVerdicts, msg.pointDoubts),
+      );
     } else {
       const branch = findBranchInThread(thread, targetId);
       if (!branch) return;
-      nextThread = patchBranchInThread(thread, targetId, {
-        pointVerdicts: toggle(branch.pointVerdicts),
-      });
+      nextThread = patchBranchInThread(
+        thread,
+        targetId,
+        apply(branch.pointVerdicts, branch.pointDoubts),
+      );
+    }
+
+    const nextSessions = upsertActiveSession(
+      sessions,
+      activeSessionId,
+      nextThread,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ thread: nextThread, sessions: nextSessions });
+  },
+
+  setPointDoubt: (targetId, pointIndex, doubt) => {
+    const { thread, sessions, activeSessionId } = get();
+    if (!thread) return;
+
+    const trimmed = doubt.trim();
+
+    const apply = (
+      currentVerdicts: PointVerdictMap | undefined,
+      currentDoubts: PointDoubtMap | undefined,
+    ): { pointVerdicts: PointVerdictMap; pointDoubts: PointDoubtMap } => {
+      const nextVerdicts = { ...(currentVerdicts ?? {}) };
+      const nextDoubts = { ...(currentDoubts ?? {}) };
+      if (trimmed) {
+        nextVerdicts[pointIndex] = "unsure";
+        nextDoubts[pointIndex] = trimmed;
+      } else {
+        delete nextVerdicts[pointIndex];
+        delete nextDoubts[pointIndex];
+      }
+      return { pointVerdicts: nextVerdicts, pointDoubts: nextDoubts };
+    };
+
+    let nextThread: ThreadRoot;
+    const msg = thread.messages.find((m) => m.id === targetId);
+    if (msg) {
+      nextThread = patchMessage(
+        thread,
+        targetId,
+        apply(msg.pointVerdicts, msg.pointDoubts),
+      );
+    } else {
+      const branch = findBranchInThread(thread, targetId);
+      if (!branch) return;
+      nextThread = patchBranchInThread(
+        thread,
+        targetId,
+        apply(branch.pointVerdicts, branch.pointDoubts),
+      );
     }
 
     const nextSessions = upsertActiveSession(
