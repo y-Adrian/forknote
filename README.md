@@ -2,59 +2,55 @@
 
 面向开发与排障的「边读边澄清、再归档成日志」的工作台。
 
-针对 AI 长回答的 **选中追问** 工具：拖选一段文字 → 弹窗提问 → 分支回答挂在原文下方，左侧树形目录导航。
+**Clarify as you read** — 针对 AI 长回答的选中澄清工具。
+
+拖选一段文字 → **Clarify this** → 浮动澄清面板与 Fork 分支回答；对分点打 **Accept / Reject / Doubt**；右侧 **Branch rail** 导航；可选绑定本机目录做读写。
 
 - 纯 Web（Vite + React）
-- OpenAI 兼容 API（默认适配 DeepSeek）
-- **多会话**：左侧会话列表，新建/切换/删除，每条对话独立保存
-- 无登录；数据保存在浏览器 `localStorage`
+- OpenAI 兼容 API（云端或本机 Ollama / LM Studio 等）
+- **多笔记**：左侧列表新建 / 重命名 / 切换 / 删除
+- 无登录；笔记与设置保存在浏览器 `localStorage`
 
-## 快速开始
+---
+
+## 安装与运行
 
 ```bash
 npm install
-cp .env.example .env.local
-# 编辑 .env.local，填入 VITE_OPENAI_API_KEY
-npm run dev
+cp .env.example .env.local   # 可选，也可只在页面 API Settings 里填
+npm run dev                  # 前端，通常 http://localhost:5173
 ```
 
-浏览器打开终端提示的地址（通常是 http://localhost:5173）。
-
-1. 右上角 **设置** 填写 API Key、Model（如 `deepseek-chat`）
-2. 输入主问题，等待主回答
-3. 在回答中 **拖选文字** → 点击「针对选中追问」
-4. 在左侧 **分支目录** 点击节点，跳转到对应分支
-
-## 连接本机大模型（Ollama / LM Studio 等）
-
-任意提供 **OpenAI 兼容** `POST /v1/chat/completions` 的本地服务均可。
-
-### 1. 启动本地服务
-
-**Ollama**（常见）：
+若要用 **本地项目读写**（agent 工具），再开一个终端：
 
 ```bash
-ollama serve          # 若未在后台运行
-ollama pull llama3.2  # 或 qwen2.5:7b 等
-ollama list           # 记下 MODEL 列名称，填到设置里
+npm run sidecar              # http://127.0.0.1:8787；开发时经 Vite 代理 /sidecar
 ```
 
-**LM Studio**：加载模型 → 开启 **Local Server**（兼容 OpenAI API），默认 `http://127.0.0.1:1234`。
+| 脚本 | 作用 |
+|------|------|
+| `npm run dev` | Vite 开发服务器 |
+| `npm run sidecar` | 本机 FS sidecar（**项目工具必需**） |
+| `npm run build` | 类型检查 + 生产构建 |
+| `npm run preview` | 预览构建产物 |
 
-### 2. 在 Branch Chat 里配置
+---
 
-1. 右上角 **设置**
-2. 点 **Ollama** / **LM Studio** 预设（或手动填写 Base URL）
-3. **Model** 填本地真实模型名（与 `ollama list` 或 LM Studio 一致）
-4. **API Key** 留空即可（多数本地服务不需要）
-5. 勾选 **使用本地代理** → 保存
+## API 设置
 
-| 服务 | Base URL | Model 示例 |
-|------|----------|------------|
-| Ollama | `http://127.0.0.1:11434` | `llama3.2`、`qwen2.5:7b` |
-| LM Studio | `http://127.0.0.1:1234` | 界面里显示的名称 |
+右上角打开 **API Settings**（或侧栏设置入口）。
 
-### 3. 自测本地 API 是否正常
+1. 点预设芯片（如 **Ollama**、**LM Studio**、**DeepSeek**），或手动填 **Base URL** / **Model** / **API Key**
+2. 本机服务一般 **API Key 留空**；云端填控制台密钥
+3. 开发时勾选 **Use local proxy in development**（推荐）：请求走 `/openai/...`，由 Vite 按当前 Base URL 转发，减轻 CORS
+4. **Save** 保存（亦写入 `localStorage`）
+
+| 常见本机 | Base URL | Model 示例 |
+|----------|----------|------------|
+| Ollama | `http://127.0.0.1:11434` | `llama3.2`、`qwen2.5:7b`（须与 `ollama list` 一致） |
+| LM Studio | `http://127.0.0.1:1234` | Local Server 里显示的名称 |
+
+自测 Ollama：
 
 ```bash
 curl http://127.0.0.1:11434/v1/chat/completions \
@@ -62,39 +58,132 @@ curl http://127.0.0.1:11434/v1/chat/completions \
   -d '{"model":"llama3.2","messages":[{"role":"user","content":"hi"}],"stream":false}'
 ```
 
-若 curl 成功而页面失败，检查 Model 名称、端口、以及是否勾选了代理。
+curl 成功而页面失败时，核对 Model 名、端口、是否启用代理。
 
-## API 与代理
+---
 
-开发模式下建议开启 **本地代理**：
+## 主对话
 
-- 前端请求：`/openai/chat/completions`
-- Vite 根据设置里的 Base URL 转发到本机或云端（无需改代码重启即可在设置里切换）
+1. 在输入框提问 → **Send**（`Enter` 发送，`Shift+Enter` 换行）
+2. 生成中按钮变为 **Stop**：中止流式输出
+3. **Stop** 后，刚才发出的提示会 **恢复到输入框**，便于改写再发
+4. 有对话后，底部为紧凑续写框；空笔记页有「Clarify as you read」引导
 
-这样可避免浏览器直连时的 CORS 问题。
+---
 
-生产构建（`npm run build`）后若部署到静态服务器，需要自行配置反向代理，或关闭代理并确保 API 允许跨域。
+## 选中澄清与 Fork 面板
 
-## 环境变量
+1. 在助手回答中 **拖选** 一段文字
+2. 出现工具条 → 点 **Clarify this**
+3. 弹出 **Clarify selection**：简短说明哪里不清 → **Submit**
+4. 澄清回答以浮动 **Fork** 面板挂在选区附近；可继续在分支里选中澄清（嵌套）
+5. 关闭面板或点 Branch rail / 评论轨上的节点，可重新打开对应分支
+
+提示：澄清宜短，少引入新概念。
+
+---
+
+## 分点裁决（Point verdicts）
+
+当回答含至少两个 `【1】【2】…` 分点时，每点旁可裁决：
+
+| 操作 | UI | 含义（进入后续上下文） |
+|------|-----|------------------------|
+| 默认 / **Accept** | 未点或采纳 | 视为已采纳，正文保留 |
+| **Reject** | 拒绝 | 后续对话省略该点正文 |
+| **Doubt** | 存疑 | 保留正文；可填 **Doubt note** |
+
+未标记的点按 **采纳** 处理。裁决会影响后续主对话 / 澄清的上下文组装。
+
+---
+
+## Branch rail
+
+主回答右侧为 git-graph 风格的 **Branch rail**：
+
+- 主干对齐各条助手消息；Fork 节点按深度向右展开
+- 点击节点可聚焦 / 打开对应浮动分支面板
+- 与左侧评论轨、浮动层配合，用于在长回答里跳转澄清分支
+
+---
+
+## 打开项目与 Agent 工具
+
+主对话可绑定本机目录，模型通过工具 **列出 / 读取 / 写入 / 搜索** 文件（路径限制在项目根内）。
+
+### 步骤
+
+1. 先运行 `npm run sidecar`，再 `npm run dev`
+2. 侧栏或输入区上方点 **Open project** → 对话框 **Local project**
+3. **Sidecar URL** 默认 `/sidecar`（经 Vite 代理）；填项目 **绝对路径** → **Connect**
+4. 路径记在 `localStorage`；下次若 sidecar 已开可自动重连
+5. **Disconnect** 解除绑定
+
+### 工具能力
+
+| 工具 | 作用 |
+|------|------|
+| `list_dir` | 列目录 |
+| `read_file` | 读文本（有大小上限） |
+| `write_file` | 覆盖写入整文件 |
+| `search_files` | 简单全文搜索 |
+
+一轮内最多约 **8** 轮工具往返。活动日志与 **Changes this turn** 显示本轮读/写过的路径；可 **Clear log**。
+
+示例提问：
+
+> 读取 package.json，并在 README.md 顶部加一行说明本项目用途
+
+### Sidecar HTTP（`127.0.0.1:8787`）
+
+| Method | Path | 说明 |
+|--------|------|------|
+| `POST` | `/project/open` | `{ "path": "/abs/project" }` |
+| `GET` | `/project` | 当前根目录 |
+| `POST` | `/project/close` | 解除绑定 |
+| `GET` | `/fs/list?path=` | 列目录 |
+| `GET` | `/fs/read?path=` | 读文件 |
+| `POST` | `/fs/write` | `{ "path", "content" }` |
+| `POST` | `/fs/mkdir` | `{ "path" }` |
+| `POST` | `/fs/search` | `{ "query", "path?" }` |
+| `GET` | `/health` | 探活 |
+
+安全：拒绝 `..` 与绝对路径逃逸；FS 操作必须落在绑定根下。
+
+---
+
+## 主题与笔记
+
+- **Light / Dark**：侧栏主题切换；偏好键 `forknote-theme`
+- **New note**：新建空笔记
+- **重命名**：双击笔记标题，或菜单里重命名；手动命名后标题不再被首条消息自动覆盖
+- **删除**：笔记菜单删除（数据在本地，无云端回收站）
+- 笔记按日期分组显示在左侧
+
+---
+
+## 环境变量（`.env.local`）
+
+从 `.env.example` 复制即可。均为可选；页面 **API Settings** 可覆盖。
 
 | 变量 | 说明 |
 |------|------|
-| `VITE_OPENAI_BASE_URL` | 如 `https://api.deepseek.com` |
-| `VITE_OPENAI_API_KEY` | 可选，也可只在页面设置里填 |
-| `VITE_OPENAI_MODEL` | 如 `deepseek-chat` |
+| `VITE_OPENAI_BASE_URL` | 如 `http://127.0.0.1:11434` 或 `https://api.deepseek.com` |
+| `VITE_OPENAI_API_KEY` | 可选；本地常留空 |
+| `VITE_OPENAI_MODEL` | 如 `llama3.2`、`deepseek-chat` |
+
+生产构建（`npm run build`）部署到静态站时，需自行配置反向代理，或关闭代理并确保 API 允许跨域。
+
+---
 
 ## 项目结构
 
 ```
+sidecar/          # 本机 FS sidecar（Node HTTP）
+public/           # 静态资源
 src/
-  components/     # UI：选中、弹窗、分支块、树侧栏
-  lib/            # OpenAI 流式、上下文组装、选中偏移
-  store/          # Zustand 状态
-  types.ts        # 树节点类型
+  components/     # UI：选中、澄清面板、分点裁决、Branch rail、项目连接
+  lib/            # OpenAI 流式、agent 工具、sidecar、上下文、主题
+  store/          # Zustand
+  types.ts
 ```
-
-## 后续可扩展
-
-- 内联高亮锚点（当前以分支卡片展示选中原文）
-- 导出 Markdown（含树结构）
-- 登录与云端同步
