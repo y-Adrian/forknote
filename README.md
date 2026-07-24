@@ -47,9 +47,10 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 ### API
 
 1. 首次使用 **Base URL / Model 为空**，无内置默认提供商；点预设芯片（云端 / 国内 / 本机等分组，如 **OpenAI**、**DeepSeek**、**Ollama**），或手动填 **Base URL** / **Model** / **API Key**
-2. 本机服务一般 **API Key 留空**；云端填控制台密钥
-3. 开发时勾选 **Use local proxy in development**（推荐）：请求走 `/openai/...`，由 Vite 按当前 Base URL 转发，减轻 CORS
-4. **Save** 保存（亦写入 `localStorage`）
+2. **Base URL / API Key / 代理**为全局连接设置；**Model** 是新建笔记的默认模型（创建时写入该笔记）。每条笔记可在输入框旁单独改模型；侧栏会显示当前模型名
+3. 本机服务一般 **API Key 留空**；云端填控制台密钥
+4. 开发时勾选 **Use local proxy in development**（推荐）：请求走 `/openai/...`，由 Vite 按当前 Base URL 转发，减轻 CORS
+5. **Save** 保存（亦写入 `localStorage`）
 
 | 常见本机 | Base URL | Model 示例 |
 |----------|----------|------------|
@@ -204,7 +205,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 |------|------|
 | Base URL | 如 `https://api.deepseek.com` 或本机 `http://127.0.0.1:11434` |
 | API Key | 云端必填；本机 Ollama 通常留空 |
-| 模型 | 如 `deepseek-v4-flash`（DeepSeek 官方）、`deepseek-ai/DeepSeek-V4-Flash`（SiliconFlow）、`qwen2.5-coder:7b`（Ollama） |
+| 模型 | 设置里为**新建笔记默认**；每条笔记可覆盖。示例：`deepseek-v4-flash`（DeepSeek 官方）、`deepseek-ai/DeepSeek-V4-Flash`（SiliconFlow）、`qwen2.5-coder:7b`（Ollama） |
 | 本地代理 | 开发时建议开启，请求经 `/openai` 转发到你填写的 Base URL |
 
 配置保存在浏览器 `localStorage`（`forknote-settings`），换浏览器或清缓存后需重新填写。
@@ -341,7 +342,7 @@ flowchart TD
 
 | 键 / 位置 | 内容 |
 |-----------|------|
-| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory、每会话 `projectRoot` |
+| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory、每会话 `projectRoot` / `model` |
 | `forknote-settings` 等 | API、代理、记忆 / mem0 开关 |
 | `forknote-theme` / `forknote-locale` | 主题与界面语言 |
 | 项目偏好 | 上次项目路径、sidecar URL |

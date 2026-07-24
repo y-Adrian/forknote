@@ -78,6 +78,11 @@ export interface ChatSession {
   contextMemory?: ContextMemoryPack | null;
   /** Bound local project absolute path for this session (via sidecar), or null */
   projectRoot?: string | null;
+  /**
+   * Model id for this session (snapshotted from settings when created).
+   * Null / missing / empty → fall back to settings.model at call time.
+   */
+  model?: string | null;
 }
 
 /** LLM-compressed long-term context for agent recovery */

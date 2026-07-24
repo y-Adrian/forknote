@@ -16,14 +16,19 @@ export function sessionTitleFromThread(thread: ThreadRoot | null): string {
   return q.length > 40 ? `${q.slice(0, 40)}…` : q;
 }
 
-export function createEmptySession(): ChatSession {
+export function createEmptySession(opts?: {
+  /** Snapshot of settings.model at create time; null = inherit settings later */
+  model?: string | null;
+}): ChatSession {
   const now = Date.now();
+  const model = opts?.model?.trim() || null;
   return {
     id: createId(),
     title: "Untitled",
     titleLocked: false,
     thread: null,
     projectRoot: null,
+    model,
     createdAt: now,
     updatedAt: now,
   };

@@ -417,6 +417,7 @@ function ApiPanel({
           placeholder={t("api.modelPlaceholder")}
         />
       </label>
+      <p className="hint local-hint">{t("api.modelHint")}</p>
 
       <label className="checkbox-row">
         <input
