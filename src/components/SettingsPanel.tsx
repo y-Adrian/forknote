@@ -216,6 +216,11 @@ function ApiPanel({
       <h3 className="ss-panel-title">{t("api.title")}</h3>
       <p className="ss-panel-lead">{t("api.lead")}</p>
 
+      <div className="ss-callout">
+        <strong>{t("api.sessionRemarkTitle")}</strong>
+        <p>{t("api.sessionRemark")}</p>
+      </div>
+
       <ApiConnectionFields
         value={{
           baseUrl: draft.baseUrl,
