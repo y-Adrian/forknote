@@ -86,7 +86,7 @@ const en = {
   "settings.closeAria": "Close settings",
   "settings.navAria": "Settings categories",
   "settings.nav.general": "General",
-  "settings.nav.api": "API",
+  "settings.nav.api": "Default API",
   "settings.nav.data": "Data",
   "settings.nav.project": "Project",
   "settings.nav.about": "About",
@@ -113,9 +113,12 @@ const en = {
   "general.noAccountBody":
     "ForkNote does not sign you in. Notes, API settings, and project prefs are stored in this browser's localStorage.",
 
-  "api.title": "API",
+  "api.title": "Default API",
   "api.lead":
-    "Default for sessions without custom API settings. Each note can open Session API settings from the composer to override Base URL, key, model, or proxy.",
+    "System-wide default connection used by new notes and any note that has not set its own API.",
+  "api.sessionRemarkTitle": "Per-session override",
+  "api.sessionRemark":
+    "You can change the API for a specific note from the composer — open Session API settings next to the input to override Base URL, key, model, or proxy for that note only.",
   "api.group.cloud": "Cloud / aggregators",
   "api.group.china": "China providers",
   "api.group.local": "Local",
@@ -133,7 +136,7 @@ const en = {
   "api.invalidBaseUrl":
     "Base URL must be a full http(s) URL (e.g. https://api.deepseek.com). Pick a preset or include https://, then Save.",
   "api.missingModel":
-    "Set a model in Session API settings or a default in Settings → API.",
+    "Set a model in Session API settings or a default in Settings → Default API.",
   "api.missingKey":
     "Add an API Key in settings for your configured endpoint, or switch to a local model such as Ollama.",
   "api.memoryPack.title": "Context memory pack",
@@ -359,7 +362,7 @@ const zh: Record<MessageKey, string> = {
   "settings.closeAria": "关闭设置",
   "settings.navAria": "设置分类",
   "settings.nav.general": "通用",
-  "settings.nav.api": "API",
+  "settings.nav.api": "默认 API",
   "settings.nav.data": "数据",
   "settings.nav.project": "项目",
   "settings.nav.about": "关于",
@@ -385,9 +388,12 @@ const zh: Record<MessageKey, string> = {
   "general.noAccountBody":
     "ForkNote 不会让你登录。笔记、API 设置与项目偏好都保存在本浏览器的 localStorage 中。",
 
-  "api.title": "API",
+  "api.title": "默认 API",
   "api.lead":
-    "未单独配置会话 API 时使用的默认设置。每条笔记可在输入框旁打开「会话 API 设置」覆盖 Base URL、密钥、模型或代理。",
+    "系统级默认连接，用于新建笔记以及尚未单独配置 API 的笔记。",
+  "api.sessionRemarkTitle": "按会话覆盖",
+  "api.sessionRemark":
+    "每条笔记可使用不同的 API。在输入框旁打开「会话 API 设置」，即可仅覆盖该笔记的 Base URL、密钥、模型或代理。",
   "api.group.cloud": "云端 / 聚合",
   "api.group.china": "国内服务商",
   "api.group.local": "本地",
@@ -404,7 +410,7 @@ const zh: Record<MessageKey, string> = {
   "api.invalidBaseUrl":
     "Base URL 须为完整 http(s) 地址（如 https://api.deepseek.com）。请选择预设或补全 https:// 后保存。",
   "api.missingModel":
-    "请在会话 API 设置中填写模型，或在设置 → API 填写默认模型。",
+    "请在会话 API 设置中填写模型，或在设置 → 默认 API 填写默认模型。",
   "api.missingKey":
     "请在设置中为当前端点填写 API Key，或改用 Ollama 等本地模型。",
   "api.memoryPack.title": "上下文记忆包",
