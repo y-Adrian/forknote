@@ -83,7 +83,6 @@ export function SessionSidebar({
   const sessions = useAppStore((s) => s.sessions);
   const settings = useAppStore((s) => s.settings);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
-  const loadingMain = useAppStore((s) => s.loadingMain);
   const createSession = useAppStore((s) => s.createSession);
   const switchSession = useAppStore((s) => s.switchSession);
   const deleteSession = useAppStore((s) => s.deleteSession);
@@ -224,7 +223,6 @@ export function SessionSidebar({
             type="button"
             className="fn-new-note"
             onClick={() => createSession()}
-            disabled={loadingMain}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
@@ -391,7 +389,6 @@ export function SessionSidebar({
             type="button"
             className="ds-icon-btn"
             onClick={() => createSession()}
-            disabled={loadingMain}
             aria-label={t("sidebar.newNote")}
             title={t("sidebar.newNote")}
           >

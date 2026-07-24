@@ -4,10 +4,16 @@ import { useAppStore } from "../store/useAppStore";
 /** Plan review bar — approve or cancel before agent tools run. */
 export function AgentPlanReview() {
   const { t } = useLocale();
-  const plan = useAppStore((s) => s.agentPendingPlan);
+  const plan = useAppStore((s) =>
+    s.agentPendingPlan && s.agentPendingPlan.sessionId === s.activeSessionId
+      ? s.agentPendingPlan
+      : null,
+  );
   const approveAgentPlan = useAppStore((s) => s.approveAgentPlan);
   const rejectAgentPlan = useAppStore((s) => s.rejectAgentPlan);
-  const loadingMain = useAppStore((s) => s.loadingMain);
+  const loadingMain = useAppStore(
+    (s) => Boolean(s.activeSessionId && s.loadingMainBySession[s.activeSessionId]),
+  );
 
   if (!plan) return null;
 

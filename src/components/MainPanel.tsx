@@ -24,11 +24,29 @@ export function MainPanel({ onOpenProject }: Props) {
   const thread = useAppStore((s) => s.thread);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const sessions = useAppStore((s) => s.sessions);
-  const loadingMain = useAppStore((s) => s.loadingMain);
-  const loadingArchive = useAppStore((s) => s.loadingArchive);
-  const loadingCompress = useAppStore((s) => s.loadingCompress);
-  const loadingBranchId = useAppStore((s) => s.loadingBranchId);
-  const agentPendingPlan = useAppStore((s) => s.agentPendingPlan);
+  const loadingMain = useAppStore(
+    (s) => Boolean(s.activeSessionId && s.loadingMainBySession[s.activeSessionId]),
+  );
+  const loadingArchive = useAppStore(
+    (s) =>
+      s.loadingArchiveSessionId != null &&
+      s.loadingArchiveSessionId === s.activeSessionId,
+  );
+  const loadingCompress = useAppStore(
+    (s) =>
+      s.loadingCompressSessionId != null &&
+      s.loadingCompressSessionId === s.activeSessionId,
+  );
+  const loadingBranchId = useAppStore((s) =>
+    s.activeSessionId
+      ? s.loadingBranchBySession[s.activeSessionId] ?? null
+      : null,
+  );
+  const agentPendingPlan = useAppStore((s) =>
+    s.agentPendingPlan && s.agentPendingPlan.sessionId === s.activeSessionId
+      ? s.agentPendingPlan
+      : null,
+  );
   const error = useAppStore((s) => s.error);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const askMain = useAppStore((s) => s.askMain);
@@ -214,10 +232,12 @@ export function MainPanel({ onOpenProject }: Props) {
   const submit = () => {
     const saved = input.trim();
     if (!saved) return;
-    if (useAppStore.getState().loadingMain) return;
-    if (useAppStore.getState().agentPendingPlan) return;
-    if (useAppStore.getState().loadingArchive) return;
-    if (useAppStore.getState().loadingCompress) return;
+    const state = useAppStore.getState();
+    const sid = state.activeSessionId;
+    if (sid && state.loadingMainBySession[sid]) return;
+    if (state.agentPendingPlan?.sessionId === sid) return;
+    if (sid && state.loadingArchiveSessionId === sid) return;
+    if (sid && state.loadingCompressSessionId === sid) return;
     lastSentPromptRef.current = saved;
     clearComposerForSend();
     void (async () => {
