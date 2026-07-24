@@ -309,18 +309,30 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
     return `
 【计划阶段】用户已连接本地项目。此轮只输出执行计划，禁止调用任何工具，禁止声称已读写文件。
 
+原则（必须遵守）：
+- 严格依据用户原话理解意图；意图不清或无需改磁盘时，说明「无需工具」并只给理解/回答，不要编造操作。
+- 计划只包含完成用户明确要求所必需的步骤；宁少勿多。
+- 禁止自行假设：不要添加用户未要求的验证步骤（例如写完再 list_dir、读回确认、搜索「看看有没有」等）。
+- 禁止把「最佳实践」或猜测的后续任务塞进计划。
+
 请严格使用以下 Markdown 结构：
 ## 计划
 1. 第一步…
 2. 第二步…
 
 ## 预期操作（可选）
-- list_dir / read_file / write_file 等：简要说明
+- 仅列出真正需要的工具（如 write_file / read_file）；无操作则写「无」
 
-计划应具体、可执行。用户点击「批准并执行」后才会真正调用工具。`;
+用户点击「批准并执行」后才会真正调用工具。`;
   }
   return `
 [Planning phase] A local project is connected. Output an execution plan ONLY — do not call tools or claim files were read/written.
+
+Rules (must follow):
+- Ground the plan in the user's words. If intent is unclear or no disk change is needed, say no tools are required and only explain/answer — do not invent actions.
+- Include only steps necessary for the stated request; prefer the minimal set.
+- Do not assume: no unverified follow-ups the user did not ask for (e.g. list_dir after a write, re-read to "confirm", exploratory search).
+- Do not pad the plan with "best practice" extras or guessed next tasks.
 
 Use this Markdown structure:
 ## Plan
@@ -328,9 +340,9 @@ Use this Markdown structure:
 2. Second step…
 
 ## Expected operations (optional)
-- list_dir / read_file / write_file etc.: brief note
+- Only tools that are actually required (e.g. write_file / read_file); write "none" if no tools
 
-Be specific. Tools run only after the user clicks Approve & run.`;
+Tools run only after the user clicks Approve & run.`;
 }
 
 export function parseAgentPlan(text: string): {
@@ -386,10 +398,22 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
 
 多轮工作流（一次用户消息内可循环多轮）：
-1. 收到用户任务 → 先调用工具（不要只写计划）
-2. 阅读 tool / 工具结果 返回的磁盘现状
-3. 未完成 → 继续调用下一批工具（例如先 list_dir 再 read_file 再 write_file）
-4. 全部做完 → 最后一轮用中文总结，不要再调工具`;
+1. 依据用户明确意图决定是否需要工具；意图不清则先回答/澄清，不要擅自改文件或列目录
+2. 需要工具时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行）
+3. 阅读 tool / 工具结果；若用户任务尚未完成 → 再调下一批必要工具
+4. 全部做完 → 最后一轮用中文总结，不要再调工具
+5. 禁止自行添加用户未要求的验证步骤（如写完再 list_dir、无必要的反复 read）`;
+}
+
+/** Extra planning hint when the user clearly asked to create one file. */
+export function buildMinimalCreatePlanHint(
+  createPath: string,
+  locale: Locale,
+): string {
+  if (locale === "zh") {
+    return `用户明确要求创建文件 "${createPath}"。计划中只需 write_file（path="${createPath}"）；不要添加 list_dir、read_file 或其他验证步骤。`;
+  }
+  return `The user clearly asked to create "${createPath}". The plan should only need write_file (path="${createPath}"); do not add list_dir, read_file, or other verification steps.`;
 }
 
 export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {

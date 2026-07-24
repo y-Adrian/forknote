@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   agentCallFromOpenAI,
   buildCodingToolsSystem,
+  buildMinimalCreatePlanHint,
   buildPlanningPhaseSystem,
   collectToolCalls,
   executeToolCall,
@@ -2286,7 +2287,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           apiMessages.push({
             role: "user",
             content:
-              "请根据上述工具结果继续下一步（如需更多文件操作请继续调用工具）；若任务已全部完成，请给出最终中文总结且不要再调用工具。",
+              "请根据上述工具结果判断：若用户任务已完成，请给出最终中文总结且不要再调用工具；仅当原请求仍有未完成的必要步骤时才继续调工具。禁止添加用户未要求的验证操作（如多余的 list_dir）。",
           });
         } else if (officeIntent && officeToolFailed) {
           visibleContent =
@@ -2313,6 +2314,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           role: "system",
           content: buildPlanningPhaseSystem(locale),
         });
+        if (createPath) {
+          apiMessages.push({
+            role: "system",
+            content: buildMinimalCreatePlanHint(createPath, locale),
+          });
+        }
         patchAssistantContent(
           locale === "zh" ? "正在制定计划…" : "Drafting plan…",
         );
@@ -2346,8 +2353,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             role: "user",
             content:
               locale === "zh"
-                ? `用户已批准以下计划。请立即按计划执行，调用必要工具：\n\n${approvedPlanText}`
-                : `User approved the plan. Execute it now using tools:\n\n${approvedPlanText}`,
+                ? `用户已批准以下计划。请立即按计划执行，只调用完成该计划所必需的工具；不要额外添加验证步骤（如未经要求的 list_dir）。若计划写明无需工具，则只总结、不要调工具。\n\n${approvedPlanText}`
+                : `User approved the plan. Execute it now with only the tools required by the plan; do not add extra verification steps (e.g. unrequested list_dir). If the plan says no tools are needed, summarize only and do not call tools.\n\n${approvedPlanText}`,
           });
           const result = await executeTools();
           if (
