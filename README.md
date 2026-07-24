@@ -17,21 +17,16 @@
 
 ```bash
 npm install
-npm run dev                  # 前端，通常 http://localhost:5173
+npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 ```
 
-首次使用请在页面 **系统设置 → API** 选择预设（DeepSeek / Ollama 等）或填写 Base URL、API Key、模型名，然后 **保存**。
-
-若要用 **本地项目读写**（agent 工具），再开一个终端：
-
-```bash
-npm run sidecar              # http://127.0.0.1:8787；开发时经 Vite 代理 /sidecar
-```
+浏览器打开 **http://127.0.0.1:5173**。首次使用请在 **系统设置 → API** 配置模型并 **保存**。
 
 | 脚本 | 作用 |
 |------|------|
-| `npm run dev` | Vite 开发服务器 |
-| `npm run sidecar` | 本机 FS sidecar（**项目工具必需**） |
+| `npm run dev` | **推荐**：Vite + sidecar 一起启动，Ctrl+C 全部停止 |
+| `npm run dev:web` | 仅 Vite（不需要本地项目工具时用） |
+| `npm run sidecar` | 仅 sidecar（`127.0.0.1:8787`，项目读写工具必需） |
 | `npm run build` | 类型检查 + 生产构建 |
 | `npm run preview` | 预览构建产物 |
 
@@ -135,7 +130,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ### 步骤
 
-1. 先运行 `npm run sidecar`，再 `npm run dev`
+1. 运行 `npm run dev`（已包含 sidecar；也可分开跑 `npm run sidecar` + `npm run dev:web`）
 2. 侧栏或输入区上方点 **Open project** → 对话框 **Local project**
 3. **Sidecar URL** 默认 `/sidecar`（经 Vite 代理）；填项目 **绝对路径** → **Connect**
 4. 路径记在 `localStorage`；下次若 sidecar 已开可自动重连

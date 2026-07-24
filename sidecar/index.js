@@ -392,18 +392,16 @@ async function handleWriteDocx(body) {
     throw Object.assign(new Error("path is required"), { status: 400 });
   }
   const paragraphs = Array.isArray(body?.paragraphs)
-    ? body.paragraphs.map((p) => String(p ?? "").trim()).filter(Boolean)
+    ? body.paragraphs.map((p) => String(p ?? ""))
     : [];
   const title =
     typeof body?.title === "string" && body.title.trim()
       ? body.title.trim()
       : "";
-  if (!title && paragraphs.length === 0) {
-    throw Object.assign(
-      new Error("Provide title and/or a non-empty paragraphs array"),
-      { status: 400 },
-    );
-  }
+  const blankDoc =
+    !title &&
+    (paragraphs.length === 0 ||
+      paragraphs.every((p) => !String(p).replace(/\u200b/g, "").trim()));
 
   let withExt = filePath;
   if (!/\.docx$/i.test(withExt)) withExt = `${withExt}.docx`;
@@ -421,12 +419,18 @@ async function handleWriteDocx(body) {
       }),
     );
   }
-  for (const text of paragraphs) {
-    children.push(new Paragraph({ children: [new TextRun(text)] }));
+  if (blankDoc) {
+    children.push(new Paragraph({ children: [new TextRun("")] }));
+  } else {
+    for (const text of paragraphs) {
+      const line = String(text ?? "");
+      if (!line.trim() && !title) continue;
+      children.push(new Paragraph({ children: [new TextRun(line)] }));
+    }
   }
 
   const doc = new Document({
-    sections: [{ properties: {}, children }],
+    sections: [{ properties: {}, children: children.length > 0 ? children : [new Paragraph({ children: [new TextRun("")] })] }],
   });
   const buffer = await Packer.toBuffer(doc);
   if (buffer.length > MAX_WRITE_BYTES) {
