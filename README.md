@@ -71,6 +71,16 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ---
 
+## 归档
+
+澄清与分点裁决完成后，可把主线压成一篇开发日志草稿，再选上下文继续聊：
+
+1. 聊天顶栏点 **Archive** → 模型根据主线 + 裁决 + 澄清整理 Markdown 日志
+2. 面板中可 **Continue with archive**（后续主对话以日志为底座，只附上归档之后的新消息）或 **Full thread**（仍用整条 thread）
+3. 归档模式时顶栏显示「Archive · 标题」芯片，点开可查看 / 切换历史归档；生成中可用 **Stop** 取消
+
+---
+
 ## 选中澄清与 Fork 面板
 
 1. 在助手回答中 **拖选** 一段文字
@@ -171,8 +181,53 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `VITE_OPENAI_BASE_URL` | 如 `http://127.0.0.1:11434` 或 `https://api.deepseek.com` |
 | `VITE_OPENAI_API_KEY` | 可选；本地常留空 |
 | `VITE_OPENAI_MODEL` | 如 `llama3.2`、`deepseek-chat` |
+| `VITE_MEM0_API_KEY` | 可选；mem0 Platform key（默认关闭记忆） |
+| `VITE_MEM0_HOST` | 可选；默认 `https://api.mem0.ai` |
 
 生产构建（`npm run build`）部署到静态站时，需自行配置反向代理，或关闭代理并确保 API 允许跨域。
+
+---
+
+## 上下文记忆包（推荐本地优先）
+
+目标流水线：
+
+```
+聊天记录
+  → LLM 压缩（Compress / 可选归档后自动）
+  → SUMMARY.md + TASKS.md + DECISIONS.md
+  → （可选）mem0 云检索
+  → 下次 askMain 自动注入 system 附加段
+```
+
+### 怎么用
+
+1. 聊几轮后点顶栏 **Compress context**（或 Settings → API 勾选 **Also compress after Archive**）
+2. **已绑定项目**：写入 `{memoryDir}/`（默认 `.forknote/memory/`）三份 Markdown  
+   **未绑定项目**：草稿保存在当前笔记的 `contextMemory`（localStorage）
+3. 下次主对话发送前，会把相关摘录（本地关键词筛选）注入上下文；若开启 mem0，再叠加云端 search hits
+4. Settings → API → **Context memory pack**：注入开关、归档后压缩、记忆目录
+
+实现：`src/lib/contextMemory.ts` + `compressContext`（store）。压缩提示与归档类似，复用 `streamChat`。
+
+### 可选 mem0 云（叠加层）
+
+默认关闭。开启后：
+
+1. [mem0 Platform](https://app.mem0.ai) 拿 API Key → Settings → **Long-term (mem0 cloud)**
+2. 开发环境勾 **Use local proxy** 时走 Vite `/mem0`
+3. 写入：主对话成功后、Archive、以及 Compress 成功后的 pack 同步  
+4. 读取：与本地 MD 包一起注入
+
+薄 `fetch` 适配器（`src/lib/mem0.ts`），**未**依赖 `mem0ai` npm。失败只 `console.warn`。
+
+| 模式 | 数据去向 | 适合 |
+|------|----------|------|
+| **仅 MD 包（推荐）** | 项目磁盘或笔记草稿 | 本地优先 |
+| **MD + mem0** | 本地文件 + 云检索 | 跨设备长期记忆 |
+| **自托管 mem0 OSS** | sidecar 代理（未实现） | 完全自管向量库 |
+
+LangMem / 向量嵌入本地检索：未做；当前本地层是三文件 + 关键词摘录。后续可在 sidecar 加嵌入搜索。
 
 ---
 
@@ -183,7 +238,7 @@ sidecar/          # 本机 FS sidecar（Node HTTP）
 public/           # 静态资源
 src/
   components/     # UI：选中、澄清面板、分点裁决、Branch rail、项目连接
-  lib/            # OpenAI 流式、agent 工具、sidecar、上下文、主题
+  lib/            # OpenAI 流式、agent 工具、sidecar、contextMemory、可选 mem0、主题
   store/          # Zustand
   types.ts
 ```

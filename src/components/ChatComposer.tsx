@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent } from "react";
+import { useLocale } from "../lib/i18n";
 
 interface Props {
   value: string;
@@ -16,10 +17,12 @@ export function ChatComposer({
   onSubmit,
   onStop,
   loading = false,
-  placeholder = "Ask what you're researching…",
+  placeholder,
   compact = false,
 }: Props) {
+  const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
+  const resolvedPlaceholder = placeholder ?? t("main.placeholderEmpty");
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -42,21 +45,13 @@ export function ChatComposer({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        aria-label={compact ? "Continue main thread" : "New question"}
+        placeholder={resolvedPlaceholder}
+        aria-label={compact ? t("composer.continue") : t("composer.newQuestion")}
       />
 
       <div className="fn-composer-bar">
         <p className="fn-composer-hint">
-          {compact ? (
-            <>
-              <kbd>Enter</kbd> Send · <kbd>Shift</kbd>+<kbd>Enter</kbd> New line
-            </>
-          ) : (
-            <>
-              Drag-select text in answers to clarify · <kbd>Enter</kbd> Send
-            </>
-          )}
+          {compact ? t("composer.hintCompact") : t("composer.hintHero")}
         </p>
 
         <div className="fn-composer-actions">
@@ -69,22 +64,22 @@ export function ChatComposer({
                 e.stopPropagation();
                 onStop?.();
               }}
-              aria-label="Stop generating"
-              title="Stop generating"
+              aria-label={t("composer.stopAria")}
+              title={t("composer.stopAria")}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden>
                 <rect x="1" y="1" width="10" height="10" rx="2" />
               </svg>
-              <span>Stop</span>
+              <span>{t("common.stop")}</span>
             </button>
           ) : (
             <button
               type="submit"
               className="fn-send-btn"
               disabled={!value.trim()}
-              aria-label="Send"
+              aria-label={t("common.send")}
             >
-              <span>Send</span>
+              <span>{t("common.send")}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M5 12h14M13 6l6 6-6 6"
