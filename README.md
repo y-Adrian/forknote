@@ -36,9 +36,19 @@ npm run sidecar              # http://127.0.0.1:8787；开发时经 Vite 代理 
 
 ---
 
-## API 设置
+## 系统设置
 
-右上角打开 **API Settings**（或侧栏设置入口）。
+侧栏打开 **Settings**（系统设置），左侧分类：
+
+| 分类 | 内容 |
+|------|------|
+| **General** | 主题 Light / Dark / System；界面语言 English / 中文（模型回复语言跟随） |
+| **API** | 提供商预设、Base URL / Model / Key、开发代理；上下文记忆包与可选 mem0 |
+| **Data** | 导出 / 导入笔记 JSON；清空本地笔记 |
+| **Project** | Sidecar URL、打开本地项目 |
+| **About** | 产品说明 |
+
+### API
 
 1. 点预设芯片（如 **Ollama**、**LM Studio**、**DeepSeek**），或手动填 **Base URL** / **Model** / **API Key**
 2. 本机服务一般 **API Key 留空**；云端填控制台密钥
@@ -71,13 +81,14 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ---
 
-## 归档
+## 归档与上下文模式
 
 澄清与分点裁决完成后，可把主线压成一篇开发日志草稿，再选上下文继续聊：
 
-1. 聊天顶栏点 **Archive** → 模型根据主线 + 裁决 + 澄清整理 Markdown 日志
-2. 面板中可 **Continue with archive**（后续主对话以日志为底座，只附上归档之后的新消息）或 **Full thread**（仍用整条 thread）
-3. 归档模式时顶栏显示「Archive · 标题」芯片，点开可查看 / 切换历史归档；生成中可用 **Stop** 取消
+1. 输入区上方工具栏点 **Archive** → 模型根据主线 + 裁决 + 澄清整理 Markdown 日志
+2. 同排分段控件：**Archive context**（以日志为底座，只附归档之后的新消息）/ **Full thread**（整条 thread）
+3. 提示文案在按钮上方，避免切换模式时工具栏跳动；生成中可用 **Stop** 取消
+4. 多篇归档时在归档面板中选用
 
 ---
 
@@ -164,7 +175,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ## 主题与笔记
 
-- **Light / Dark**：侧栏主题切换；偏好键 `forknote-theme`
+- **Light / Dark / System**：系统设置 General 或侧栏；偏好键 `forknote-theme`
 - **New note**：新建空笔记
 - **重命名**：双击笔记标题，或菜单里重命名；手动命名后标题不再被首条消息自动覆盖
 - **删除**：笔记菜单删除（数据在本地，无云端回收站）
@@ -202,7 +213,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ### 怎么用
 
-1. 聊几轮后点顶栏 **Compress context**（或 Settings → API 勾选 **Also compress after Archive**）
+1. 聊几轮后点输入区上方 **Compress context**（或 Settings → API 勾选 **Also compress after Archive**）
 2. **已绑定项目**：写入 `{memoryDir}/`（默认 `.forknote/memory/`）三份 Markdown  
    **未绑定项目**：草稿保存在当前笔记的 `contextMemory`（localStorage）
 3. 下次主对话发送前，会把相关摘录（本地关键词筛选）注入上下文；若开启 mem0，再叠加云端 search hits
@@ -231,14 +242,110 @@ LangMem / 向量嵌入本地检索：未做；当前本地层是三文件 + 关�
 
 ---
 
-## 项目结构
+## 软件架构
+
+ForkNote 是浏览器端 SPA + 可选本机 sidecar。无自有后端；对话状态与设置落在 `localStorage`，LLM 走 OpenAI 兼容 HTTP，项目文件经 sidecar 受限访问。
+
+### 运行时拓扑
+
+```mermaid
+flowchart LR
+  subgraph browser [Browser SPA]
+    UI[React UI]
+    Store[Zustand store]
+    Lib[lib: context / archive / memory / openai]
+    UI --> Store
+    Store --> Lib
+  end
+
+  Vite[Vite dev proxy]
+  LLM[OpenAI-compatible API]
+  SC[Sidecar :8787]
+  FS[(Project files)]
+  Mem0[mem0 Platform optional]
+
+  Lib -->|/openai| Vite --> LLM
+  Lib -->|/sidecar| Vite --> SC --> FS
+  Lib -->|/mem0 optional| Vite --> Mem0
+  Store -->|localStorage| LS[(Sessions / settings)]
+```
+
+### 主对话数据流
+
+```mermaid
+flowchart TD
+  User[User send / Stop] --> askMain[askMain]
+  askMain --> resolve[resolveConversationContext]
+  resolve -->|live| full[Full annotated thread]
+  resolve -->|archive| arch[Archive log + messages after cutoff]
+  askMain --> mem[buildAgentMemoryAddendum]
+  mem --> md[Local SUMMARY/TASKS/DECISIONS]
+  mem --> m0[Optional mem0 search]
+  full --> build[buildConversationMessages]
+  arch --> build
+  md --> build
+  m0 --> build
+  build --> stream[streamChat + tools loop]
+  stream --> UI[MainPanel bubbles / ThinkingBlock]
+  stream --> persist[Persist thread + optional mem0 add]
+```
+
+### 分层与职责
+
+| 层 | 位置 | 职责 |
+|----|------|------|
+| **UI** | `src/components/` | 会话壳、主聊天、澄清浮层、Branch rail、系统设置、归档面板 |
+| **状态** | `src/store/useAppStore.ts` | 会话 CRUD、`askMain` / `askBranch`、归档 / 压缩、项目绑定、生成中止 |
+| **领域 lib** | `src/lib/` | 上下文组装、裁决标注、流式协议、agent 工具、记忆、i18n、主题 |
+| **持久化** | `storage.ts` / `settings.ts` / `theme.ts` | `localStorage` 笔记、API、主题、语言 |
+| **Sidecar** | `sidecar/index.js` | 本机项目根绑定与受限 FS HTTP |
+| **代理** | `vite.config.ts` | 开发期 `/openai`、`/sidecar`、`/mem0` 转发 |
+
+### 核心模块
+
+| 模块 | 文件 | 说明 |
+|------|------|------|
+| 主聊天壳 | `MainPanel.tsx`、`ChatComposer.tsx` | 消息列表、footer 工具栏（项目 / 上下文模式 / Archive / Compress）、DeepSeek 风格气泡 |
+| 澄清 / 分点 | `SelectableMarkdown.tsx`、`PointizedAnswer.tsx`、`FloatingAskPanel.tsx` | 选中澄清、分点 Accept/Reject/Doubt |
+| 分支导航 | `BranchRail.tsx`、`BranchFloatLayer.tsx` | git-graph 轨与浮动 Fork |
+| 上下文 | `conversationContext.ts`、`contextBuilder.ts`、`points.ts` | live vs archive；system + 历史；裁决注入 |
+| 归档 | `archive.ts`、`ArchivePanel.tsx` | 开发日志草稿与面板 |
+| 记忆包 | `contextMemory.ts` | Compress → 三 MD；`askMain` 注入 |
+| mem0 | `mem0.ts` | 可选云检索 / 写入（默认关） |
+| 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
+| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / … |
+| 设置 / i18n | `SettingsPanel.tsx`、`i18n.ts`、`theme.ts` | 系统设置；EN/ZH；主题 |
+| 类型 | `types.ts` | `ChatSession`、`ThreadRoot`、归档、记忆包等 |
+
+### 持久化键（摘要）
+
+| 键 / 位置 | 内容 |
+|-----------|------|
+| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory |
+| `forknote-settings` 等 | API、代理、记忆 / mem0 开关 |
+| `forknote-theme` / `forknote-locale` | 主题与界面语言 |
+| 项目偏好 | 上次项目路径、sidecar URL |
+| 磁盘 `.forknote/memory/` | 绑定项目后的 SUMMARY / TASKS / DECISIONS |
+
+### 项目结构
 
 ```
-sidecar/          # 本机 FS sidecar（Node HTTP）
-public/           # 静态资源
+sidecar/                 # 本机 FS sidecar（Node HTTP :8787）
+public/                  # favicon 等
 src/
-  components/     # UI：选中、澄清面板、分点裁决、Branch rail、项目连接
-  lib/            # OpenAI 流式、agent 工具、sidecar、contextMemory、可选 mem0、主题
-  store/          # Zustand
+  App.tsx                # 壳：侧栏 + 主区 + 设置 / 项目 / 归档浮层
+  main.tsx
   types.ts
+  components/            # UI（见上表）
+  lib/                   # 协议与领域逻辑（见上表）
+  store/useAppStore.ts   # 唯一应用状态入口
+  index.css              # 设计 token 与布局
+vite.config.ts           # 开发代理
 ```
+
+### 设计约束（现行）
+
+- **本地优先**：笔记默认不出浏览器；mem0 与云 API 为可选
+- **上下文显式**：Full thread / Archive / 记忆包注入路径可预期，避免「假记忆」
+- **工具隔离**：项目工具仅主对话；路径相对项目根，sidecar 防逃逸
+- **推理诚实**：无 `reasoning` / think 标签则不展示思考 UI
