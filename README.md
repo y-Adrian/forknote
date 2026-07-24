@@ -57,7 +57,7 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 
 | 常见本机 | Base URL | Model 示例 |
 |----------|----------|------------|
-| Ollama | `http://127.0.0.1:11434` | `llama3.2`、`qwen2.5:7b`（须与 `ollama list` 一致） |
+| Ollama | `http://127.0.0.1:11434` | `qwen2.5-coder:7b`、`llama3.2`（须与 `ollama list` 一致） |
 | LM Studio | `http://127.0.0.1:1234` | Local Server 里显示的名称 |
 
 自测 Ollama：
@@ -322,7 +322,7 @@ flowchart TD
 | **领域 lib** | `src/lib/` | 上下文组装、裁决标注、流式协议、agent 工具、记忆、i18n、主题 |
 | **持久化** | `storage.ts` / `settings.ts` / `theme.ts` | `localStorage` 笔记、API、主题、语言 |
 | **Sidecar** | `sidecar/index.js` | 本机项目根绑定与受限 FS HTTP |
-| **代理** | `vite.config.ts` | 开发期 `/openai`、`/sidecar`、`/mem0` 转发 |
+| **代理** | `vite.config.ts` | 开发期 `/openai`（按 `X-Forknote-Target` 动态转发）、`/sidecar`、`/mem0` |
 
 ### 核心模块
 

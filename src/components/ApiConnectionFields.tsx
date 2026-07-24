@@ -108,8 +108,8 @@ export const PRESET_GROUPS: PresetGroup[] = [
       {
         label: "Ollama",
         baseUrl: "http://127.0.0.1:11434",
-        model: "llama3.2",
-        hint: "ollama serve; Model must match ollama list",
+        model: "qwen2.5-coder:7b",
+        hint: "ollama serve; Model must match ollama list (e.g. qwen2.5-coder:7b)",
         local: true,
       },
       {
