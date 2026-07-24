@@ -115,6 +115,53 @@ export async function writeFile(
   return parseJson(res);
 }
 
+export async function writeDocx(
+  relPath: string,
+  options: { title?: string; paragraphs: string[] },
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ path: string; size: number; written: boolean; kind: string }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/write_docx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: relPath,
+      title: options.title,
+      paragraphs: options.paragraphs,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function writeXlsx(
+  relPath: string,
+  options: {
+    sheet_name?: string;
+    rows: Array<Array<string | number | boolean | null>>;
+  },
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  path: string;
+  size: number;
+  written: boolean;
+  kind: string;
+  rows: number;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/write_xlsx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: relPath,
+      sheet_name: options.sheet_name,
+      rows: options.rows,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
 export async function mkdir(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,

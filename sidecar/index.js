@@ -234,6 +234,167 @@ async function handleWrite(body) {
   return { path: relative, size: bytes, written: true };
 }
 
+/**
+ * Create a .docx from structured paragraphs (UTF-8 text → Office Open XML).
+ * Body: { path, title?, paragraphs: string[] }
+ */
+async function handleWriteDocx(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  const paragraphs = Array.isArray(body?.paragraphs)
+    ? body.paragraphs.map((p) => String(p ?? "").trim()).filter(Boolean)
+    : [];
+  const title =
+    typeof body?.title === "string" && body.title.trim()
+      ? body.title.trim()
+      : "";
+  if (!title && paragraphs.length === 0) {
+    throw Object.assign(
+      new Error("Provide title and/or a non-empty paragraphs array"),
+      { status: 400 },
+    );
+  }
+
+  let withExt = filePath;
+  if (!/\.docx$/i.test(withExt)) withExt = `${withExt}.docx`;
+
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } =
+    await import("docx");
+
+  /** @type {import('docx').Paragraph[]} */
+  const children = [];
+  if (title) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.TITLE,
+        children: [new TextRun({ text: title, bold: true })],
+      }),
+    );
+  }
+  for (const text of paragraphs) {
+    children.push(new Paragraph({ children: [new TextRun(text)] }));
+  }
+
+  const doc = new Document({
+    sections: [{ properties: {}, children }],
+  });
+  const buffer = await Packer.toBuffer(doc);
+  if (buffer.length > MAX_WRITE_BYTES) {
+    throw Object.assign(
+      new Error(
+        `Generated .docx too large (${buffer.length} bytes; max ${MAX_WRITE_BYTES})`,
+      ),
+      { status: 413 },
+    );
+  }
+
+  const { resolved, relative } = resolveSafe(withExt);
+  try {
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, buffer);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to write docx";
+    throw Object.assign(new Error(`Cannot write ${relative}: ${msg}`), {
+      status: 500,
+    });
+  }
+  return {
+    path: relative,
+    size: buffer.length,
+    written: true,
+    kind: "docx",
+  };
+}
+
+/**
+ * Create a .xlsx from a 2D rows array.
+ * Body: { path, sheet_name?, rows: (string|number|boolean|null)[][] }
+ */
+async function handleWriteXlsx(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  if (!Array.isArray(body?.rows) || body.rows.length === 0) {
+    throw Object.assign(
+      new Error("rows must be a non-empty array of arrays"),
+      { status: 400 },
+    );
+  }
+  if (body.rows.length > 5000) {
+    throw Object.assign(new Error("Too many rows (max 5000)"), {
+      status: 413,
+    });
+  }
+
+  let withExt = filePath;
+  if (!/\.xlsx$/i.test(withExt)) withExt = `${withExt}.xlsx`;
+
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  const sheetName =
+    typeof body?.sheet_name === "string" && body.sheet_name.trim()
+      ? body.sheet_name.trim().slice(0, 31)
+      : "Sheet1";
+  const ws = wb.addWorksheet(sheetName);
+
+  for (const row of body.rows) {
+    if (!Array.isArray(row)) {
+      throw Object.assign(new Error("Each row must be an array"), {
+        status: 400,
+      });
+    }
+    if (row.length > 100) {
+      throw Object.assign(new Error("Too many columns in a row (max 100)"), {
+        status: 413,
+      });
+    }
+    ws.addRow(
+      row.map((cell) => {
+        if (cell === null || cell === undefined) return "";
+        if (
+          typeof cell === "string" ||
+          typeof cell === "number" ||
+          typeof cell === "boolean"
+        ) {
+          return cell;
+        }
+        return String(cell);
+      }),
+    );
+  }
+
+  const { resolved, relative } = resolveSafe(withExt);
+  try {
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await wb.xlsx.writeFile(resolved);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to write xlsx";
+    throw Object.assign(new Error(`Cannot write ${relative}: ${msg}`), {
+      status: 500,
+    });
+  }
+  const stat = await fs.stat(resolved);
+  if (stat.size > MAX_WRITE_BYTES) {
+    await fs.unlink(resolved).catch(() => {});
+    throw Object.assign(
+      new Error(
+        `Generated .xlsx too large (${stat.size} bytes; max ${MAX_WRITE_BYTES})`,
+      ),
+      { status: 413 },
+    );
+  }
+  return {
+    path: relative,
+    size: stat.size,
+    written: true,
+    kind: "xlsx",
+    rows: body.rows.length,
+  };
+}
+
 async function handleMkdir(body) {
   const dirPath = String(body?.path ?? "").trim();
   if (!dirPath) {
@@ -352,6 +513,14 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/write") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleWrite(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/write_docx") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleWriteDocx(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/write_xlsx") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleWriteXlsx(body));
     }
     if (req.method === "POST" && pathname === "/fs/mkdir") {
       const body = await readBody(req);

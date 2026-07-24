@@ -5,6 +5,7 @@ import {
   collectToolCalls,
   executeToolCall,
   inferCreateFilePath,
+  inferOfficeCreateIntent,
   MAX_AGENT_ROUNDS,
   nativeToolResultMessage,
   PROJECT_OPENAI_TOOLS,
@@ -180,7 +181,7 @@ interface AppState {
   /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
   renameSession: (sessionId: NodeId, title: string) => boolean;
 
-  askMain: (question: string) => Promise<void>;
+  askMain: (question: string) => Promise<"started" | "rejected" | "rolled_back">;
   askBranch: (
     parentId: NodeId,
     parentContent: string,
@@ -1036,17 +1037,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   askMain: async (question) => {
     const trimmed = question.trim();
-    if (!trimmed) return;
+    if (!trimmed) return "rejected";
 
     // Prevent double-submit races (composer loading prop may lag one frame)
-    if (get().loadingMain) return;
+    if (get().loadingMain) return "rejected";
 
     const { settings, activeSessionId, sessions, thread: existingThread } =
       get();
     const authError = requireApiKey(settings);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
-      return;
+      return "rejected";
     }
 
     let sessionId = activeSessionId;
@@ -1182,7 +1183,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           mainAbortCtrl = null;
           activeMainTurn = null;
         }
-        return;
+        return "rolled_back";
       }
 
       const codingToolsSystem = projectRoot
@@ -1218,10 +1219,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
+      const officeIntent = projectRoot
+        ? inferOfficeCreateIntent(trimmed)
+        : null;
       if (createPath) {
         apiMessages.push({
           role: "system",
           content: `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`,
+        });
+      } else if (officeIntent) {
+        apiMessages.push({
+          role: "system",
+          content:
+            officeIntent.tool === "write_xlsx"
+              ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
+              : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落字符串数组（可加 title）。禁止只把 JSON 贴在 Markdown 里。禁止用 write_file。`,
         });
       }
 
@@ -1229,6 +1241,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let round = 0;
       let useNativeTools = Boolean(projectRoot);
       let forcedWrite = Boolean(createPath && projectRoot);
+      const forcedOfficeTool = officeIntent?.tool ?? null;
 
       while (round < MAX_AGENT_ROUNDS) {
         if (signal.aborted) break;
@@ -1257,7 +1270,9 @@ export const useAppStore = create<AppState>((set, get) => ({
                 patchAssistantContent(
                   createPath
                     ? `Creating ${createPath}…`
-                    : "Using project tools…",
+                    : officeIntent
+                      ? `Creating ${officeIntent.path}…`
+                      : "Using project tools…",
                 );
               }
             },
@@ -1268,9 +1283,14 @@ export const useAppStore = create<AppState>((set, get) => ({
               toolChoice:
                 useNativeTools && forcedWrite && round === 0
                   ? { type: "function", function: { name: "write_file" } }
-                  : useNativeTools
-                    ? "auto"
-                    : undefined,
+                  : useNativeTools && forcedOfficeTool && round === 0
+                    ? {
+                        type: "function",
+                        function: { name: forcedOfficeTool },
+                      }
+                    : useNativeTools
+                      ? "auto"
+                      : undefined,
               onReasoningDelta: (piece) => {
                 apiReasoning += piece;
                 if (apiReasoning.trim()) {
@@ -1336,11 +1356,25 @@ export const useAppStore = create<AppState>((set, get) => ({
               ) {
                 agent.path = createPath;
               }
+              if (
+                officeIntent &&
+                agent.tool === officeIntent.tool &&
+                (!agent.path || agent.path === "." || agent.path === "file")
+              ) {
+                agent.path = officeIntent.path;
+              }
               pending.push({ agent, native: tc });
             }
           }
         } else if (projectRoot) {
           for (const agent of collectToolCalls(roundText)) {
+            if (
+              officeIntent &&
+              agent.tool === officeIntent.tool &&
+              (!agent.path || agent.path === ".")
+            ) {
+              agent.path = officeIntent.path;
+            }
             pending.push({ agent });
           }
         }
@@ -1378,6 +1412,25 @@ export const useAppStore = create<AppState>((set, get) => ({
             forcedWrite = useNativeTools;
             continue;
           }
+          if (officeIntent && projectRoot && round === 0) {
+            apiMessages.push({
+              role: "assistant",
+              content: cleanedRound || roundText || "",
+            });
+            apiMessages.push({
+              role: "user",
+              content:
+                officeIntent.tool === "write_xlsx"
+                  ? `不要把工具 JSON 贴给用户。请立刻调用函数 write_xlsx，path="${officeIntent.path}"，rows=完整二维数组。`
+                  : `不要把工具 JSON 贴给用户。请立刻调用函数 write_docx，path="${officeIntent.path}"，paragraphs=完整段落数组。`,
+            });
+            visibleContent = cleanedRound;
+            patchAssistantContent(
+              visibleContent || `Creating ${officeIntent.path}…`,
+            );
+            round += 1;
+            continue;
+          }
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent);
           break;
@@ -1401,7 +1454,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         } else {
           patchAssistantContent(
             visibleContent ||
-              (createPath ? `Creating ${createPath}…` : "Using project tools…"),
+              (createPath
+                ? `Creating ${createPath}…`
+                : officeIntent
+                  ? `Creating ${officeIntent.path}…`
+                  : "Using project tools…"),
           );
         }
 
@@ -1417,6 +1474,13 @@ export const useAppStore = create<AppState>((set, get) => ({
             item.agent.tool === "write_file" &&
             executed.ok &&
             (item.agent.path === createPath || !createPath)
+          ) {
+            wroteTarget = true;
+          }
+          if (
+            officeIntent &&
+            item.agent.tool === officeIntent.tool &&
+            executed.ok
           ) {
             wroteTarget = true;
           }
@@ -1457,6 +1521,11 @@ export const useAppStore = create<AppState>((set, get) => ({
             content: `文件 ${createPath} 已写入。请用一两句中文确认路径与作用，不要再调用工具。`,
           });
           forcedWrite = false;
+        } else if (officeIntent && wroteTarget) {
+          apiMessages.push({
+            role: "user",
+            content: `文件 ${officeIntent.path} 已写入磁盘。请用一两句中文确认路径，不要再调用工具，也不要把工具 JSON 贴给用户。`,
+          });
         }
 
         round += 1;
@@ -1495,6 +1564,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ loadingMain: false });
       }
     }
+    return "started";
   },
 
   askBranch: async (parentId, _parentContent, anchor, question) => {

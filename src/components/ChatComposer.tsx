@@ -22,12 +22,22 @@ export function ChatComposer({
 }: Props) {
   const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
   const resolvedPlaceholder = placeholder ?? t("main.placeholderEmpty");
 
-  const handleKeyDown = (e: KeyboardEvent) => {
+  const trySubmit = () => {
+    if (loading || composingRef.current || !value.trim()) return;
+    onSubmit();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME: Enter confirms composition — must not send (also avoids leftover glyphs).
+    if (e.nativeEvent.isComposing || e.keyCode === 229 || composingRef.current) {
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!loading && value.trim()) onSubmit();
+      trySubmit();
     }
   };
 
@@ -36,7 +46,7 @@ export function ChatComposer({
       className={`fn-composer${compact ? " is-compact" : " is-hero"}`}
       onSubmit={(e) => {
         e.preventDefault();
-        if (!loading && value.trim()) onSubmit();
+        trySubmit();
       }}
     >
       <textarea
@@ -44,6 +54,12 @@ export function ChatComposer({
         rows={compact ? 1 : 3}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+        }}
         onKeyDown={handleKeyDown}
         placeholder={resolvedPlaceholder}
         aria-label={compact ? t("composer.continue") : t("composer.newQuestion")}
@@ -76,7 +92,7 @@ export function ChatComposer({
             <button
               type="submit"
               className="fn-send-btn"
-              disabled={!value.trim()}
+              disabled={!value.trim() || loading}
               aria-label={t("common.send")}
             >
               <span>{t("common.send")}</span>
