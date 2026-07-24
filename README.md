@@ -147,6 +147,8 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `list_dir` | 列目录 |
 | `read_file` | 读文本（有大小上限） |
 | `write_file` | 覆盖写入 UTF-8 文本文件（源码、md、csv、json 等） |
+| `search_replace` | 精确替换已有文本文件中的片段（优先用于小改动） |
+| `apply_patch` | 对同一文件顺序应用多处 `search_replace` |
 | `write_docx` | 生成真实 Word `.docx`（`title` + `paragraphs`） |
 | `write_xlsx` | 生成真实 Excel `.xlsx`（`rows` 二维数组） |
 | `mkdir` | 创建目录 |
@@ -168,6 +170,8 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `GET` | `/fs/list?path=` | 列目录 |
 | `GET` | `/fs/read?path=` | 读文件 |
 | `POST` | `/fs/write` | `{ "path", "content" }` 文本 |
+| `POST` | `/fs/search_replace` | `{ "path", "old_string", "new_string", "replace_all?" }` |
+| `POST` | `/fs/apply_patch` | `{ "path", "edits": [{ "old_string", "new_string", "replace_all?" }] }` |
 | `POST` | `/fs/write_docx` | `{ "path", "title?", "paragraphs": string[] }` |
 | `POST` | `/fs/write_xlsx` | `{ "path", "sheet_name?", "rows": cell[][] }` |
 | `POST` | `/fs/mkdir` | `{ "path" }` |

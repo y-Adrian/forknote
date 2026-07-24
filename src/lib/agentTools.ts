@@ -1,9 +1,11 @@
 import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
 import {
+  applyPatch,
   listDir,
   mkdir as sidecarMkdir,
   readFile,
   searchFiles,
+  searchReplace,
   writeDocx,
   writeFile,
   writeXlsx,
@@ -16,12 +18,20 @@ export type AgentToolName =
   | "list_dir"
   | "read_file"
   | "write_file"
+  | "search_replace"
+  | "apply_patch"
   | "write_docx"
   | "write_xlsx"
   | "mkdir"
   | "search_files";
 
 export type SpreadsheetCell = string | number | boolean | null;
+
+export type TextEdit = {
+  old_string: string;
+  new_string: string;
+  replace_all?: boolean;
+};
 
 export type AgentToolCall = {
   tool: AgentToolName;
@@ -32,6 +42,10 @@ export type AgentToolCall = {
   paragraphs?: string[];
   sheet_name?: string;
   rows?: SpreadsheetCell[][];
+  old_string?: string;
+  new_string?: string;
+  replace_all?: boolean;
+  edits?: TextEdit[];
 };
 
 export type AgentActivity = {
@@ -51,6 +65,8 @@ const TOOL_NAMES = new Set<string>([
   "list_dir",
   "read_file",
   "write_file",
+  "search_replace",
+  "apply_patch",
   "write_docx",
   "write_xlsx",
   "mkdir",
@@ -116,7 +132,7 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     function: {
       name: "write_file",
       description:
-        "Create or overwrite a UTF-8 text file (source, markdown, csv, json, etc.). Parent directories are created automatically. content must be the FULL file body. Do NOT use this for .docx/.xlsx — use write_docx / write_xlsx instead.",
+        "Create or overwrite a UTF-8 text file (source, markdown, csv, json, etc.). Parent directories are created automatically. content must be the FULL file body. Prefer search_replace / apply_patch for small edits to existing files. Do NOT use this for .docx/.xlsx.",
       parameters: {
         type: "object",
         properties: {
@@ -130,6 +146,69 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
           },
         },
         required: ["path", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_replace",
+      description:
+        "Edit an existing UTF-8 text file by replacing an exact old_string with new_string (mainstream agent-style patch). old_string must match uniquely unless replace_all=true. Prefer this over write_file for small changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative file path to edit",
+          },
+          old_string: {
+            type: "string",
+            description:
+              "Exact text to find (copy from read_file; include enough context to be unique).",
+          },
+          new_string: {
+            type: "string",
+            description: "Replacement text (may be empty to delete).",
+          },
+          replace_all: {
+            type: "boolean",
+            description:
+              "If true, replace every occurrence. Default false (require unique match).",
+          },
+        },
+        required: ["path", "old_string", "new_string"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "apply_patch",
+      description:
+        "Apply several exact search/replace edits to one existing UTF-8 file in order. Use when multiple related changes are needed in the same file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative file path to edit",
+          },
+          edits: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                old_string: { type: "string" },
+                new_string: { type: "string" },
+                replace_all: { type: "boolean" },
+              },
+              required: ["old_string", "new_string"],
+            },
+            description: "Ordered list of exact replacements",
+          },
+        },
+        required: ["path", "edits"],
       },
     },
   },
@@ -219,13 +298,13 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 
 你已连接到本地项目：${projectRoot}
 
-你有原生函数工具：list_dir、read_file、mkdir、write_file、write_docx、write_xlsx、search_files。
-- 源码 / Markdown / CSV / JSON 等纯文本 → 必须用 write_file。
-- Word（.docx）→ 必须用 write_docx（传 title / paragraphs），不要用 write_file 塞二进制。
-- Excel（.xlsx）→ 必须用 write_xlsx（传 rows 二维数组），不要用 write_file。
+你有原生函数工具：list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files。
+- 新建纯文本 → write_file。
+- 修改已有文本文件 → 优先 search_replace（或 apply_patch 多处修改）；先 read_file 再精确替换，不要整文件重写除非必要。
+- Word（.docx）→ write_docx；Excel（.xlsx）→ write_xlsx。
 只把内容写在 Markdown 里不会写入磁盘。
-路径一律用相对项目根的相对路径（如 docs/notes.docx 或 data/a.xlsx），不要用 /Users/... 这类绝对路径。
-write_file 的 content 必须是完整文件内容。`;
+路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径。
+write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。`;
 }
 
 export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
@@ -286,6 +365,22 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
               })
             : [],
         )
+      : undefined,
+    old_string:
+      typeof args.old_string === "string" ? args.old_string : undefined,
+    new_string:
+      typeof args.new_string === "string" ? args.new_string : undefined,
+    replace_all:
+      typeof args.replace_all === "boolean" ? args.replace_all : undefined,
+    edits: Array.isArray(args.edits)
+      ? args.edits
+          .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+          .map((e) => ({
+            old_string: String(e.old_string ?? ""),
+            new_string: String(e.new_string ?? ""),
+            replace_all:
+              typeof e.replace_all === "boolean" ? e.replace_all : undefined,
+          }))
       : undefined,
   };
 }
@@ -720,7 +815,7 @@ export function stripToolCalls(text: string): string {
       const obj = JSON.parse(inner);
       if (looksLikeToolObject(obj)) return "";
     } catch {
-      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|list_dir|read_file|mkdir|search_files)"/.test(inner)) {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files)"/.test(inner)) {
         return "";
       }
     }
@@ -916,6 +1011,87 @@ export async function executeToolCall(
           resultText: `Wrote ${path} (${size} bytes)`,
           activity: { kind: "write", message: `Wrote ${path}` },
           change: { path, size },
+        };
+      }
+      case "search_replace": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: { kind: "error", message: "search_replace missing path" },
+          };
+        }
+        if (typeof call.old_string !== "string" || call.old_string.length === 0) {
+          return {
+            ok: false,
+            resultText: "Error: old_string is required",
+            activity: {
+              kind: "error",
+              message: "search_replace missing old_string",
+            },
+          };
+        }
+        if (typeof call.new_string !== "string") {
+          return {
+            ok: false,
+            resultText: "Error: new_string is required",
+            activity: {
+              kind: "error",
+              message: "search_replace missing new_string",
+            },
+          };
+        }
+        const { size, path: writtenPath, replacements } = await searchReplace(
+          path,
+          {
+            old_string: call.old_string,
+            new_string: call.new_string,
+            replace_all: call.replace_all,
+          },
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText: `Updated ${writtenPath} (${replacements} replacement(s), ${size} bytes)`,
+          activity: {
+            kind: "write",
+            message: `Patched ${writtenPath} ×${replacements}`,
+          },
+          change: { path: writtenPath, size },
+        };
+      }
+      case "apply_patch": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: { kind: "error", message: "apply_patch missing path" },
+          };
+        }
+        if (!call.edits || call.edits.length === 0) {
+          return {
+            ok: false,
+            resultText: "Error: edits must be a non-empty array",
+            activity: { kind: "error", message: "apply_patch missing edits" },
+          };
+        }
+        const { size, path: writtenPath, edits, replacements } = await applyPatch(
+          path,
+          call.edits,
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText: `Patched ${writtenPath} (${edits} edit(s), ${replacements} replacement(s), ${size} bytes)`,
+          activity: {
+            kind: "write",
+            message: `Patched ${writtenPath} (${edits} edits)`,
+          },
+          change: { path: writtenPath, size },
         };
       }
       case "write_docx": {

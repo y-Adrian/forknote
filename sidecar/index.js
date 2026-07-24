@@ -235,6 +235,154 @@ async function handleWrite(body) {
 }
 
 /**
+ * Exact string replace in a UTF-8 text file (agent-style edit, not full rewrite).
+ * Body: { path, old_string, new_string, replace_all?: boolean }
+ */
+async function handleSearchReplace(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  if (typeof body?.old_string !== "string") {
+    throw Object.assign(new Error("old_string must be a string"), {
+      status: 400,
+    });
+  }
+  if (typeof body?.new_string !== "string") {
+    throw Object.assign(new Error("new_string must be a string"), {
+      status: 400,
+    });
+  }
+  const oldStr = body.old_string;
+  const newStr = body.new_string;
+  if (oldStr.length === 0) {
+    throw Object.assign(new Error("old_string must not be empty"), {
+      status: 400,
+    });
+  }
+  if (oldStr === newStr) {
+    throw Object.assign(
+      new Error("old_string and new_string are identical — nothing to change"),
+      { status: 400 },
+    );
+  }
+  const replaceAll = Boolean(body?.replace_all);
+
+  const { resolved, relative } = resolveSafe(filePath);
+  let original;
+  try {
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) {
+      throw Object.assign(new Error("path is not a file"), { status: 400 });
+    }
+    if (stat.size > MAX_READ_BYTES) {
+      throw Object.assign(
+        new Error(
+          `File too large to edit in place (${stat.size} bytes; max ${MAX_READ_BYTES})`,
+        ),
+        { status: 413 },
+      );
+    }
+    original = await fs.readFile(resolved, "utf8");
+  } catch (e) {
+    if (/** @type {{ status?: number }} */ (e).status) throw e;
+    throw Object.assign(new Error(`File not found: ${relative}`), {
+      status: 404,
+    });
+  }
+
+  let occurrences = 0;
+  let idx = 0;
+  while ((idx = original.indexOf(oldStr, idx)) !== -1) {
+    occurrences += 1;
+    idx += oldStr.length;
+  }
+  if (occurrences === 0) {
+    throw Object.assign(
+      new Error(
+        `old_string not found in ${relative}. Read the file again and copy the exact text to replace (including whitespace).`,
+      ),
+      { status: 400 },
+    );
+  }
+  if (occurrences > 1 && !replaceAll) {
+    throw Object.assign(
+      new Error(
+        `old_string matched ${occurrences} times in ${relative}. Provide a larger unique snippet, or set replace_all=true.`,
+      ),
+      { status: 409 },
+    );
+  }
+
+  const next = replaceAll
+    ? original.split(oldStr).join(newStr)
+    : original.replace(oldStr, newStr);
+  const bytes = Buffer.byteLength(next, "utf8");
+  if (bytes > MAX_WRITE_BYTES) {
+    throw Object.assign(
+      new Error(`Result too large (${bytes} bytes; max ${MAX_WRITE_BYTES})`),
+      { status: 413 },
+    );
+  }
+  await fs.writeFile(resolved, next, "utf8");
+  return {
+    path: relative,
+    size: bytes,
+    written: true,
+    kind: "search_replace",
+    replacements: replaceAll ? occurrences : 1,
+  };
+}
+
+/**
+ * Apply multiple exact replacements to one UTF-8 file (sequential).
+ * Body: { path, edits: [{ old_string, new_string }, ...] }
+ */
+async function handleApplyPatch(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  if (!Array.isArray(body?.edits) || body.edits.length === 0) {
+    throw Object.assign(new Error("edits must be a non-empty array"), {
+      status: 400,
+    });
+  }
+  if (body.edits.length > 40) {
+    throw Object.assign(new Error("Too many edits (max 40)"), { status: 413 });
+  }
+
+  let total = 0;
+  let last = null;
+  for (let i = 0; i < body.edits.length; i++) {
+    const edit = body.edits[i];
+    try {
+      last = await handleSearchReplace({
+        path: filePath,
+        old_string: edit?.old_string,
+        new_string: edit?.new_string,
+        replace_all: Boolean(edit?.replace_all),
+      });
+      total += last.replacements || 1;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "edit failed";
+      throw Object.assign(
+        new Error(`edit[${i}] failed on ${filePath}: ${msg}`),
+        { status: /** @type {{ status?: number }} */ (e).status || 400 },
+      );
+    }
+  }
+  return {
+    path: last?.path ?? filePath,
+    size: last?.size ?? 0,
+    written: true,
+    kind: "apply_patch",
+    edits: body.edits.length,
+    replacements: total,
+  };
+}
+
+/**
  * Create a .docx from structured paragraphs (UTF-8 text → Office Open XML).
  * Body: { path, title?, paragraphs: string[] }
  */
@@ -513,6 +661,14 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/write") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleWrite(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/search_replace") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleSearchReplace(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/apply_patch") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleApplyPatch(body));
     }
     if (req.method === "POST" && pathname === "/fs/write_docx") {
       const body = await readBody(req);
