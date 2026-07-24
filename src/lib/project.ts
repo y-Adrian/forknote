@@ -1,6 +1,7 @@
 const STORAGE_KEY = "forknote-project";
 
 export type ProjectPrefs = {
+  /** Last path entered in the project dialog (UI hint only, not session binding). */
   lastPath: string;
   sidecarUrl: string;
 };

@@ -176,6 +176,8 @@ const en = {
   "projectSettings.title": "Project",
   "projectSettings.lead":
     "Local project tools talk to a sidecar on this machine. Run npm run sidecar, then open a project folder.",
+  "projectSettings.sessionHint":
+    "Each chat session binds its own project. Switching sessions restores that session's project (or none).",
   "projectSettings.sidecarUrl": "Sidecar URL",
   "projectSettings.connected": "Connected:",
   "projectSettings.none": "No project connected.",
@@ -421,6 +423,8 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.title": "项目",
   "projectSettings.lead":
     "本地项目工具通过本机 sidecar 通信。运行 npm run sidecar，然后打开项目文件夹。",
+  "projectSettings.sessionHint":
+    "每个会话独立绑定项目；切换会话时会恢复该会话的项目（或未绑定）。",
   "projectSettings.sidecarUrl": "Sidecar URL",
   "projectSettings.connected": "已连接：",
   "projectSettings.none": "尚未连接项目。",
