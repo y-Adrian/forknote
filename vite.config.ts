@@ -35,6 +35,9 @@ const PROXY_MISCONFIGURED = JSON.stringify({
   },
 });
 
+/** Default proxy origin; per-request router overrides from X-Forknote-Target. */
+const PROXY_DEFAULT_ORIGIN = "https://api.deepseek.com";
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -43,8 +46,10 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/openai": {
-        target: "http://127.0.0.1:5173",
+        // Must not point at the dev server — self-target breaks http-proxy routing (404).
+        target: PROXY_DEFAULT_ORIGIN,
         changeOrigin: true,
+        secure: true,
         bypass(req, res) {
           const root = resolveProxyRoot(targetHeader(req));
           if (root) return undefined;
@@ -64,8 +69,7 @@ export default defineConfig({
         },
         router: (req) => {
           const root = resolveProxyRoot(targetHeader(req));
-          if (!root) return "http://127.0.0.1:5173";
-          return originOf(root);
+          return root ? originOf(root) : PROXY_DEFAULT_ORIGIN;
         },
       },
       "/sidecar": {
