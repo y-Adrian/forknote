@@ -115,6 +115,62 @@ export async function writeFile(
   return parseJson(res);
 }
 
+export async function searchReplace(
+  relPath: string,
+  options: {
+    old_string: string;
+    new_string: string;
+    replace_all?: boolean;
+  },
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  path: string;
+  size: number;
+  written: boolean;
+  kind: string;
+  replacements: number;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/search_replace`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: relPath,
+      old_string: options.old_string,
+      new_string: options.new_string,
+      replace_all: options.replace_all,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function applyPatch(
+  relPath: string,
+  edits: Array<{
+    old_string: string;
+    new_string: string;
+    replace_all?: boolean;
+  }>,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  path: string;
+  size: number;
+  written: boolean;
+  kind: string;
+  edits: number;
+  replacements: number;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/apply_patch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: relPath, edits }),
+    signal,
+  });
+  return parseJson(res);
+}
+
 export async function writeDocx(
   relPath: string,
   options: { title?: string; paragraphs: string[] },
