@@ -126,15 +126,15 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ## 打开项目与 Agent 工具
 
-主对话可绑定本机目录，模型通过工具 **列出 / 读取 / 写入 / 搜索** 文件（路径限制在项目根内）。
+主对话可绑定本机目录，模型通过工具 **列出 / 读取 / 写入 / 搜索** 文件（路径限制在项目根内）。**每个聊天会话独立绑定项目**：切换会话会保存并恢复该会话自己的项目根（或未绑定）；打开 / 断开只影响当前会话。
 
 ### 步骤
 
 1. 运行 `npm run dev`（已包含 sidecar；也可分开跑 `npm run sidecar` + `npm run dev:web`）
 2. 侧栏或输入区上方点 **Open project** → 对话框 **Local project**
 3. **Sidecar URL** 默认 `/sidecar`（经 Vite 代理）；填项目 **绝对路径** → **Connect**
-4. 路径记在 `localStorage`；下次若 sidecar 已开可自动重连
-5. **Disconnect** 解除绑定
+4. 绑定写入当前会话（`forknote-sessions-v1` 的 `projectRoot`）；对话框草稿路径仍可记在 `forknote-project.lastPath`，但不驱动状态栏跨会话显示
+5. **Disconnect** 解除**当前会话**的绑定
 
 ### Agent 工作流（绑定项目后）
 
@@ -341,7 +341,7 @@ flowchart TD
 
 | 键 / 位置 | 内容 |
 |-----------|------|
-| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory |
+| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory、每会话 `projectRoot` |
 | `forknote-settings` 等 | API、代理、记忆 / mem0 开关 |
 | `forknote-theme` / `forknote-locale` | 主题与界面语言 |
 | 项目偏好 | 上次项目路径、sidecar URL |

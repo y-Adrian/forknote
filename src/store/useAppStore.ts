@@ -59,6 +59,10 @@ import {
 import { mergeReasoningChannels } from "../lib/reasoning";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
+  flushActiveSession,
+  patchSessionProject,
+} from "../lib/sessionProject";
+import {
   closeProject as sidecarCloseProject,
   openProject as sidecarOpenProject,
 } from "../lib/sidecar";
@@ -262,6 +266,42 @@ function patchActiveSessionMeta(
   );
 }
 
+/** Sync sidecar to a session's bound project; ignores stale session switches. */
+function restoreSessionProject(
+  get: () => AppState,
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  sessionId: NodeId,
+  projectRoot: string | null,
+  sidecarUrl: string,
+): void {
+  const apply = (root: string | null, projectError: string | null) => {
+    if (get().activeSessionId !== sessionId) return;
+    set({
+      projectRoot: root,
+      projectError,
+      agentActivity: [],
+      agentChanges: [],
+    });
+  };
+
+  if (!projectRoot) {
+    void sidecarCloseProject(sidecarUrl)
+      .catch(() => undefined)
+      .finally(() => apply(null, null));
+    return;
+  }
+
+  void sidecarOpenProject(projectRoot, sidecarUrl)
+    .then(({ root }) => apply(root, null))
+    .catch((e) =>
+      apply(null, e instanceof Error ? e.message : "Could not reach sidecar"),
+    );
+}
+
 function appendChild(
   nodes: BranchNode[],
   parentId: NodeId,
@@ -421,15 +461,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       store.sessions[0];
     const thread = active?.thread ? normalizeThread(active.thread) : null;
     const prefs = loadProjectPrefs();
+    const sessionProject = active?.projectRoot?.trim() || null;
     set({
       sessions: store.sessions,
       activeSessionId: active?.id ?? null,
       thread,
       sidecarUrl: prefs.sidecarUrl,
+      projectRoot: sessionProject,
+      projectError: null,
+      agentActivity: [],
+      agentChanges: [],
     });
-    // Best-effort reconnect to last project if sidecar is up
-    if (prefs.lastPath) {
-      void get().openProject(prefs.lastPath, true);
+    if (active?.id) {
+      restoreSessionProject(
+        get,
+        set,
+        active.id,
+        sessionProject,
+        prefs.sidecarUrl,
+      );
     }
   },
 
@@ -452,31 +502,59 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!quiet) set({ projectError: "Enter a project absolute path" });
       return;
     }
-    const { sidecarUrl } = get();
+    // Bind to the session that initiated Connect — ignore UI if user switches mid-await.
+    const { sidecarUrl, activeSessionId: bindingSessionId } = get();
     try {
       const { root } = await sidecarOpenProject(path, sidecarUrl);
       saveProjectPrefs({ lastPath: root, sidecarUrl });
-      set({
-        projectRoot: root,
-        projectError: null,
-        agentActivity: [],
-        agentChanges: [],
-      });
+      const { sessions, activeSessionId } = get();
+      const nextSessions = patchSessionProject(
+        sessions,
+        bindingSessionId,
+        root,
+      );
+      persistSessions(nextSessions, activeSessionId);
+      if (activeSessionId === bindingSessionId) {
+        set({
+          sessions: nextSessions,
+          projectRoot: root,
+          projectError: null,
+          agentActivity: [],
+          agentChanges: [],
+        });
+      } else {
+        set({ sessions: nextSessions });
+      }
     } catch (e) {
-      set({
-        projectRoot: null,
-        projectError: quiet
-          ? null
-          : e instanceof Error
-            ? e.message
-            : "Could not reach sidecar (run npm run sidecar first)",
-      });
+      const { sessions, activeSessionId } = get();
+      const nextSessions = patchSessionProject(
+        sessions,
+        bindingSessionId,
+        null,
+      );
+      persistSessions(nextSessions, activeSessionId);
+      if (activeSessionId === bindingSessionId) {
+        set({
+          sessions: nextSessions,
+          projectRoot: null,
+          projectError: quiet
+            ? null
+            : e instanceof Error
+              ? e.message
+              : "Could not reach sidecar (run npm run sidecar first)",
+        });
+      } else {
+        set({ sessions: nextSessions });
+      }
     }
   },
   disconnectProject: () => {
-    const { sidecarUrl } = get();
+    const { sidecarUrl, activeSessionId, sessions } = get();
     void sidecarCloseProject(sidecarUrl).catch(() => undefined);
+    const nextSessions = patchSessionProject(sessions, activeSessionId, null);
+    persistSessions(nextSessions, activeSessionId);
     set({
+      sessions: nextSessions,
       projectRoot: null,
       projectError: null,
       agentActivity: [],
@@ -980,8 +1058,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   createSession: () => {
     clearPendingAgentPlan(set);
     pendingAgentContinuation = null;
-    const { sessions, activeSessionId, thread } = get();
-    let nextSessions = upsertActiveSession(sessions, activeSessionId, thread);
+    const { sessions, activeSessionId, thread, projectRoot, sidecarUrl } =
+      get();
+    let nextSessions = flushActiveSession(
+      sessions,
+      activeSessionId,
+      thread,
+      projectRoot,
+      upsertActiveSession,
+    );
     const session = createEmptySession();
     nextSessions = [session, ...nextSessions];
     persistSessions(nextSessions, session.id);
@@ -995,20 +1080,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       archivePanelOpen: false,
       viewingArchiveId: null,
       archiveDraft: "",
+      projectRoot: null,
+      projectError: null,
+      agentActivity: [],
+      agentChanges: [],
     });
+    restoreSessionProject(get, set, session.id, null, sidecarUrl);
   },
 
   switchSession: (sessionId) => {
     clearPendingAgentPlan(set);
     pendingAgentContinuation = null;
-    const { sessions, activeSessionId, thread } = get();
+    const { sessions, activeSessionId, thread, projectRoot, sidecarUrl } =
+      get();
     if (sessionId === activeSessionId) return;
 
-    let nextSessions = upsertActiveSession(sessions, activeSessionId, thread);
+    const nextSessions = flushActiveSession(
+      sessions,
+      activeSessionId,
+      thread,
+      projectRoot,
+      upsertActiveSession,
+    );
     const target = nextSessions.find((s) => s.id === sessionId);
     if (!target) return;
 
     const nextThread = target.thread ? normalizeThread(target.thread) : null;
+    const targetProject = target.projectRoot?.trim() || null;
     persistSessions(nextSessions, sessionId);
     set({
       sessions: nextSessions,
@@ -1020,11 +1118,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       archivePanelOpen: false,
       viewingArchiveId: null,
       archiveDraft: "",
+      projectRoot: targetProject,
+      projectError: null,
+      agentActivity: [],
+      agentChanges: [],
     });
+    restoreSessionProject(get, set, sessionId, targetProject, sidecarUrl);
   },
 
   deleteSession: (sessionId) => {
-    const { sessions, activeSessionId, thread } = get();
+    const { sessions, activeSessionId, thread, projectRoot, sidecarUrl } =
+      get();
     if (sessions.length <= 1) {
       const session = createEmptySession();
       persistSessions([session], session.id);
@@ -1035,14 +1139,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         focus: { type: "root" },
         error: null,
         branchFloatStack: [],
+        projectRoot: null,
+        projectError: null,
+        agentActivity: [],
+        agentChanges: [],
       });
+      restoreSessionProject(get, set, session.id, null, sidecarUrl);
       return;
     }
 
     let nextSessions =
       sessionId === activeSessionId
         ? sessions
-        : upsertActiveSession(sessions, activeSessionId, thread);
+        : flushActiveSession(
+            sessions,
+            activeSessionId,
+            thread,
+            projectRoot,
+            upsertActiveSession,
+          );
     nextSessions = nextSessions.filter((s) => s.id !== sessionId);
 
     const nextActive =
@@ -1051,6 +1166,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         : activeSessionId;
     const active = nextSessions.find((s) => s.id === nextActive);
     const nextThread = active?.thread ? normalizeThread(active.thread) : null;
+    const nextProject = active?.projectRoot?.trim() || null;
 
     persistSessions(nextSessions, nextActive);
     set({
@@ -1059,11 +1175,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       thread: nextThread,
       focus: { type: "root" },
       error: null,
+      agentActivity: [],
+      agentChanges: [],
+      ...(sessionId === activeSessionId
+        ? {
+            projectRoot: nextProject,
+            projectError: null,
+          }
+        : {}),
     });
+    if (sessionId === activeSessionId && nextActive) {
+      restoreSessionProject(get, set, nextActive, nextProject, sidecarUrl);
+    }
   },
 
   clearAllSessions: () => {
     get().stopGeneration();
+    const { sidecarUrl } = get();
     const session = createEmptySession();
     persistSessions([session], session.id);
     set({
@@ -1078,7 +1206,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       archiveDraft: "",
       agentActivity: [],
       agentChanges: [],
+      projectRoot: null,
+      projectError: null,
     });
+    restoreSessionProject(get, set, session.id, null, sidecarUrl);
   },
 
   replaceSessionStore: (store) => {
@@ -1093,6 +1224,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessions[0].id;
     const active = sessions.find((s) => s.id === activeSessionId);
     const nextThread = active?.thread ? normalizeThread(active.thread) : null;
+    const nextProject = active?.projectRoot?.trim() || null;
+    const { sidecarUrl } = get();
     persistSessions(sessions, activeSessionId);
     set({
       sessions,
@@ -1106,7 +1239,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       archiveDraft: "",
       agentActivity: [],
       agentChanges: [],
+      projectRoot: nextProject,
+      projectError: null,
     });
+    if (activeSessionId) {
+      restoreSessionProject(get, set, activeSessionId, nextProject, sidecarUrl);
+    }
   },
 
   renameSession: (sessionId, title) => {

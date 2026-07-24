@@ -76,6 +76,8 @@ export interface ChatSession {
    * write target is available. Project-bound packs live on disk under memoryDir.
    */
   contextMemory?: ContextMemoryPack | null;
+  /** Bound local project absolute path for this session (via sidecar), or null */
+  projectRoot?: string | null;
 }
 
 /** LLM-compressed long-term context for agent recovery */

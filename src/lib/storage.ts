@@ -1,6 +1,8 @@
 import type { ChatSession, SessionStore, ThreadRoot } from "../types";
 import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
+import { loadProjectPrefs } from "./project";
+import { migrateGlobalProjectBinding } from "./sessionProject";
 import { firstUserMessage, normalizeThread } from "./thread";
 
 const STORE_KEY = "forknote-sessions-v1";
@@ -21,9 +23,14 @@ export function createEmptySession(): ChatSession {
     title: "Untitled",
     titleLocked: false,
     thread: null,
+    projectRoot: null,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function migrateLoadedStore(store: SessionStore): SessionStore {
+  return migrateGlobalProjectBinding(store, loadProjectPrefs().lastPath);
 }
 
 function loadLegacyThread(): ThreadRoot | null {
@@ -54,7 +61,7 @@ export function loadSessionStore(): SessionStore {
     if (raw) {
       const parsed = JSON.parse(raw) as SessionStore;
       if (parsed.sessions?.length) {
-        return {
+        const store = migrateLoadedStore({
           ...parsed,
           sessions: parsed.sessions.map((s) => {
             const thread = s.thread ? normalizeThread(s.thread) : null;
@@ -70,7 +77,8 @@ export function loadSessionStore(): SessionStore {
             }
             return base;
           }),
-        };
+        });
+        return store;
       }
     }
   } catch {
@@ -88,10 +96,10 @@ export function loadSessionStore(): SessionStore {
       updatedAt: Date.now(),
     };
     localStorage.removeItem(LEGACY_THREAD_KEY);
-    const store: SessionStore = {
+    const store: SessionStore = migrateLoadedStore({
       sessions: [session],
       activeSessionId: session.id,
-    };
+    });
     saveSessionStore(store);
     return store;
   }

@@ -694,6 +694,7 @@ function ProjectSettingsPanel() {
     <div className="ss-panel">
       <h3 className="ss-panel-title">{t("projectSettings.title")}</h3>
       <p className="ss-panel-lead">{t("projectSettings.lead")}</p>
+      <p className="hint local-hint">{t("projectSettings.sessionHint")}</p>
 
       <label>
         {t("projectSettings.sidecarUrl")}
