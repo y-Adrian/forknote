@@ -8,7 +8,11 @@ import { MarkdownBody } from "./MarkdownBody";
 export function ArchivePanel() {
   const { t } = useLocale();
   const open = useAppStore((s) => s.archivePanelOpen);
-  const loadingArchive = useAppStore((s) => s.loadingArchive);
+  const loadingArchive = useAppStore(
+    (s) =>
+      s.loadingArchiveSessionId != null &&
+      s.loadingArchiveSessionId === s.activeSessionId,
+  );
   const archiveDraft = useAppStore((s) => s.archiveDraft);
   const viewingArchiveId = useAppStore((s) => s.viewingArchiveId);
   const sessions = useAppStore((s) => s.sessions);

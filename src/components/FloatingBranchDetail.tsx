@@ -34,7 +34,11 @@ export function FloatingBranchDetail({
   const answerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const thread = useAppStore((s) => s.thread);
-  const loadingBranchId = useAppStore((s) => s.loadingBranchId);
+  const loadingBranchId = useAppStore((s) =>
+    s.activeSessionId
+      ? s.loadingBranchBySession[s.activeSessionId] ?? null
+      : null,
+  );
   const askBranch = useAppStore((s) => s.askBranch);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
   const [followUp, setFollowUp] = useState("");

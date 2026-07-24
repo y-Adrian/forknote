@@ -171,6 +171,8 @@ export interface ApiSettings {
 /** Agent plan awaiting user approval before tool execution. */
 export interface AgentPendingPlan {
   id: NodeId;
+  /** Session that owns this plan — UI must only show it for that session. */
+  sessionId: NodeId;
   userPrompt: string;
   planText: string;
   steps: string[];
