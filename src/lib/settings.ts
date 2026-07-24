@@ -3,50 +3,42 @@ import type { ApiSettings } from "../types";
 const STORAGE_KEY = "forknote-settings";
 const LEGACY_STORAGE_KEY = "branch-chat-settings";
 
-function envApiKey(): string {
-  return (import.meta.env.VITE_OPENAI_API_KEY || "").trim();
-}
-
-function envMem0ApiKey(): string {
-  return (import.meta.env.VITE_MEM0_API_KEY || "").trim();
-}
-
-const defaults: ApiSettings = {
-  baseUrl: (import.meta.env.VITE_OPENAI_BASE_URL || "https://api.deepseek.com").trim(),
-  apiKey: envApiKey(),
-  model: (import.meta.env.VITE_OPENAI_MODEL || "deepseek-chat").trim(),
+/** First-run defaults when nothing is saved in localStorage. */
+const APP_DEFAULTS: ApiSettings = {
+  baseUrl: "https://api.deepseek.com",
+  apiKey: "",
+  model: "deepseek-v4-flash",
   useProxy: true,
   contextMemoryEnabled: true,
   compressAfterArchive: false,
   memoryDir: ".forknote/memory",
   mem0Enabled: false,
-  mem0ApiKey: envMem0ApiKey(),
+  mem0ApiKey: "",
   mem0UserId: "",
-  mem0Host: (import.meta.env.VITE_MEM0_HOST || "").trim(),
+  mem0Host: "",
 };
 
-/** 合并默认值、环境变量与 localStorage；空 Key 不覆盖 .env */
+/** Merge saved settings with app defaults (Settings UI is the source of truth). */
 export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
-  const merged: ApiSettings = {
-    ...defaults,
+  return {
+    ...APP_DEFAULTS,
     ...raw,
-    baseUrl: (raw.baseUrl ?? defaults.baseUrl).trim(),
-    model: (raw.model ?? defaults.model).trim(),
-    apiKey: (raw.apiKey ?? defaults.apiKey).trim(),
-    useProxy: raw.useProxy ?? defaults.useProxy,
-    contextMemoryEnabled: raw.contextMemoryEnabled ?? defaults.contextMemoryEnabled,
-    compressAfterArchive: raw.compressAfterArchive ?? defaults.compressAfterArchive,
+    baseUrl: (raw.baseUrl ?? APP_DEFAULTS.baseUrl).trim(),
+    model: (raw.model ?? APP_DEFAULTS.model).trim(),
+    apiKey: (raw.apiKey ?? APP_DEFAULTS.apiKey).trim(),
+    useProxy: raw.useProxy ?? APP_DEFAULTS.useProxy,
+    contextMemoryEnabled:
+      raw.contextMemoryEnabled ?? APP_DEFAULTS.contextMemoryEnabled,
+    compressAfterArchive:
+      raw.compressAfterArchive ?? APP_DEFAULTS.compressAfterArchive,
     memoryDir:
-      (raw.memoryDir ?? defaults.memoryDir ?? ".forknote/memory").trim() ||
+      (raw.memoryDir ?? APP_DEFAULTS.memoryDir ?? ".forknote/memory").trim() ||
       ".forknote/memory",
-    mem0Enabled: raw.mem0Enabled ?? defaults.mem0Enabled,
-    mem0ApiKey: (raw.mem0ApiKey ?? defaults.mem0ApiKey ?? "").trim(),
-    mem0UserId: (raw.mem0UserId ?? defaults.mem0UserId ?? "").trim(),
-    mem0Host: (raw.mem0Host ?? defaults.mem0Host ?? "").trim(),
+    mem0Enabled: raw.mem0Enabled ?? APP_DEFAULTS.mem0Enabled,
+    mem0ApiKey: (raw.mem0ApiKey ?? APP_DEFAULTS.mem0ApiKey ?? "").trim(),
+    mem0UserId: (raw.mem0UserId ?? APP_DEFAULTS.mem0UserId ?? "").trim(),
+    mem0Host: (raw.mem0Host ?? APP_DEFAULTS.mem0Host ?? "").trim(),
   };
-  if (!merged.apiKey) merged.apiKey = envApiKey();
-  if (!merged.mem0ApiKey) merged.mem0ApiKey = envMem0ApiKey();
-  return merged;
 }
 
 function readStoredSettingsRaw(): string | null {
@@ -68,23 +60,12 @@ export function loadSettings(): ApiSettings {
     const parsed = JSON.parse(raw) as Partial<ApiSettings>;
     const fromStorage = { ...parsed };
 
-    // Drop stored key if blank
+    // Blank keys in storage mean "unset" — fall back to defaults, not stale blanks.
     if (!String(fromStorage.apiKey ?? "").trim()) {
       delete fromStorage.apiKey;
     }
     if (!String(fromStorage.mem0ApiKey ?? "").trim()) {
       delete fromStorage.mem0ApiKey;
-    }
-
-    // If localStorage points to a remote URL but .env now points local,
-    // and no key is stored, prefer the .env local endpoint.
-    const storedBase = String(fromStorage.baseUrl ?? "").trim();
-    const envBase = defaults.baseUrl;
-    const storedIsRemote = storedBase && !isLikelyLocalEndpoint(storedBase);
-    const envIsLocal = isLikelyLocalEndpoint(envBase);
-    if (storedIsRemote && envIsLocal && !fromStorage.apiKey) {
-      delete fromStorage.baseUrl;
-      delete fromStorage.model;
     }
 
     return normalizeApiSettings(fromStorage);

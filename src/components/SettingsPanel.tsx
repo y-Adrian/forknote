@@ -84,7 +84,7 @@ const PRESET_GROUPS: PresetGroup[] = [
       {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
-        model: "deepseek-chat",
+        model: "deepseek-v4-flash",
         hint: "Create an API key at platform.deepseek.com",
       },
       {
