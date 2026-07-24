@@ -3168,16 +3168,26 @@ mark.branch-highlight:hover {
   color: var(--ds-text);
 }
 
+/* One scroll only: modal sizes to content up to max-height; panel scrolls if needed. */
 .fn-session-api-modal.modal {
   width: min(600px, calc(100vw - 32px));
   max-width: min(600px, calc(100vw - 32px));
-  max-height: min(88vh, 720px);
+  max-height: min(92vh, 860px);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .fn-session-api-panel {
-  padding: 0 20px 20px;
-  overflow: auto;
-  max-height: calc(min(88vh, 720px) - 56px);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  padding: 16px 20px 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .fn-session-api-actions {
