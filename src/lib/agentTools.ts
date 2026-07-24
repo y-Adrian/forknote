@@ -307,30 +307,93 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
 export function buildPlanningPhaseSystem(locale: Locale): string {
   if (locale === "zh") {
     return `
-【计划阶段】用户已连接本地项目。此轮只输出执行计划，禁止调用任何工具，禁止声称已读写文件。
+【计划阶段】用户已连接本地项目。此轮禁止调用任何工具，禁止声称已读写文件。
 
-请严格使用以下 Markdown 结构：
+原则（必须遵守）：
+- 严格依据用户原话理解意图。
+- 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
+- 意图明确且需要改磁盘时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
+- 意图明确但无需工具时：直接回答，并写明「无需工具」。
+
+当需要计划时，使用以下结构：
 ## 计划
 1. 第一步…
-2. 第二步…
 
 ## 预期操作（可选）
-- list_dir / read_file / write_file 等：简要说明
-
-计划应具体、可执行。用户点击「批准并执行」后才会真正调用工具。`;
+- 仅列出真正需要的工具；无操作则写「无」`;
   }
   return `
-[Planning phase] A local project is connected. Output an execution plan ONLY — do not call tools or claim files were read/written.
+[Planning phase] A local project is connected. Do not call tools or claim files were read/written.
 
-Use this Markdown structure:
+Rules (must follow):
+- Ground everything in the user's words.
+- If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
+- If intent is clear and needs disk changes: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
+- If intent is clear but no tools are needed: answer directly and say no tools are required.
+
+When a plan is needed, use:
 ## Plan
 1. First step…
-2. Second step…
 
 ## Expected operations (optional)
-- list_dir / read_file / write_file etc.: brief note
+- Only required tools; write "none" if no tools`;
+}
 
-Be specific. Tools run only after the user clicks Approve & run.`;
+const TOOL_MENTION_RE =
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files)\b/i;
+
+/**
+ * True when the planning reply should show Approve & run.
+ * Clarifications / no-tools answers stay in chat only.
+ */
+export function planNeedsToolApproval(
+  planText: string,
+  steps: string[],
+): boolean {
+  const text = planText.trim();
+  if (!text) return false;
+
+  const lowered = text.toLowerCase();
+  if (
+    /无需工具|不需要工具|不要调用工具|无需调用|no tools(?:\s+needed|\s+required)?|tools?:\s*none|预期操作[：:]\s*无/.test(
+      lowered,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /意图不清|意图不明确|intent unclear|unclear intent|would you like|do you want|请告诉我|请选择|你想/.test(
+      lowered,
+    ) &&
+    !TOOL_MENTION_RE.test(text)
+  ) {
+    return false;
+  }
+
+  if (TOOL_MENTION_RE.test(text)) return true;
+  if (steps.some((s) => TOOL_MENTION_RE.test(s))) return true;
+
+  const questionLike =
+    /[?？]/.test(text) ||
+    (steps.length > 0 &&
+      steps.every((s) =>
+        /[?？]|还是|或者|\bor\b|something else|其他/i.test(s),
+      ));
+  if (questionLike && !TOOL_MENTION_RE.test(text)) return false;
+
+  if (
+    steps.length > 0 &&
+    steps.some((s) =>
+      /创建|写入|修改|删除|列出|阅读|搜索|create|write|edit|delete|list|read|search/i.test(
+        s,
+      ),
+    ) &&
+    !questionLike
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function parseAgentPlan(text: string): {
@@ -386,10 +449,22 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
 
 多轮工作流（一次用户消息内可循环多轮）：
-1. 收到用户任务 → 先调用工具（不要只写计划）
-2. 阅读 tool / 工具结果 返回的磁盘现状
-3. 未完成 → 继续调用下一批工具（例如先 list_dir 再 read_file 再 write_file）
-4. 全部做完 → 最后一轮用中文总结，不要再调工具`;
+1. 依据用户明确意图决定是否需要工具；意图不清则先回答/澄清，不要擅自改文件或列目录
+2. 需要工具时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行）
+3. 阅读 tool / 工具结果；若用户任务尚未完成 → 再调下一批必要工具
+4. 全部做完 → 最后一轮用中文总结，不要再调工具
+5. 禁止自行添加用户未要求的验证步骤（如写完再 list_dir、无必要的反复 read）`;
+}
+
+/** Extra planning hint when the user clearly asked to create one file. */
+export function buildMinimalCreatePlanHint(
+  createPath: string,
+  locale: Locale,
+): string {
+  if (locale === "zh") {
+    return `用户明确要求创建文件 "${createPath}"。计划中只需 write_file（path="${createPath}"）；不要添加 list_dir、read_file 或其他验证步骤。`;
+  }
+  return `The user clearly asked to create "${createPath}". The plan should only need write_file (path="${createPath}"); do not add list_dir, read_file, or other verification steps.`;
 }
 
 export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {

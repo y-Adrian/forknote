@@ -197,9 +197,9 @@ const en = {
 
   "agentPlan.aria": "Agent plan review",
   "agentPlan.kicker": "Agent plan",
-  "agentPlan.lead": "Review the plan below. Approve to run tools on your project, or cancel to discard this turn.",
+  "agentPlan.lead": "Review the plan below. Approve to run tools on your project, or cancel to dismiss the approval bar (your messages stay).",
   "agentPlan.approve": "Approve & run",
-  "agentPlan.cancel": "Cancel",
+  "agentPlan.cancel": "Dismiss",
   "agentPlan.running": "Running…",
 
   "about.title": "About",
@@ -469,9 +469,9 @@ const zh: Record<MessageKey, string> = {
 
   "agentPlan.aria": "Agent 计划审核",
   "agentPlan.kicker": "执行计划",
-  "agentPlan.lead": "请审阅下方计划。批准后将对你的项目执行工具；取消将丢弃本轮对话。",
+  "agentPlan.lead": "请审阅下方计划。批准后将对你的项目执行工具；关闭审批条不会删除你的提问与回复。",
   "agentPlan.approve": "批准并执行",
-  "agentPlan.cancel": "取消",
+  "agentPlan.cancel": "关闭",
   "agentPlan.running": "执行中…",
 
   "about.title": "关于",
