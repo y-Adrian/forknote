@@ -673,6 +673,20 @@ body {
   gap: 4px;
 }
 
+.ds-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 2px;
+}
+
+.ds-footer-bar .fn-settings-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .ds-footer-user {
   display: flex;
   align-items: center;
