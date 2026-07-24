@@ -79,8 +79,8 @@ const PRESET_GROUPS: PresetGroup[] = [
       {
         label: "SiliconFlow",
         baseUrl: "https://api.siliconflow.cn",
-        model: "deepseek-ai/DeepSeek-V3",
-        hint: "Create a key at cloud.siliconflow.cn; model IDs include org prefix",
+        model: "deepseek-ai/DeepSeek-V4-Flash",
+        hint: "cloud.siliconflow.cn — model IDs use org prefix (e.g. deepseek-ai/DeepSeek-V4-Flash)",
       },
     ],
   },
@@ -90,8 +90,8 @@ const PRESET_GROUPS: PresetGroup[] = [
       {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
-        model: "deepseek-chat",
-        hint: "platform.deepseek.com — use deepseek-chat or deepseek-v4-flash from the console",
+        model: "deepseek-v4-flash",
+        hint: "platform.deepseek.com — deepseek-v4-flash (default) or deepseek-v4-pro; legacy deepseek-chat still works",
       },
       {
         label: "Qwen",
