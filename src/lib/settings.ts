@@ -38,12 +38,39 @@ export function resolveAgentMaxRounds(settings: ApiSettings): number {
   );
 }
 
+/** Ensure Base URL has an explicit http(s) scheme (Settings UI / localStorage). */
+export function coerceApiBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+/** True when Base URL is an absolute http(s) URL with a host. */
+export function isValidApiBaseUrl(baseUrl: string): boolean {
+  const trimmed = baseUrl.trim();
+  if (!trimmed || trimmed.startsWith("/")) return false;
+  const coerced = coerceApiBaseUrl(trimmed);
+  if (!coerced) return false;
+  try {
+    const url = new URL(coerced);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname;
+    if (!host) return false;
+    if (host === "localhost") return true;
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return true;
+    return host.includes(".");
+  } catch {
+    return false;
+  }
+}
+
 /** Merge saved settings with app defaults (Settings UI is the source of truth). */
 export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
   return {
     ...APP_DEFAULTS,
     ...raw,
-    baseUrl: (raw.baseUrl ?? APP_DEFAULTS.baseUrl).trim(),
+    baseUrl: coerceApiBaseUrl((raw.baseUrl ?? APP_DEFAULTS.baseUrl).trim()),
     model: (raw.model ?? APP_DEFAULTS.model).trim(),
     apiKey: (raw.apiKey ?? APP_DEFAULTS.apiKey).trim(),
     useProxy: raw.useProxy ?? APP_DEFAULTS.useProxy,
@@ -110,14 +137,17 @@ export function saveSettings(settings: ApiSettings): void {
  * Volcengine Ark `/api/v3`.
  */
 export function normalizeBaseUrl(baseUrl: string): string {
-  const base = baseUrl.replace(/\/$/, "");
+  const base = baseUrl.trim().replace(/\/$/, "");
+  if (!base) return "";
   if (/\/v\d+$/i.test(base)) return base;
   return `${base}/v1`;
 }
 
 /** Full API root for Vite proxy target (includes /v1 or /vN). */
-export function proxyTargetFromBaseUrl(baseUrl: string): string {
-  return normalizeBaseUrl(baseUrl);
+export function proxyTargetFromBaseUrl(baseUrl: string): string | null {
+  const coerced = coerceApiBaseUrl(baseUrl);
+  if (!isValidApiBaseUrl(coerced)) return null;
+  return normalizeBaseUrl(coerced);
 }
 
 export function isLikelyLocalEndpoint(baseUrl: string): boolean {

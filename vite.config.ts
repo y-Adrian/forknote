@@ -1,12 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-
-/** Same rules as src/lib/settings.ts normalizeBaseUrl */
-function normalizeApiRoot(url: string): string {
-  const base = url.replace(/\/$/, "");
-  if (/\/v\d+$/i.test(base)) return base;
-  return `${base}/v1`;
-}
+import { isValidApiBaseUrl, normalizeBaseUrl } from "./src/lib/settings";
 
 function originOf(apiRoot: string): string {
   return new URL(apiRoot).origin;
@@ -26,8 +20,23 @@ function targetHeader(req: {
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
-/** Dev proxy fallback when X-Forknote-Target is missing (should not happen in normal use). */
-const PROXY_FALLBACK_ROOT = normalizeApiRoot("http://127.0.0.1:11434");
+/** Resolve X-Forknote-Target to an absolute API root, or null when invalid. */
+function resolveProxyRoot(header: string | undefined): string | null {
+  const trimmed = header?.trim();
+  if (!trimmed || !isValidApiBaseUrl(trimmed)) return null;
+  const root = normalizeBaseUrl(trimmed);
+  return root && isValidApiBaseUrl(root) ? root : null;
+}
+
+const PROXY_MISCONFIGURED = JSON.stringify({
+  error: {
+    message:
+      "Dev proxy: missing or invalid X-Forknote-Target. In Settings → API set Base URL (e.g. https://api.deepseek.com), keep “Use proxy” on, Save, then retry.",
+  },
+});
+
+/** Default proxy origin; per-request router overrides from X-Forknote-Target. */
+const PROXY_DEFAULT_ORIGIN = "https://api.deepseek.com";
 
 export default defineConfig({
   plugins: [react()],
@@ -37,22 +46,30 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/openai": {
-        // Origin-only target. Versioned path (/v1, /v3, /v4, …) is applied
-        // in configure — Vite rewrite(path) cannot read the target header.
-        target: originOf(PROXY_FALLBACK_ROOT),
+        // Must not point at the dev server — self-target breaks http-proxy routing (404).
+        target: PROXY_DEFAULT_ORIGIN,
         changeOrigin: true,
+        secure: true,
+        bypass(req, res) {
+          const root = resolveProxyRoot(targetHeader(req));
+          if (root) return undefined;
+          res.statusCode = 502;
+          res.setHeader("Content-Type", "application/json");
+          res.end(PROXY_MISCONFIGURED);
+          return false;
+        },
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq, req) => {
-            const header = targetHeader(req);
-            const root = normalizeApiRoot(header || PROXY_FALLBACK_ROOT);
+            const root = resolveProxyRoot(targetHeader(req));
+            if (!root) return;
             const prefix = pathPrefixOf(root);
             const rest = (req.url || "").replace(/^\/openai/, "") || "/";
             proxyReq.path = `${prefix}${rest}`;
           });
         },
         router: (req) => {
-          const header = targetHeader(req);
-          return originOf(normalizeApiRoot(header || PROXY_FALLBACK_ROOT));
+          const root = resolveProxyRoot(targetHeader(req));
+          return root ? originOf(root) : PROXY_DEFAULT_ORIGIN;
         },
       },
       "/sidecar": {
