@@ -13,6 +13,7 @@ import {
   multiStepFollowUpHint,
   multiStepSystemHint,
   parseAgentPlan,
+  planNeedsToolApproval,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
   nativeToolResultMessage,
@@ -713,12 +714,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const plan = get().agentPendingPlan;
     if (!plan) return;
     if (get().activeSessionId !== plan.sessionId) return;
+    // Dismiss the approval bar only — keep the user's message (and the plan
+    // reply in chat) so Cancel never erases their question.
     clearPendingAgentPlan(set, plan.sessionId);
-    rollbackMainTurn(get, set, {
-      userId: plan.userId,
-      assistantId: plan.assistantId,
-      sessionId: plan.sessionId,
-    });
     mainTurnsBySession.delete(plan.sessionId);
     setSessionMainLoading(set, plan.sessionId, false);
   },
@@ -2346,6 +2344,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         const displayPlan = planText || planRaw.trim();
         patchAssistantContent(displayPlan);
         apiMessages.push({ role: "assistant", content: displayPlan });
+
+        // Clarification / no-tools: stay in chat only — no Approve & run bar
+        if (!planNeedsToolApproval(displayPlan, steps)) {
+          mainTurnsBySession.delete(sessionId);
+          setSessionMainLoading(set, sessionId, false);
+          return "started";
+        }
 
         const approvedPlanText = displayPlan;
         pendingAgentContinuations.set(sessionId, async () => {

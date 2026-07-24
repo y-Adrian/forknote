@@ -307,42 +307,93 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
 export function buildPlanningPhaseSystem(locale: Locale): string {
   if (locale === "zh") {
     return `
-【计划阶段】用户已连接本地项目。此轮只输出执行计划，禁止调用任何工具，禁止声称已读写文件。
+【计划阶段】用户已连接本地项目。此轮禁止调用任何工具，禁止声称已读写文件。
 
 原则（必须遵守）：
-- 严格依据用户原话理解意图；意图不清或无需改磁盘时，说明「无需工具」并只给理解/回答，不要编造操作。
-- 计划只包含完成用户明确要求所必需的步骤；宁少勿多。
-- 禁止自行假设：不要添加用户未要求的验证步骤（例如写完再 list_dir、读回确认、搜索「看看有没有」等）。
-- 禁止把「最佳实践」或猜测的后续任务塞进计划。
+- 严格依据用户原话理解意图。
+- 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
+- 意图明确且需要改磁盘时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
+- 意图明确但无需工具时：直接回答，并写明「无需工具」。
 
-请严格使用以下 Markdown 结构：
+当需要计划时，使用以下结构：
 ## 计划
 1. 第一步…
-2. 第二步…
 
 ## 预期操作（可选）
-- 仅列出真正需要的工具（如 write_file / read_file）；无操作则写「无」
-
-用户点击「批准并执行」后才会真正调用工具。`;
+- 仅列出真正需要的工具；无操作则写「无」`;
   }
   return `
-[Planning phase] A local project is connected. Output an execution plan ONLY — do not call tools or claim files were read/written.
+[Planning phase] A local project is connected. Do not call tools or claim files were read/written.
 
 Rules (must follow):
-- Ground the plan in the user's words. If intent is unclear or no disk change is needed, say no tools are required and only explain/answer — do not invent actions.
-- Include only steps necessary for the stated request; prefer the minimal set.
-- Do not assume: no unverified follow-ups the user did not ask for (e.g. list_dir after a write, re-read to "confirm", exploratory search).
-- Do not pad the plan with "best practice" extras or guessed next tasks.
+- Ground everything in the user's words.
+- If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
+- If intent is clear and needs disk changes: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
+- If intent is clear but no tools are needed: answer directly and say no tools are required.
 
-Use this Markdown structure:
+When a plan is needed, use:
 ## Plan
 1. First step…
-2. Second step…
 
 ## Expected operations (optional)
-- Only tools that are actually required (e.g. write_file / read_file); write "none" if no tools
+- Only required tools; write "none" if no tools`;
+}
 
-Tools run only after the user clicks Approve & run.`;
+const TOOL_MENTION_RE =
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files)\b/i;
+
+/**
+ * True when the planning reply should show Approve & run.
+ * Clarifications / no-tools answers stay in chat only.
+ */
+export function planNeedsToolApproval(
+  planText: string,
+  steps: string[],
+): boolean {
+  const text = planText.trim();
+  if (!text) return false;
+
+  const lowered = text.toLowerCase();
+  if (
+    /无需工具|不需要工具|不要调用工具|无需调用|no tools(?:\s+needed|\s+required)?|tools?:\s*none|预期操作[：:]\s*无/.test(
+      lowered,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /意图不清|意图不明确|intent unclear|unclear intent|would you like|do you want|请告诉我|请选择|你想/.test(
+      lowered,
+    ) &&
+    !TOOL_MENTION_RE.test(text)
+  ) {
+    return false;
+  }
+
+  if (TOOL_MENTION_RE.test(text)) return true;
+  if (steps.some((s) => TOOL_MENTION_RE.test(s))) return true;
+
+  const questionLike =
+    /[?？]/.test(text) ||
+    (steps.length > 0 &&
+      steps.every((s) =>
+        /[?？]|还是|或者|\bor\b|something else|其他/i.test(s),
+      ));
+  if (questionLike && !TOOL_MENTION_RE.test(text)) return false;
+
+  if (
+    steps.length > 0 &&
+    steps.some((s) =>
+      /创建|写入|修改|删除|列出|阅读|搜索|create|write|edit|delete|list|read|search/i.test(
+        s,
+      ),
+    ) &&
+    !questionLike
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function parseAgentPlan(text: string): {
