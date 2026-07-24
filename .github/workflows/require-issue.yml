@@ -1,0 +1,72 @@
+# Fail PRs targeting `leading` unless they reference a GitHub Issue.
+# Authors: put `#N`, `Fixes #N`, `Closes #N`, or `Resolves #N` in the PR title/body,
+# or use GitHub's "Development" sidebar to link an issue.
+name: Require Linked Issue
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    branches: [leading]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  require-linked-issue:
+    name: Require linked Issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify PR links an Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          META=$(gh api "repos/${OWNER}/${REPO}/pulls/${PR_NUMBER}" --jq '{title: .title, body: (.body // "")}')
+          TITLE=$(printf '%s' "$META" | jq -r '.title')
+          BODY=$(printf '%s' "$META" | jq -r '.body')
+          COMBINED="${TITLE}"$'\n'"${BODY}"
+
+          # Closing keywords + bare #N in title/body (common PR template style).
+          if printf '%s' "$COMBINED" | grep -Eiq '(^|[^A-Za-z0-9_])((close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s*)?#([0-9]+)'; then
+            REF=$(printf '%s' "$COMBINED" | grep -Eio '(close[sd]?|fix(e[sd])?|resolve[sd]?)?\s*:?\s*#[0-9]+' | head -n1 || true)
+            echo "OK: found issue reference in PR title/body (${REF:-#N})."
+            exit 0
+          fi
+
+          # Linked via GitHub Development sidebar (closingIssuesReferences).
+          LINKED=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                pullRequest(number:$number) {
+                  closingIssuesReferences(first:20) {
+                    nodes { number title }
+                  }
+                }
+              }
+            }' -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER" \
+            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes | length')
+
+          if [ "${LINKED:-0}" -gt 0 ]; then
+            echo "OK: PR is linked to ${LINKED} issue(s) via Development sidebar."
+            exit 0
+          fi
+
+          cat <<'EOF'
+          ::error::未关联 Issue，无法通过检查。
+
+          合并到 leading 的 PR 必须关联至少一个 GitHub Issue。
+
+          请任选一种方式：
+          1. 在 PR 描述中填写：Related Issue: #编号
+          2. 使用关闭关键词：Fixes #编号 / Closes #编号 / Resolves #编号
+          3. 在 PR 右侧 Development 面板点击「Link an issue」关联 Issue
+
+          关联后编辑 PR 描述或推送新提交即可重新触发本检查。
+          EOF
+          exit 1
