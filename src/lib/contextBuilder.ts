@@ -91,11 +91,11 @@ ${HISTORY_CONTEXT_RULE}
 - 不要用工具去「找回」聊天历史；工具只用于读写本地项目文件。磁盘上的文件不能代替本会话已给出的对话记录。
 
 硬性规则：
-1. 用户已绑定本地项目。创建/修改文件时，必须使用函数工具（write_file / search_replace / apply_patch / write_docx / write_xlsx / mkdir / read_file / list_dir / search_files）。
-2. 只把代码贴在 Markdown 里不会写入磁盘。
-3. 路径用相对项目根的相对路径（如 soft/hello.c），不要用绝对路径。
-4. 新建纯文本用 write_file；修改已有文件优先 search_replace / apply_patch；Word 用 write_docx；Excel 用 write_xlsx。
-5. 需要了解项目时先 list_dir / read_file / search_files，再写入。
+1. 用户已绑定本地项目。查看目录/读文件/改文件时，必须使用函数工具（list_dir / read_file / search_files / write_file / search_replace / apply_patch / write_docx / write_xlsx / mkdir）。
+2. 不要猜测项目里有什么文件：先 list_dir（根目录 path="."），再 read_file。
+3. 只把代码贴在 Markdown 里不会写入磁盘。
+4. 路径用相对项目根的相对路径（如 soft/hello.c），不要用绝对路径。
+5. 新建纯文本用 write_file；修改已有文件优先 search_replace / apply_patch；Word 用 write_docx；Excel 用 write_xlsx。
 6. 工具执行完后再用简短总结；可用【N】分点，但不要用分点代替工具调用。`;
 
 export type ConversationOptions = {

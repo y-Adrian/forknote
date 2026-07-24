@@ -5,6 +5,7 @@ import {
   collectToolCalls,
   executeToolCall,
   inferCreateFilePath,
+  inferExploreIntent,
   inferOfficeCreateIntent,
   MAX_AGENT_ROUNDS,
   nativeToolResultMessage,
@@ -1222,6 +1223,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       const officeIntent = projectRoot
         ? inferOfficeCreateIntent(trimmed)
         : null;
+      // create / office win over explore — only force list/read/search when neither applies
+      const exploreIntent =
+        projectRoot && !createPath && !officeIntent
+          ? inferExploreIntent(trimmed)
+          : null;
+      const explorePlaceholder =
+        exploreIntent?.kind === "list"
+          ? `Listing ${exploreIntent.path}…`
+          : exploreIntent?.kind === "read"
+            ? `Reading ${exploreIntent.path}…`
+            : exploreIntent?.kind === "search"
+              ? `Searching ${exploreIntent.query}…`
+              : null;
       if (createPath) {
         apiMessages.push({
           role: "system",
@@ -1235,6 +1249,16 @@ export const useAppStore = create<AppState>((set, get) => ({
               ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
               : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落字符串数组（可加 title）。禁止只把 JSON 贴在 Markdown 里。禁止用 write_file。`,
         });
+      } else if (exploreIntent) {
+        apiMessages.push({
+          role: "system",
+          content:
+            exploreIntent.kind === "list"
+              ? `用户要求查看目录。你必须调用函数 list_dir：path 必须为 "${exploreIntent.path}"（相对项目根；根目录用 "."）。禁止凭猜测罗列文件。`
+              : exploreIntent.kind === "read"
+                ? `用户要求阅读文件。你必须调用函数 read_file：path 必须为 "${exploreIntent.path}"。禁止编造文件内容。`
+                : `用户要求搜索代码。你必须调用函数 search_files：query 必须为 "${exploreIntent.query}"。禁止凭记忆假装已搜索。`,
+        });
       }
 
       let visibleContent = "";
@@ -1242,6 +1266,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       let useNativeTools = Boolean(projectRoot);
       let forcedWrite = Boolean(createPath && projectRoot);
       const forcedOfficeTool = officeIntent?.tool ?? null;
+      const forcedExploreTool =
+        exploreIntent?.kind === "list"
+          ? "list_dir"
+          : exploreIntent?.kind === "read"
+            ? "read_file"
+            : exploreIntent?.kind === "search"
+              ? "search_files"
+              : null;
 
       while (round < MAX_AGENT_ROUNDS) {
         if (signal.aborted) break;
@@ -1272,7 +1304,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                     ? `Creating ${createPath}…`
                     : officeIntent
                       ? `Creating ${officeIntent.path}…`
-                      : "Using project tools…",
+                      : explorePlaceholder || "Using project tools…",
                 );
               }
             },
@@ -1288,9 +1320,14 @@ export const useAppStore = create<AppState>((set, get) => ({
                         type: "function",
                         function: { name: forcedOfficeTool },
                       }
-                    : useNativeTools
-                      ? "auto"
-                      : undefined,
+                    : useNativeTools && forcedExploreTool && round === 0
+                      ? {
+                          type: "function",
+                          function: { name: forcedExploreTool },
+                        }
+                      : useNativeTools
+                        ? "auto"
+                        : undefined,
               onReasoningDelta: (piece) => {
                 apiReasoning += piece;
                 if (apiReasoning.trim()) {
@@ -1363,6 +1400,27 @@ export const useAppStore = create<AppState>((set, get) => ({
               ) {
                 agent.path = officeIntent.path;
               }
+              if (
+                exploreIntent?.kind === "list" &&
+                agent.tool === "list_dir" &&
+                (!agent.path || agent.path === "file")
+              ) {
+                agent.path = exploreIntent.path;
+              }
+              if (
+                exploreIntent?.kind === "read" &&
+                agent.tool === "read_file" &&
+                (!agent.path || agent.path === "." || agent.path === "file")
+              ) {
+                agent.path = exploreIntent.path;
+              }
+              if (
+                exploreIntent?.kind === "search" &&
+                agent.tool === "search_files" &&
+                !agent.query?.trim()
+              ) {
+                agent.query = exploreIntent.query;
+              }
               pending.push({ agent, native: tc });
             }
           }
@@ -1374,6 +1432,27 @@ export const useAppStore = create<AppState>((set, get) => ({
               (!agent.path || agent.path === ".")
             ) {
               agent.path = officeIntent.path;
+            }
+            if (
+              exploreIntent?.kind === "list" &&
+              agent.tool === "list_dir" &&
+              (!agent.path || agent.path === "file")
+            ) {
+              agent.path = exploreIntent.path;
+            }
+            if (
+              exploreIntent?.kind === "read" &&
+              agent.tool === "read_file" &&
+              (!agent.path || agent.path === "." || agent.path === "file")
+            ) {
+              agent.path = exploreIntent.path;
+            }
+            if (
+              exploreIntent?.kind === "search" &&
+              agent.tool === "search_files" &&
+              !agent.query?.trim()
+            ) {
+              agent.query = exploreIntent.query;
             }
             pending.push({ agent });
           }
@@ -1431,6 +1510,27 @@ export const useAppStore = create<AppState>((set, get) => ({
             round += 1;
             continue;
           }
+          if (exploreIntent && projectRoot && round === 0) {
+            apiMessages.push({
+              role: "assistant",
+              content: cleanedRound || roundText || "",
+            });
+            apiMessages.push({
+              role: "user",
+              content:
+                exploreIntent.kind === "list"
+                  ? `请立刻调用 list_dir，path="${exploreIntent.path}"。不要凭猜测列目录。`
+                  : exploreIntent.kind === "read"
+                    ? `请立刻调用 read_file，path="${exploreIntent.path}"。不要编造文件内容。`
+                    : `请立刻调用 search_files，query="${exploreIntent.query}"。不要假装已搜索。`,
+            });
+            visibleContent = cleanedRound;
+            patchAssistantContent(
+              visibleContent || explorePlaceholder || "Using project tools…",
+            );
+            round += 1;
+            continue;
+          }
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent);
           break;
@@ -1458,7 +1558,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ? `Creating ${createPath}…`
                 : officeIntent
                   ? `Creating ${officeIntent.path}…`
-                  : "Using project tools…"),
+                  : explorePlaceholder || "Using project tools…"),
           );
         }
 

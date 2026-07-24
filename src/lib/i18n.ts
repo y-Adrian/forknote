@@ -263,10 +263,10 @@ const en = {
     "Memory saved on this note (bind a project to also write SUMMARY/TASKS/DECISIONS.md)",
   "main.placeholderEmpty": "Ask what you're researching…",
   "main.placeholderProject":
-    "Ask about the project, e.g. read package.json and add a note to the README…",
+    "Ask about the project — e.g. list the folder, read package.json, or edit the README…",
   "main.placeholderContinue": "Continue the main thread…",
   "main.placeholderContinueProject":
-    "Continue the main thread, or ask the assistant to read/write project files…",
+    "Continue the main thread, or ask to list/read/write project files…",
   "main.placeholderArchive": "Continue on the archive context…",
 
   "composer.hintHero":
@@ -485,10 +485,10 @@ const zh: Record<MessageKey, string> = {
     "记忆已保存在本笔记中（绑定项目后还会写入 SUMMARY/TASKS/DECISIONS.md）",
   "main.placeholderEmpty": "问你正在研究的问题…",
   "main.placeholderProject":
-    "询问项目，例如：读取 package.json 并在 README 加一段说明…",
+    "询问项目，例如：列出当前目录、读取 package.json、或修改 README…",
   "main.placeholderContinue": "继续主线对话…",
   "main.placeholderContinueProject":
-    "继续主线，或让助手读写项目文件…",
+    "继续主线，或让助手列出/读取/修改项目文件…",
   "main.placeholderArchive": "在归档上下文上继续…",
 
   "composer.hintHero": "在回答中拖选文字即可澄清 · Enter 发送",
