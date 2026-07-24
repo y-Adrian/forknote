@@ -77,6 +77,18 @@ export async function openProject(
   return parseJson(res);
 }
 
+/** Native OS folder dialog via sidecar. Cancel → cancelled: true. */
+export async function pickProjectFolder(
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+): Promise<{ cancelled: boolean; path: string | null }> {
+  const res = await fetch(`${base(sidecarUrl)}/project/pick-folder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  return parseJson(res);
+}
+
 export async function getProject(
   sidecarUrl = DEFAULT_SIDECAR_URL,
 ): Promise<{ root: string | null }> {

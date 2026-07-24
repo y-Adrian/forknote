@@ -185,6 +185,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | Method | Path | 说明 |
 |--------|------|------|
 | `POST` | `/project/open` | `{ "path": "/abs/project" }` |
+| `POST` | `/project/pick-folder` | 本机原生文件夹对话框 → `{ "path", "cancelled" }` |
 | `GET` | `/project` | 当前根目录 |
 | `POST` | `/project/close` | 解除绑定 |
 | `GET` | `/fs/list?path=` | 列目录 |
