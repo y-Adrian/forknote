@@ -268,56 +268,6 @@ function ApiPanel({
         />
       </label>
 
-      <hr className="ss-divider" />
-
-      <h4 className="ss-subhead">{t("api.mem0.title")}</h4>
-      <p className="ss-panel-lead">{t("api.mem0.lead")}</p>
-
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={Boolean(draft.mem0Enabled)}
-          onChange={(e) =>
-            setDraft({ ...draft, mem0Enabled: e.target.checked })
-          }
-        />
-        {t("api.mem0.enable")}
-      </label>
-
-      <label>
-        {t("api.mem0.apiKey")}
-        <input
-          type="password"
-          value={draft.mem0ApiKey ?? ""}
-          onChange={(e) => setDraft({ ...draft, mem0ApiKey: e.target.value })}
-          placeholder={t("common.optional")}
-          autoComplete="off"
-          disabled={!draft.mem0Enabled}
-        />
-      </label>
-
-      <label>
-        {t("api.mem0.userId")}
-        <input
-          value={draft.mem0UserId ?? ""}
-          onChange={(e) => setDraft({ ...draft, mem0UserId: e.target.value })}
-          placeholder={t("api.mem0.userIdPlaceholder")}
-          disabled={!draft.mem0Enabled}
-        />
-      </label>
-
-      <label>
-        {t("api.mem0.host")}
-        <input
-          value={draft.mem0Host ?? ""}
-          onChange={(e) => setDraft({ ...draft, mem0Host: e.target.value })}
-          placeholder="https://api.mem0.ai"
-          disabled={!draft.mem0Enabled}
-        />
-      </label>
-
-      <p className="hint local-hint">{t("api.mem0.privacy")}</p>
-
       <div className="modal-actions">
         <button type="button" className="btn ghost" onClick={onClose}>
           {t("common.cancel")}

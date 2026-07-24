@@ -275,13 +275,6 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/sidecar": sidecarProxy,
-      // Optional mem0 Platform proxy (avoids browser CORS in `npm run dev`)
-      "/mem0": {
-        target: "https://api.mem0.ai",
-        changeOrigin: true,
-        secure: true,
-        rewrite: (p) => p.replace(/^\/mem0/, "") || "/",
-      },
     },
   },
 });

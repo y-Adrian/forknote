@@ -54,7 +54,7 @@ curl -sS http://127.0.0.1:8787/health
 | 分类 | 内容 |
 |------|------|
 | **General** | 主题 Light / Dark / System；界面语言 English / 中文（模型回复语言跟随） |
-| **API** | 提供商预设、Base URL / Model / Key、开发代理；上下文记忆包与可选 mem0 |
+| **API** | 提供商预设、Base URL / Model / Key、开发代理；本地上下文记忆包 |
 | **Data** | 导出 / 导入笔记 JSON；清空本地笔记 |
 | **Project** | Sidecar URL、打开本地项目、Agent 工具轮数 / 计划批准 |
 | **About** | 产品说明 |
@@ -231,7 +231,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ---
 
-## 上下文记忆包（推荐本地优先）
+## 上下文记忆包（本地）
 
 目标流水线：
 
@@ -239,7 +239,6 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 聊天记录
   → LLM 压缩（Compress / 可选归档后自动）
   → SUMMARY.md + TASKS.md + DECISIONS.md
-  → （可选）mem0 云检索
   → 下次 askMain 自动注入 system 附加段
 ```
 
@@ -248,29 +247,12 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 1. 聊几轮后点输入区上方 **Compress context**（或 Settings → API 勾选 **Also compress after Archive**）
 2. **已绑定项目**：写入 `{memoryDir}/`（默认 `.forknote/memory/`）三份 Markdown  
    **未绑定项目**：草稿保存在当前笔记的 `contextMemory`（localStorage）
-3. 下次主对话发送前，会把相关摘录（本地关键词筛选）注入上下文；若开启 mem0，再叠加云端 search hits
+3. 下次主对话发送前，会把相关摘录（本地关键词筛选）注入上下文
 4. Settings → API → **Context memory pack**：注入开关、归档后压缩、记忆目录
 
 实现：`src/lib/contextMemory.ts` + `compressContext`（store）。压缩提示与归档类似，复用 `streamChat`。
 
-### 可选 mem0 云（叠加层）
-
-默认关闭。开启后：
-
-1. [mem0 Platform](https://app.mem0.ai) 拿 API Key → Settings → **Long-term (mem0 cloud)**
-2. 开发环境勾 **Use local proxy** 时走 Vite `/mem0`
-3. 写入：主对话成功后、Archive、以及 Compress 成功后的 pack 同步  
-4. 读取：与本地 MD 包一起注入
-
-薄 `fetch` 适配器（`src/lib/mem0.ts`），**未**依赖 `mem0ai` npm。失败只 `console.warn`。
-
-| 模式 | 数据去向 | 适合 |
-|------|----------|------|
-| **仅 MD 包（推荐）** | 项目磁盘或笔记草稿 | 本地优先 |
-| **MD + mem0** | 本地文件 + 云检索 | 跨设备长期记忆 |
-| **自托管 mem0 OSS** | sidecar 代理（未实现） | 完全自管向量库 |
-
-LangMem / 向量嵌入本地检索：未做；当前本地层是三文件 + 关键词摘录。后续可在 sidecar 加嵌入搜索。
+长期记忆统一走上述本地三文件；不使用云端 mem0。当前本地层是三文件 + 关键词摘录（非向量库）。
 
 ---
 
@@ -294,11 +276,9 @@ flowchart LR
   LLM[OpenAI-compatible API]
   SC[Sidecar :8787]
   FS[(Project files)]
-  Mem0[mem0 Platform optional]
 
   Lib -->|/openai| Vite --> LLM
   Lib -->|/sidecar| Vite --> SC --> FS
-  Lib -->|/mem0 optional| Vite --> Mem0
   Store -->|localStorage| LS[(Sessions / settings)]
 ```
 
@@ -312,17 +292,15 @@ flowchart TD
   resolve -->|archive| arch[Archive log + messages after cutoff]
   askMain --> mem[buildAgentMemoryAddendum]
   mem --> md[Local SUMMARY/TASKS/DECISIONS]
-  mem --> m0[Optional mem0 search]
   full --> build[buildConversationMessages]
   arch --> build
   md --> build
-  m0 --> build
   build --> plan{Project + require approval?}
   plan -->|yes| review[AgentPlanReview approve]
   plan -->|no| stream[streamChat + tools loop]
   review --> stream
   stream --> UI[MainPanel bubbles / ThinkingBlock]
-  stream --> persist[Persist thread + optional mem0 add]
+  stream --> persist[Persist thread]
 ```
 
 ### 分层与职责
@@ -334,7 +312,7 @@ flowchart TD
 | **领域 lib** | `src/lib/` | 上下文组装、裁决标注、流式协议、agent 工具、记忆、i18n、主题 |
 | **持久化** | `storage.ts` / `settings.ts` / `theme.ts` | `localStorage` 笔记、API、主题、语言 |
 | **Sidecar** | `sidecar/index.js` | 本机项目根绑定与受限 FS HTTP |
-| **代理** | `vite.config.ts` | 开发期 `/openai`（按 `X-Forknote-Target` 动态转发）、`/sidecar`、`/mem0` |
+| **代理** | `vite.config.ts` | 开发期 `/openai`（按 `X-Forknote-Target` 动态转发）、`/sidecar` |
 
 ### 核心模块
 
@@ -346,7 +324,6 @@ flowchart TD
 | 上下文 | `conversationContext.ts`、`contextBuilder.ts`、`points.ts` | live vs archive；system + 历史；裁决注入 |
 | 归档 | `archive.ts`、`ArchivePanel.tsx` | 开发日志草稿与面板 |
 | 记忆包 | `contextMemory.ts` | Compress → 三 MD；`askMain` 注入 |
-| mem0 | `mem0.ts` | 可选云检索 / 写入（默认关） |
 | 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
 | Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / …；多轮循环 + 计划批准门控 |
 | 计划审核 | `AgentPlanReview.tsx` | 绑定项目且开启批准时，工具执行前的计划审阅栏 |
@@ -358,7 +335,7 @@ flowchart TD
 | 键 / 位置 | 内容 |
 |-----------|------|
 | `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory、每会话 `projectRoot` / 可选 `api` 覆盖 |
-| `forknote-settings` 等 | API、代理、记忆 / mem0 开关 |
+| `forknote-settings` 等 | API、代理、本地记忆包开关 |
 | `forknote-theme` / `forknote-locale` | 主题与界面语言 |
 | 项目偏好 | 上次项目路径、sidecar URL |
 | 磁盘 `.forknote/memory/` | 绑定项目后的 SUMMARY / TASKS / DECISIONS |
@@ -381,7 +358,7 @@ vite.config.ts           # 开发代理
 
 ### 设计约束（现行）
 
-- **本地优先**：笔记默认不出浏览器；mem0 与云 API 为可选
+- **本地优先**：笔记与记忆包默认留在本机；LLM 云 API 为可选配置
 - **上下文显式**：Full thread / Archive / 记忆包注入路径可预期，避免「假记忆」
 - **工具隔离**：项目工具仅主对话；路径相对项目根，sidecar 防逃逸
 - **推理诚实**：无 `reasoning` / think 标签则不展示思考 UI

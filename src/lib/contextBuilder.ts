@@ -110,7 +110,7 @@ export type ConversationOptions = {
   activeArchive?: ArchiveSnapshot | null;
   /** UI / reply language; defaults to stored locale */
   locale?: Locale;
-  /** Optional mem0 (or other) memory block appended to the system prompt */
+  /** Optional memory block appended to the system prompt */
   memoryAddendum?: string | null;
 };
 

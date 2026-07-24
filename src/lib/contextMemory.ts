@@ -1,6 +1,6 @@
 /**
  * Context compression pack: chat → LLM summarize → SUMMARY / TASKS / DECISIONS.md
- * → optional mem0 → inject on next askMain.
+ * → inject on next askMain.
  *
  * Storage preference:
  * 1. Bound project via sidecar (`.forknote/` by default)
@@ -9,12 +9,6 @@
 
 import { buildArchiveSource, lastNonEmptyMessageId } from "./archive";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
-import {
-  formatMemoryAddendum,
-  isMem0Enabled,
-  rememberArchive,
-  searchMemories,
-} from "./mem0";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import { mkdir, readFile, writeFile } from "./sidecar";
 import type { ApiSettings, ChatSession, ContextMemoryPack, ThreadRoot } from "../types";
@@ -283,7 +277,7 @@ export function formatLocalMemoryAddendum(
 }
 
 /**
- * Combine local MD pack (+ keyword filter) with optional mem0 cloud hits.
+ * Load local MD pack (+ keyword filter) for askMain injection.
  */
 export async function buildAgentMemoryAddendum(options: {
   settings: ApiSettings;
@@ -294,52 +288,17 @@ export async function buildAgentMemoryAddendum(options: {
   signal?: AbortSignal;
 }): Promise<string | null> {
   const { settings, query, session, projectRoot, sidecarUrl, signal } = options;
-  const parts: string[] = [];
+  if (!isContextMemoryInjectEnabled(settings)) return null;
 
-  if (isContextMemoryInjectEnabled(settings)) {
-    const pack = await loadContextMemoryPack({
-      settings,
-      session,
-      projectRoot,
-      sidecarUrl,
-      signal,
-    });
-    if (pack) {
-      const local = formatLocalMemoryAddendum(pack, query);
-      if (local) parts.push(local);
-    }
-  }
-
-  if (isMem0Enabled(settings)) {
-    const hits = await searchMemories(settings, query, { signal });
-    const cloud = formatMemoryAddendum(hits);
-    if (cloud) parts.push(cloud);
-  }
-
-  if (parts.length === 0) return null;
-  return parts.join("\n\n");
-}
-
-/** After compression, optionally mirror pack into mem0 as durable facts. */
-export async function syncPackToMem0(
-  settings: ApiSettings,
-  pack: ContextMemoryPack,
-  meta?: { sessionId?: string | null },
-): Promise<void> {
-  if (!isMem0Enabled(settings)) return;
-  const blob = [
-    `# SUMMARY\n${pack.summary}`,
-    `# TASKS\n${pack.tasks}`,
-    `# DECISIONS\n${pack.decisions}`,
-  ]
-    .join("\n\n")
-    .trim();
-  if (!blob) return;
-  await rememberArchive(
+  const pack = await loadContextMemoryPack({
     settings,
-    { title: "ForkNote context pack", content: blob },
-    meta,
-  );
+    session,
+    projectRoot,
+    sidecarUrl,
+    signal,
+  });
+  if (!pack) return null;
+  return formatLocalMemoryAddendum(pack, query);
 }
 
 export function compressChatMessages(

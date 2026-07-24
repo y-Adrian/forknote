@@ -137,7 +137,7 @@ export interface ApiSettings {
   model: string;
   useProxy: boolean;
   /**
-   * Inject SUMMARY/TASKS/DECISIONS (and optional mem0 hits) into askMain.
+   * Inject SUMMARY/TASKS/DECISIONS from the local memory pack into askMain.
    * Default true — no-op until a pack exists.
    */
   contextMemoryEnabled?: boolean;
@@ -145,17 +145,6 @@ export interface ApiSettings {
   compressAfterArchive?: boolean;
   /** Project-relative folder for the three MD files. Default `.forknote/memory` */
   memoryDir?: string;
-  /**
-   * Optional mem0 Platform memory (cloud). Off by default.
-   * When enabled, main-turn / archive / compress snippets are sent to mem0 host.
-   */
-  mem0Enabled?: boolean;
-  /** mem0 Platform API key (https://app.mem0.ai) */
-  mem0ApiKey?: string;
-  /** Optional entity id; blank → stable browser-local id */
-  mem0UserId?: string;
-  /** Override Platform host; default https://api.mem0.ai */
-  mem0Host?: string;
   /**
    * Max model↔tool loop rounds per main-turn when a project is bound.
    * Task ends early when the model finishes without calling more tools.
