@@ -3454,16 +3454,9 @@ mark.branch-highlight:hover {
   flex-shrink: 0;
 }
 
-.fn-project-dot.is-on,
 .fn-project-chip.is-connected .fn-project-dot {
   background: #3d9a5f;
   box-shadow: 0 0 0 2px color-mix(in srgb, #3d9a5f 28%, transparent);
-}
-
-.fn-project-btn-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .fn-project-bar {

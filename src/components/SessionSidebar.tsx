@@ -17,7 +17,6 @@ interface Props {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onOpenSettings: () => void;
-  onOpenProject: () => void;
 }
 
 function ThemeToggleButton({
@@ -75,13 +74,11 @@ export function SessionSidebar({
   collapsed,
   onToggleCollapse,
   onOpenSettings,
-  onOpenProject,
 }: Props) {
   const { t } = useLocale();
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
-  const projectRoot = useAppStore((s) => s.projectRoot);
   const createSession = useAppStore((s) => s.createSession);
   const switchSession = useAppStore((s) => s.switchSession);
   const deleteSession = useAppStore((s) => s.deleteSession);
@@ -339,26 +336,6 @@ export function SessionSidebar({
           <div className="ds-sidebar-footer">
             <button
               type="button"
-              className="ds-footer-user fn-project-btn"
-              onClick={onOpenProject}
-              title={
-                projectRoot
-                  ? t("sidebar.projectTitle", { path: projectRoot })
-                  : t("sidebar.openProjectAria")
-              }
-              aria-label={
-                projectRoot
-                  ? t("sidebar.projectConnected")
-                  : t("sidebar.openProjectAria")
-              }
-            >
-              <span className={`fn-project-dot${projectRoot ? " is-on" : ""}`} aria-hidden />
-              <span className="fn-project-btn-label">
-                {projectRoot ? t("sidebar.project") : t("sidebar.openProject")}
-              </span>
-            </button>
-            <button
-              type="button"
               className="ds-footer-user fn-settings-btn"
               onClick={onOpenSettings}
               title={t("common.settings")}
@@ -406,26 +383,6 @@ export function SessionSidebar({
             </svg>
           </button>
           <ThemeToggleButton {...themeToggleProps} />
-          <button
-            type="button"
-            className="ds-icon-btn"
-            onClick={onOpenProject}
-            aria-label={t("sidebar.openProjectAria")}
-            title={
-              projectRoot
-                ? t("sidebar.projectTitle", { path: projectRoot })
-                : t("sidebar.openProjectAria")
-            }
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v7A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5v-9z"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
           <button
             type="button"
             className="ds-icon-btn"

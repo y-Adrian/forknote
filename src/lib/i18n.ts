@@ -232,11 +232,6 @@ const en = {
   "sidebar.more": "More",
   "sidebar.moreAria": "More actions",
   "sidebar.renameHint": "{title} (double-click to rename)",
-  "sidebar.openProject": "Open project",
-  "sidebar.openProjectAria": "Open local project",
-  "sidebar.project": "Project",
-  "sidebar.projectConnected": "Project connected",
-  "sidebar.projectTitle": "Project: {path}",
 
   "main.tagline": "Clarify as you read",
   "main.howTo": "How to use",
@@ -479,11 +474,6 @@ const zh: Record<MessageKey, string> = {
   "sidebar.more": "更多",
   "sidebar.moreAria": "更多操作",
   "sidebar.renameHint": "{title}（双击重命名）",
-  "sidebar.openProject": "打开项目",
-  "sidebar.openProjectAria": "打开本地项目",
-  "sidebar.project": "项目",
-  "sidebar.projectConnected": "已连接项目",
-  "sidebar.projectTitle": "项目：{path}",
 
   "main.tagline": "边读边澄清",
   "main.howTo": "使用方式",

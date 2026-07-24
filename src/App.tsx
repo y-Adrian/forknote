@@ -28,7 +28,6 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenProject={() => setProjectOpen(true)}
       />
       <MainPanel onOpenProject={() => setProjectOpen(true)} />
       <BranchFloatLayer />
