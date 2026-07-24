@@ -4,7 +4,9 @@ import {
   mkdir as sidecarMkdir,
   readFile,
   searchFiles,
+  writeDocx,
   writeFile,
+  writeXlsx,
   type SearchHit,
 } from "./sidecar";
 
@@ -14,14 +16,22 @@ export type AgentToolName =
   | "list_dir"
   | "read_file"
   | "write_file"
+  | "write_docx"
+  | "write_xlsx"
   | "mkdir"
   | "search_files";
+
+export type SpreadsheetCell = string | number | boolean | null;
 
 export type AgentToolCall = {
   tool: AgentToolName;
   path?: string;
   content?: string;
   query?: string;
+  title?: string;
+  paragraphs?: string[];
+  sheet_name?: string;
+  rows?: SpreadsheetCell[][];
 };
 
 export type AgentActivity = {
@@ -41,6 +51,8 @@ const TOOL_NAMES = new Set<string>([
   "list_dir",
   "read_file",
   "write_file",
+  "write_docx",
+  "write_xlsx",
   "mkdir",
   "search_files",
 ]);
@@ -104,7 +116,7 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     function: {
       name: "write_file",
       description:
-        "Create or overwrite a UTF-8 file. Parent directories are created automatically. content must be the FULL file body.",
+        "Create or overwrite a UTF-8 text file (source, markdown, csv, json, etc.). Parent directories are created automatically. content must be the FULL file body. Do NOT use this for .docx/.xlsx — use write_docx / write_xlsx instead.",
       parameters: {
         type: "object",
         properties: {
@@ -118,6 +130,66 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
           },
         },
         required: ["path", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_docx",
+      description:
+        "Create a Microsoft Word .docx file from a title and/or paragraphs. Generates a real Office document (not plain text). Path should end with .docx (added if missing).",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative path, e.g. docs/notes.docx",
+          },
+          title: {
+            type: "string",
+            description: "Optional document title (heading).",
+          },
+          paragraphs: {
+            type: "array",
+            items: { type: "string" },
+            description: "Body paragraphs in order (non-empty strings).",
+          },
+        },
+        required: ["path", "paragraphs"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_xlsx",
+      description:
+        "Create a Microsoft Excel .xlsx workbook from a 2D rows array (first row often headers). Generates a real spreadsheet. Path should end with .xlsx (added if missing).",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative path, e.g. data/report.xlsx",
+          },
+          sheet_name: {
+            type: "string",
+            description: 'Worksheet name, default "Sheet1".',
+          },
+          rows: {
+            type: "array",
+            items: {
+              type: "array",
+              items: {
+                type: ["string", "number", "boolean", "null"],
+              },
+            },
+            description:
+              "Rows of cells. Example: [[\"Name\",\"Score\"],[\"Ada\",95]]",
+          },
+        },
+        required: ["path", "rows"],
       },
     },
   },
@@ -147,10 +219,12 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 
 你已连接到本地项目：${projectRoot}
 
-你有原生函数工具：list_dir、read_file、mkdir、write_file、search_files。
-创建或修改文件时必须调用 write_file（或先 mkdir 再 write_file）。
-只把代码写在 Markdown 里不会写入磁盘。
-路径一律用相对项目根的相对路径（如 soft/hello.c 或 array_and_subarrays.cpp），不要用 /Users/... 这类绝对路径。
+你有原生函数工具：list_dir、read_file、mkdir、write_file、write_docx、write_xlsx、search_files。
+- 源码 / Markdown / CSV / JSON 等纯文本 → 必须用 write_file。
+- Word（.docx）→ 必须用 write_docx（传 title / paragraphs），不要用 write_file 塞二进制。
+- Excel（.xlsx）→ 必须用 write_xlsx（传 rows 二维数组），不要用 write_file。
+只把内容写在 Markdown 里不会写入磁盘。
+路径一律用相对项目根的相对路径（如 docs/notes.docx 或 data/a.xlsx），不要用 /Users/... 这类绝对路径。
 write_file 的 content 必须是完整文件内容。`;
 }
 
@@ -190,6 +264,29 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
     path: typeof args.path === "string" ? args.path : undefined,
     content: typeof args.content === "string" ? args.content : undefined,
     query: typeof args.query === "string" ? args.query : undefined,
+    title: typeof args.title === "string" ? args.title : undefined,
+    sheet_name:
+      typeof args.sheet_name === "string" ? args.sheet_name : undefined,
+    paragraphs: Array.isArray(args.paragraphs)
+      ? args.paragraphs.map((p) => String(p ?? ""))
+      : undefined,
+    rows: Array.isArray(args.rows)
+      ? (args.rows as SpreadsheetCell[][]).map((row) =>
+          Array.isArray(row)
+            ? row.map((cell) => {
+                if (
+                  cell === null ||
+                  typeof cell === "string" ||
+                  typeof cell === "number" ||
+                  typeof cell === "boolean"
+                ) {
+                  return cell;
+                }
+                return String(cell);
+              })
+            : [],
+        )
+      : undefined,
   };
 }
 
@@ -394,7 +491,243 @@ export function extractWriteIntentsFromMarkdown(text: string): AgentToolCall[] {
 export function collectToolCalls(text: string): AgentToolCall[] {
   const explicit = parseToolCalls(text);
   if (explicit.length > 0) return explicit;
+  const jsonStyle = parseJsonStyleToolCalls(text);
+  if (jsonStyle.length > 0) return jsonStyle;
   return extractWriteIntentsFromMarkdown(text);
+}
+
+/**
+ * Models (esp. local) often paste OpenAI-style tool JSON in Markdown instead of
+ * emitting native tool_calls, e.g.
+ * ```json
+ * {"name":"write_xlsx","arguments":{"path":"a.xlsx","rows":[...]}}
+ * ```
+ */
+export function parseJsonStyleToolCalls(text: string): AgentToolCall[] {
+  const calls: AgentToolCall[] = [];
+  const seen = new Set<string>();
+
+  const pushFromObject = (obj: unknown) => {
+    const call = agentToolCallFromUnknown(obj);
+    if (!call) return;
+    const key = `${call.tool}:${call.path ?? ""}:${JSON.stringify(call.rows ?? call.paragraphs ?? call.content ?? "")}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    calls.push(call);
+  };
+
+  // Fenced json / text blocks
+  const fenceRe = /```(?:json|javascript|js|txt)?\s*\n?([\s\S]*?)```/gi;
+  let fm: RegExpExecArray | null;
+  while ((fm = fenceRe.exec(text)) !== null) {
+    const body = (fm[1] ?? "").trim();
+    if (!body) continue;
+    tryParseJsonBlob(body, pushFromObject);
+  }
+
+  // Bare object(s) mentioning a known tool name
+  if (calls.length === 0) {
+    tryParseJsonBlob(text, pushFromObject);
+  }
+
+  return calls;
+}
+
+function tryParseJsonBlob(
+  raw: string,
+  onObj: (obj: unknown) => void,
+): void {
+  const trimmed = raw.trim();
+  if (!trimmed.includes("{")) return;
+
+  // Whole string
+  try {
+    onObj(JSON.parse(trimmed));
+    return;
+  } catch {
+    // continue
+  }
+
+  // Extract balanced {...} slices that look like tool calls
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] !== "{") continue;
+    const slice = extractBalancedJsonObject(trimmed, i);
+    if (!slice) continue;
+    try {
+      const obj = JSON.parse(slice);
+      if (looksLikeToolObject(obj)) onObj(obj);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function extractBalancedJsonObject(s: string, start: number): string | null {
+  if (s[start] !== "{") return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (ch === "\\") {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function looksLikeToolObject(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  if (typeof o.tool === "string" && TOOL_NAMES.has(o.tool)) return true;
+  if (typeof o.name === "string" && TOOL_NAMES.has(o.name)) return true;
+  if (
+    o.function &&
+    typeof o.function === "object" &&
+    typeof (o.function as { name?: unknown }).name === "string" &&
+    TOOL_NAMES.has(String((o.function as { name: string }).name))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function agentToolCallFromUnknown(obj: unknown): AgentToolCall | null {
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+
+  let name = "";
+  let args: Record<string, unknown> = {};
+
+  if (typeof o.tool === "string" && TOOL_NAMES.has(o.tool)) {
+    name = o.tool;
+    args = { ...o };
+    delete args.tool;
+  } else if (typeof o.name === "string" && TOOL_NAMES.has(o.name)) {
+    name = o.name;
+    const rawArgs = o.arguments ?? o.parameters ?? o.args;
+    if (typeof rawArgs === "string") {
+      try {
+        args = JSON.parse(rawArgs) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    } else if (rawArgs && typeof rawArgs === "object") {
+      args = rawArgs as Record<string, unknown>;
+    } else {
+      // name + path/rows sibling fields
+      args = { ...o };
+      delete args.name;
+    }
+  } else if (
+    o.function &&
+    typeof o.function === "object" &&
+    typeof (o.function as { name?: unknown }).name === "string"
+  ) {
+    const fn = o.function as { name: string; arguments?: unknown };
+    if (!TOOL_NAMES.has(fn.name)) return null;
+    name = fn.name;
+    if (typeof fn.arguments === "string") {
+      try {
+        args = JSON.parse(fn.arguments) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    } else if (fn.arguments && typeof fn.arguments === "object") {
+      args = fn.arguments as Record<string, unknown>;
+    }
+  } else {
+    return null;
+  }
+
+  // Reuse OpenAI arg shaping
+  const fake: ToolCall = {
+    id: "json-fallback",
+    type: "function",
+    function: { name, arguments: JSON.stringify(args) },
+  };
+  return agentCallFromOpenAI(fake);
+}
+
+/** Detect Word/Excel creation intents (dedicated tools, not write_file). */
+export function inferOfficeCreateIntent(
+  userText: string,
+): { tool: "write_docx" | "write_xlsx"; path: string } | null {
+  const t = userText.trim();
+  if (!t) return null;
+
+  const wantsCreate =
+    /创建|生成|写|新建|做|导出|保存|create|generate|write|make|export/i.test(t);
+
+  const xlsxNamed = t.match(
+    /[`"'“”]?([\w./\\-]+\.xlsx)[`"'“”]?/i,
+  );
+  if (xlsxNamed?.[1] && (wantsCreate || /excel|表格|xlsx|spreadsheet/i.test(t))) {
+    return { tool: "write_xlsx", path: normalizeRelPath(xlsxNamed[1]) };
+  }
+
+  const docxNamed = t.match(
+    /[`"'“”]?([\w./\\-]+\.docx)[`"'“”]?/i,
+  );
+  if (docxNamed?.[1] && (wantsCreate || /word|文档|docx/i.test(t))) {
+    return { tool: "write_docx", path: normalizeRelPath(docxNamed[1]) };
+  }
+
+  if (wantsCreate && /excel|表格|\.xlsx|spreadsheet|工作簿/i.test(t)) {
+    const base =
+      t.match(/(?:叫|名为|命名为|name(?:d)?\s*)[`"'“”]?([\w.-]+)[`"'“”]?/i)?.[1] ??
+      "workbook";
+    const path = /\.xlsx$/i.test(base) ? base : `${base}.xlsx`;
+    return { tool: "write_xlsx", path: normalizeRelPath(path) };
+  }
+
+  if (wantsCreate && /word|\.docx|文档(?!串)/i.test(t)) {
+    const base =
+      t.match(/(?:叫|名为|命名为|name(?:d)?\s*)[`"'“”]?([\w.-]+)[`"'“”]?/i)?.[1] ??
+      "document";
+    const path = /\.docx$/i.test(base) ? base : `${base}.docx`;
+    return { tool: "write_docx", path: normalizeRelPath(path) };
+  }
+
+  return null;
+}
+
+export function stripToolCalls(text: string): string {
+  let out = text
+    .replace(TOOL_CALL_RE, "")
+    .replace(TOOL_CONTENT_RE, "");
+
+  // Strip fenced JSON that is clearly a tool call dump
+  out = out.replace(/```(?:json|javascript|js|txt)?\s*\n?([\s\S]*?)```/gi, (block, body) => {
+    const inner = String(body ?? "").trim();
+    try {
+      const obj = JSON.parse(inner);
+      if (looksLikeToolObject(obj)) return "";
+    } catch {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|list_dir|read_file|mkdir|search_files)"/.test(inner)) {
+        return "";
+      }
+    }
+    return block;
+  });
+
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 const CREATE_FILE_EXT =
@@ -479,14 +812,6 @@ export function synthesizeWriteFromReply(
   const content = extractBestCodeFence(assistantText);
   if (!content?.trim()) return null;
   return { tool: "write_file", path, content };
-}
-
-export function stripToolCalls(text: string): string {
-  return text
-    .replace(TOOL_CALL_RE, "")
-    .replace(TOOL_CONTENT_RE, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 function formatHits(hits: SearchHit[]): string {
@@ -575,12 +900,87 @@ export async function executeToolCall(
             activity: { kind: "error", message: "write_file missing content" },
           };
         }
+        if (/\.(docx|xlsx)$/i.test(path)) {
+          return {
+            ok: false,
+            resultText: `Error: use ${path.toLowerCase().endsWith(".docx") ? "write_docx" : "write_xlsx"} for Office files, not write_file`,
+            activity: {
+              kind: "error",
+              message: "write_file cannot create Office binaries",
+            },
+          };
+        }
         const { size } = await writeFile(path, call.content, sidecarUrl, signal);
         return {
           ok: true,
           resultText: `Wrote ${path} (${size} bytes)`,
           activity: { kind: "write", message: `Wrote ${path}` },
           change: { path, size },
+        };
+      }
+      case "write_docx": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: { kind: "error", message: "write_docx missing path" },
+          };
+        }
+        const paragraphs = (call.paragraphs ?? [])
+          .map((p) => String(p ?? "").trim())
+          .filter(Boolean);
+        const title = call.title?.trim() || undefined;
+        if (!title && paragraphs.length === 0) {
+          return {
+            ok: false,
+            resultText: "Error: provide title and/or paragraphs",
+            activity: { kind: "error", message: "write_docx missing body" },
+          };
+        }
+        const { size, path: writtenPath } = await writeDocx(
+          path,
+          { title, paragraphs },
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText: `Wrote Word document ${writtenPath} (${size} bytes)`,
+          activity: { kind: "write", message: `Wrote ${writtenPath}` },
+          change: { path: writtenPath, size },
+        };
+      }
+      case "write_xlsx": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: { kind: "error", message: "write_xlsx missing path" },
+          };
+        }
+        if (!call.rows || call.rows.length === 0) {
+          return {
+            ok: false,
+            resultText: "Error: rows must be a non-empty 2D array",
+            activity: { kind: "error", message: "write_xlsx missing rows" },
+          };
+        }
+        const { size, path: writtenPath, rows } = await writeXlsx(
+          path,
+          {
+            sheet_name: call.sheet_name,
+            rows: call.rows,
+          },
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText: `Wrote Excel workbook ${writtenPath} (${rows} rows, ${size} bytes)`,
+          activity: { kind: "write", message: `Wrote ${writtenPath}` },
+          change: { path: writtenPath, size },
         };
       }
       case "search_files": {

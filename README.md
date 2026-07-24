@@ -146,7 +146,10 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 |------|------|
 | `list_dir` | 列目录 |
 | `read_file` | 读文本（有大小上限） |
-| `write_file` | 覆盖写入整文件 |
+| `write_file` | 覆盖写入 UTF-8 文本文件（源码、md、csv、json 等） |
+| `write_docx` | 生成真实 Word `.docx`（`title` + `paragraphs`） |
+| `write_xlsx` | 生成真实 Excel `.xlsx`（`rows` 二维数组） |
+| `mkdir` | 创建目录 |
 | `search_files` | 简单全文搜索 |
 
 一轮内最多约 **8** 轮工具往返。活动日志与 **Changes this turn** 显示本轮读/写过的路径；可 **Clear log**。
@@ -164,7 +167,9 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `POST` | `/project/close` | 解除绑定 |
 | `GET` | `/fs/list?path=` | 列目录 |
 | `GET` | `/fs/read?path=` | 读文件 |
-| `POST` | `/fs/write` | `{ "path", "content" }` |
+| `POST` | `/fs/write` | `{ "path", "content" }` 文本 |
+| `POST` | `/fs/write_docx` | `{ "path", "title?", "paragraphs": string[] }` |
+| `POST` | `/fs/write_xlsx` | `{ "path", "sheet_name?", "rows": cell[][] }` |
 | `POST` | `/fs/mkdir` | `{ "path" }` |
 | `POST` | `/fs/search` | `{ "query", "path?" }` |
 | `GET` | `/health` | 探活 |

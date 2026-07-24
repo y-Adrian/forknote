@@ -47,6 +47,9 @@ export function MainPanel({ onOpenProject }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSentPromptRef = useRef("");
+  /** Ignore composer onChange briefly after send so IME/composition can't reinsert text. */
+  const suppressComposerChangeRef = useRef(false);
+  const suppressComposerTimerRef = useRef<number | null>(null);
   const prevLoadingArchiveRef = useRef(false);
   const prevArchiveCountRef = useRef(0);
   const modeNoticeTimerRef = useRef<number | null>(null);
@@ -88,6 +91,35 @@ export function MainPanel({ onOpenProject }: Props) {
     prevArchiveCountRef.current = session?.archives?.length ?? 0;
     prevLoadingArchiveRef.current = false;
   }, [activeSessionId, closeAllBranchFloats]);
+
+  useEffect(() => {
+    return () => {
+      if (suppressComposerTimerRef.current) {
+        window.clearTimeout(suppressComposerTimerRef.current);
+      }
+      if (modeNoticeTimerRef.current) {
+        window.clearTimeout(modeNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const setComposerValue = (value: string) => {
+    if (suppressComposerChangeRef.current) return;
+    setInput(value);
+  };
+
+  /** Clear input and briefly ignore IME/composition onChange that would reinsert text. */
+  const clearComposerForSend = () => {
+    suppressComposerChangeRef.current = true;
+    setInput("");
+    if (suppressComposerTimerRef.current) {
+      window.clearTimeout(suppressComposerTimerRef.current);
+    }
+    suppressComposerTimerRef.current = window.setTimeout(() => {
+      suppressComposerChangeRef.current = false;
+      suppressComposerTimerRef.current = null;
+    }, 200);
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -182,17 +214,17 @@ export function MainPanel({ onOpenProject }: Props) {
     if (useAppStore.getState().loadingArchive) return;
     if (useAppStore.getState().loadingCompress) return;
     lastSentPromptRef.current = saved;
-    setInput("");
+    clearComposerForSend();
     void (async () => {
-      const pending = askMain(saved);
-      // askMain runs sync until first await; early exits (auth) leave loadingMain false
-      await Promise.resolve();
-      if (!useAppStore.getState().loadingMain) {
-        // Auth failure or rejected while already loading — restore draft
-        if (lastSentPromptRef.current === saved) setInput(saved);
-        return;
+      const outcome = await askMain(saved);
+      // Only put text back when the turn never ran / was rolled back before streaming
+      if (
+        (outcome === "rejected" || outcome === "rolled_back") &&
+        lastSentPromptRef.current === saved
+      ) {
+        suppressComposerChangeRef.current = false;
+        setInput(saved);
       }
-      await pending;
     })();
   };
 
@@ -238,7 +270,7 @@ export function MainPanel({ onOpenProject }: Props) {
 
           <ChatComposer
             value={input}
-            onChange={setInput}
+            onChange={setComposerValue}
             onSubmit={submit}
             onStop={handleStop}
             loading={composerBusy}
@@ -464,7 +496,7 @@ export function MainPanel({ onOpenProject }: Props) {
 
             <ChatComposer
               value={input}
-              onChange={setInput}
+              onChange={setComposerValue}
               onSubmit={submit}
               onStop={handleStop}
               loading={composerBusy}
