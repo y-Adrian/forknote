@@ -90,8 +90,8 @@ const PRESET_GROUPS: PresetGroup[] = [
       {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
-        model: "deepseek-v4-flash",
-        hint: "Create an API key at platform.deepseek.com",
+        model: "deepseek-chat",
+        hint: "platform.deepseek.com — use deepseek-chat or deepseek-v4-flash from the console",
       },
       {
         label: "Qwen",

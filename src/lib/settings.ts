@@ -25,6 +25,28 @@ const APP_DEFAULTS: ApiSettings = {
   agentRequireApproval: true,
 };
 
+/** Model IDs that 404 on api.deepseek.com (bad preset / old APP_DEFAULTS). */
+const STALE_DEEPSEEK_OFFICIAL_MODELS = new Set(["deepseek-v4-flash"]);
+
+function isDeepSeekOfficialBaseUrl(baseUrl: string): boolean {
+  return /api\.deepseek\.com/i.test(baseUrl.trim());
+}
+
+/** Rewrite known-invalid DeepSeek official model IDs saved from old presets/defaults. */
+export function migrateStaleApiSettings(
+  raw: Partial<ApiSettings>,
+): Partial<ApiSettings> {
+  const model = (raw.model ?? "").trim();
+  const baseUrl = (raw.baseUrl ?? "").trim();
+  if (
+    STALE_DEEPSEEK_OFFICIAL_MODELS.has(model) &&
+    isDeepSeekOfficialBaseUrl(baseUrl)
+  ) {
+    return { ...raw, model: "deepseek-chat" };
+  }
+  return raw;
+}
+
 export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
   return settings.agentRequireApproval ?? true;
 }
@@ -93,7 +115,12 @@ export function loadSettings(): ApiSettings {
       delete fromStorage.mem0ApiKey;
     }
 
-    return normalizeApiSettings(fromStorage);
+    const migrated = migrateStaleApiSettings(fromStorage);
+    const normalized = normalizeApiSettings(migrated);
+    if ((fromStorage.model ?? "").trim() !== (migrated.model ?? "").trim()) {
+      saveSettings(normalized);
+    }
+    return normalized;
   } catch {
     return normalizeApiSettings({});
   }

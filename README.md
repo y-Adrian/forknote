@@ -204,7 +204,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 |------|------|
 | Base URL | 如 `https://api.deepseek.com` 或本机 `http://127.0.0.1:11434` |
 | API Key | 云端必填；本机 Ollama 通常留空 |
-| 模型 | 如 `deepseek-v4-flash`、`qwen2.5-coder:7b` |
+| 模型 | 如 `deepseek-chat`、`qwen2.5-coder:7b` |
 | 本地代理 | 开发时建议开启，请求经 `/openai` 转发到你填写的 Base URL |
 
 配置保存在浏览器 `localStorage`（`forknote-settings`），换浏览器或清缓存后需重新填写。
