@@ -115,14 +115,16 @@ const en = {
 
   "api.title": "API",
   "api.lead":
-    "Any OpenAI-compatible endpoint works (cloud or local). For cloud providers, create an API Key in their console; local setups usually leave it blank. In development, enable “Use local proxy” so requests go through /openai to the Base URL you set.",
+    "Default for sessions without custom API settings. Each note can open Session API settings from the composer to override Base URL, key, model, or proxy.",
   "api.group.cloud": "Cloud / aggregators",
   "api.group.china": "China providers",
   "api.group.local": "Local",
   "api.baseUrl": "Base URL",
   "api.apiKey": "API Key (usually blank for local)",
-  "api.model": "Model",
+  "api.model": "Default model",
   "api.modelPlaceholder": "Must match a locally loaded model name",
+  "api.modelHint":
+    "Used by new notes and any note that has not set its own API settings. Override per note from the composer.",
   "api.useProxy":
     "Use local proxy in development (recommended for local models)",
   "api.hint":
@@ -130,7 +132,8 @@ const en = {
   "api.missingBaseUrl": "Set Base URL in settings (or pick a preset).",
   "api.invalidBaseUrl":
     "Base URL must be a full http(s) URL (e.g. https://api.deepseek.com). Pick a preset or include https://, then Save.",
-  "api.missingModel": "Set Model in settings (must match your provider or local server).",
+  "api.missingModel":
+    "Set a model in Session API settings or a default in Settings → API.",
   "api.missingKey":
     "Add an API Key in settings for your configured endpoint, or switch to a local model such as Ollama.",
   "api.memoryPack.title": "Context memory pack",
@@ -232,6 +235,7 @@ const en = {
   "sidebar.more": "More",
   "sidebar.moreAria": "More actions",
   "sidebar.renameHint": "{title} (double-click to rename)",
+  "sidebar.sessionHint": "{title} · {model} (double-click to rename)",
 
   "main.tagline": "Clarify as you read",
   "main.howTo": "How to use",
@@ -291,6 +295,29 @@ const en = {
   "composer.newQuestion": "New question",
   "composer.continue": "Continue main thread",
   "composer.stopAria": "Stop generating",
+  "composer.model": "Model",
+  "composer.modelPlaceholder": "model id",
+  "composer.modelTitle": "Model for this note (overrides Settings default)",
+  "composer.modelAria": "Model for this note",
+
+  "sessionApi.button": "API",
+  "sessionApi.buttonAria": "API settings for this note",
+  "sessionApi.buttonTitleDefault":
+    "Using system API defaults — click to customize for this note",
+  "sessionApi.buttonTitleCustom":
+    "This note has custom API settings — click to edit",
+  "sessionApi.noModel": "Set model",
+  "sessionApi.title": "Session API settings",
+  "sessionApi.lead":
+    "These apply to this note only. System Settings → API remain the defaults for notes without custom settings.",
+  "sessionApi.inheritHint":
+    "Showing inherited system values. Edit and Save to create overrides for this note.",
+  "sessionApi.customHint":
+    "This note has custom API settings. Reset clears overrides and inherits system defaults again.",
+  "sessionApi.model": "Model",
+  "sessionApi.modelHint":
+    "Only fields that differ from System Settings are stored as overrides.",
+  "sessionApi.reset": "Reset to defaults",
 
   "archive.title": "Development log archive",
   "archive.hintLoading":
@@ -360,21 +387,24 @@ const zh: Record<MessageKey, string> = {
 
   "api.title": "API",
   "api.lead":
-    "任何 OpenAI 兼容端点均可（云端或本地）。云端请在控制台创建 API Key；本地通常留空。开发环境下建议开启「使用本地代理」，请求经 /openai 转发到你填写的 Base URL。",
+    "未单独配置会话 API 时使用的默认设置。每条笔记可在输入框旁打开「会话 API 设置」覆盖 Base URL、密钥、模型或代理。",
   "api.group.cloud": "云端 / 聚合",
   "api.group.china": "国内服务商",
   "api.group.local": "本地",
   "api.baseUrl": "Base URL",
   "api.apiKey": "API Key（本地通常留空）",
-  "api.model": "模型",
+  "api.model": "默认模型",
   "api.modelPlaceholder": "须与本地已加载的模型名一致",
+  "api.modelHint":
+    "用于新建笔记，以及尚未单独设置 API 的笔记。可在输入框旁按笔记覆盖。",
   "api.useProxy": "开发环境使用本地代理（推荐用于本地模型）",
   "api.hint":
     "请先启动本地服务。Ollama 可运行 ollama list；模型名须与列表一致（如 qwen2.5:7b）。",
   "api.missingBaseUrl": "请在设置中填写 Base URL（或选择预设）。",
   "api.invalidBaseUrl":
     "Base URL 须为完整 http(s) 地址（如 https://api.deepseek.com）。请选择预设或补全 https:// 后保存。",
-  "api.missingModel": "请在设置中填写模型名（须与服务商或本地服务一致）。",
+  "api.missingModel":
+    "请在会话 API 设置中填写模型，或在设置 → API 填写默认模型。",
   "api.missingKey":
     "请在设置中为当前端点填写 API Key，或改用 Ollama 等本地模型。",
   "api.memoryPack.title": "上下文记忆包",
@@ -474,6 +504,7 @@ const zh: Record<MessageKey, string> = {
   "sidebar.more": "更多",
   "sidebar.moreAria": "更多操作",
   "sidebar.renameHint": "{title}（双击重命名）",
+  "sidebar.sessionHint": "{title} · {model}（双击重命名）",
 
   "main.tagline": "边读边澄清",
   "main.howTo": "使用方式",
@@ -528,6 +559,29 @@ const zh: Record<MessageKey, string> = {
   "composer.newQuestion": "新问题",
   "composer.continue": "继续主线",
   "composer.stopAria": "停止生成",
+  "composer.model": "模型",
+  "composer.modelPlaceholder": "模型 ID",
+  "composer.modelTitle": "本笔记使用的模型（覆盖设置中的默认）",
+  "composer.modelAria": "本笔记模型",
+
+  "sessionApi.button": "API",
+  "sessionApi.buttonAria": "本笔记的 API 设置",
+  "sessionApi.buttonTitleDefault":
+    "使用系统 API 默认 — 点击可为当前笔记单独配置",
+  "sessionApi.buttonTitleCustom":
+    "本笔记已有自定义 API 设置 — 点击编辑",
+  "sessionApi.noModel": "设置模型",
+  "sessionApi.title": "会话 API 设置",
+  "sessionApi.lead":
+    "仅作用于当前笔记。系统设置 → API 仍是未单独配置笔记的默认值。",
+  "sessionApi.inheritHint":
+    "当前显示的是系统继承值。修改并保存后，将为本笔记创建覆盖项。",
+  "sessionApi.customHint":
+    "本笔记已有自定义 API。重置会清除覆盖，重新继承系统默认。",
+  "sessionApi.model": "模型",
+  "sessionApi.modelHint":
+    "仅与系统设置不同的字段会作为覆盖保存。",
+  "sessionApi.reset": "恢复默认",
 
   "archive.title": "开发日志归档",
   "archive.hintLoading": "正在归纳主线与分点裁决…",

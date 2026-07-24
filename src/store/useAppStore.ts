@@ -72,6 +72,7 @@ import {
   saveSessionStore,
   sessionTitleFromThread,
 } from "../lib/storage";
+import { patchSessionApi, settingsForSession } from "../lib/sessionApi";
 import {
   isLikelyLocalEndpoint,
   isValidApiBaseUrl,
@@ -107,6 +108,7 @@ import type {
   PointVerdict,
   PointVerdictMap,
   SessionStore,
+  SessionApiOverride,
   SettingsTab,
   ThreadRoot,
 } from "../types";
@@ -206,6 +208,9 @@ interface AppState {
   replaceSessionStore: (store: SessionStore) => void;
   /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
   renameSession: (sessionId: NodeId, title: string) => boolean;
+  /** Set the model for the active session (snapshotted; empty clears to inherit settings). */
+  setSessionApi: (api: SessionApiOverride | null) => void;
+  clearSessionApi: () => void;
 
   askMain: (question: string) => Promise<"started" | "rejected" | "rolled_back">;
   askBranch: (
@@ -726,7 +731,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const throughMessageId = lastNonEmptyMessageId(thread);
     if (!throughMessageId) return;
 
-    const authError = requireApiKey(settings);
+    const llm = settingsForSession(settings, getActiveSession(get()));
+    const authError = requireApiKey(llm);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
@@ -751,7 +757,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let content = "";
       const locale = getLocale();
       await streamChat(
-        settings,
+        llm,
         [
           { role: "system", content: archiveSystemPrompt(locale) },
           {
@@ -837,7 +843,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const hasContent = thread.messages.some((m) => m.content.trim());
     if (!hasContent) return;
 
-    const authError = requireApiKey(settings);
+    const llm = settingsForSession(settings, getActiveSession(get()));
+    const authError = requireApiKey(llm);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
@@ -865,7 +872,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let content = "";
       const locale = getLocale();
       await streamChat(
-        settings,
+        llm,
         compressChatMessages(source, existing, locale),
         (delta) => {
           if (compressAbortCtrl !== ctrl || ctrl.signal.aborted) return;
@@ -1269,6 +1276,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     return true;
   },
 
+  setSessionApi: (api) => {
+    const { sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const nextSessions = patchSessionApi(sessions, activeSessionId, api);
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
+  clearSessionApi: () => {
+    const { sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const nextSessions = patchSessionApi(sessions, activeSessionId, null);
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
   askMain: async (question) => {
     const trimmed = question.trim();
     if (!trimmed) return "rejected";
@@ -1278,12 +1301,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const { settings, activeSessionId, sessions, thread: existingThread } =
       get();
-    const authError = requireApiKey(settings);
-    if (authError) {
-      set({ error: authError, settingsOpen: true, settingsTab: "api" });
-      return "rejected";
-    }
-
     let sessionId = activeSessionId;
     let currentSessions = sessions;
     if (!sessionId || !getActiveSession(get())) {
@@ -1291,6 +1308,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentSessions = [session, ...currentSessions];
       sessionId = session.id;
       set({ sessions: currentSessions, activeSessionId: sessionId });
+    }
+
+    const llm = settingsForSession(settings, getActiveSession(get()));
+    const authError = requireApiKey(llm);
+    if (authError) {
+      set({ error: authError, settingsOpen: true, settingsTab: "api" });
+      return "rejected";
     }
 
     const now = Date.now();
@@ -1614,7 +1638,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         let streamResult: Awaited<ReturnType<typeof streamChat>>;
         try {
           streamResult = await streamChat(
-            settings,
+            llm,
             apiMessages,
             (delta) => {
               // Content channel is already peeled of think-tags inside streamChat.
@@ -2097,7 +2121,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         let planRaw = "";
         await streamChat(
-          settings,
+          llm,
           apiMessages,
           (delta) => {
             planRaw += delta;
@@ -2195,7 +2219,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { settings, thread, activeSessionId, sessions } = get();
     if (!thread) return;
 
-    const authError = requireApiKey(settings);
+    const llm = settingsForSession(settings, getActiveSession(get()));
+    const authError = requireApiKey(llm);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
@@ -2262,7 +2287,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           getLocale(),
         );
         await streamChat(
-          settings,
+          llm,
           messages,
           (delta) => {
           if (branchAbortCtrl !== branchCtrl || branchSignal.aborted) return;

@@ -578,6 +578,36 @@ body {
     color var(--dur-fast) ease,
     padding-left var(--dur-base) var(--ease-out);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fn-session-item-title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fn-session-item-model {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fn-text-ui-xs);
+  color: var(--ds-text-dim);
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.ds-session-item.active .fn-session-item-model {
+  color: var(--ds-accent);
+  opacity: 0.75;
 }
 
 .ds-session-item::before {
@@ -3081,6 +3111,97 @@ mark.branch-highlight:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.fn-composer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fn-session-api-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: min(48%, 240px);
+  height: 28px;
+  padding: 0 8px;
+  margin: 0;
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  background: var(--ds-surface);
+  color: var(--ds-muted);
+  font: inherit;
+  font-size: var(--fn-text-ui-xs);
+  cursor: pointer;
+}
+
+.fn-session-api-btn:hover:not(:disabled) {
+  border-color: var(--ds-accent);
+  color: var(--ds-text);
+}
+
+.fn-session-api-btn.is-custom {
+  border-color: color-mix(in srgb, var(--ds-accent) 45%, var(--ds-border));
+  color: var(--ds-text);
+}
+
+.fn-session-api-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fn-session-api-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--ds-text-dim);
+}
+
+.fn-session-api-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ds-text);
+}
+
+/* One scroll only: modal sizes to content up to max-height; panel scrolls if needed. */
+.fn-session-api-modal.modal {
+  width: min(600px, calc(100vw - 32px));
+  max-width: min(600px, calc(100vw - 32px));
+  max-height: min(92vh, 860px);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fn-session-api-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  padding: 16px 20px 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fn-session-api-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fn-session-api-actions-end {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .fn-composer-hint {

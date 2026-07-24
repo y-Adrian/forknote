@@ -12,6 +12,7 @@ import { ChatComposer } from "./ChatComposer";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
+import { SessionApiSettings } from "./SessionApiSettings";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 interface Props {
@@ -283,6 +284,7 @@ export function MainPanel({ onOpenProject }: Props) {
             placeholder={
               projectRoot ? t("main.placeholderProject") : undefined
             }
+            leading={<SessionApiSettings disabled={composerBusy} />}
           />
           {error && <p className="ds-error">{error}</p>}
         </div>
@@ -509,6 +511,7 @@ export function MainPanel({ onOpenProject }: Props) {
               onStop={handleStop}
               loading={composerBusy}
               compact
+              leading={<SessionApiSettings disabled={composerBusy} />}
               placeholder={
                 inArchiveMode
                   ? t("main.placeholderArchive")

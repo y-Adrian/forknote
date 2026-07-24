@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { useLocale } from "../lib/i18n";
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   loading?: boolean;
   placeholder?: string;
   compact?: boolean;
+  /** Optional control before the Enter hint (e.g. session API settings). */
+  leading?: ReactNode;
 }
 
 export function ChatComposer({
@@ -19,6 +21,7 @@ export function ChatComposer({
   loading = false,
   placeholder,
   compact = false,
+  leading,
 }: Props) {
   const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -66,9 +69,12 @@ export function ChatComposer({
       />
 
       <div className="fn-composer-bar">
-        <p className="fn-composer-hint">
-          {compact ? t("composer.hintCompact") : t("composer.hintHero")}
-        </p>
+        <div className="fn-composer-meta">
+          {leading}
+          <p className="fn-composer-hint">
+            {compact ? t("composer.hintCompact") : t("composer.hintHero")}
+          </p>
+        </div>
 
         <div className="fn-composer-actions">
           {loading ? (

@@ -8,6 +8,10 @@ import {
 } from "react";
 import { ForkNoteLogo } from "./BranchLogo";
 import { useLocale } from "../lib/i18n";
+import {
+  resolveSessionModel,
+  truncateModelLabel,
+} from "../lib/sessionApi";
 import { groupSessionsByDate } from "../lib/sessionGroups";
 import { useTheme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
@@ -77,6 +81,7 @@ export function SessionSidebar({
 }: Props) {
   const { t } = useLocale();
   const sessions = useAppStore((s) => s.sessions);
+  const settings = useAppStore((s) => s.settings);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
   const createSession = useAppStore((s) => s.createSession);
@@ -244,6 +249,9 @@ export function SessionSidebar({
                     const active = session.id === activeSessionId;
                     const renaming = renamingId === session.id;
                     const menuOpen = menuId === session.id;
+                    const modelLabel = truncateModelLabel(
+                      resolveSessionModel(session, settings),
+                    );
 
                     return (
                       <li
@@ -270,16 +278,30 @@ export function SessionSidebar({
                               e.preventDefault();
                               startRename(session.id, session.title);
                             }}
-                            title={t("sidebar.renameHint", {
-                              title: session.title,
-                            })}
+                            title={
+                              modelLabel
+                                ? t("sidebar.sessionHint", {
+                                    title: session.title,
+                                    model: modelLabel,
+                                  })
+                                : t("sidebar.renameHint", {
+                                    title: session.title,
+                                  })
+                            }
                           >
-                            {session.title}
-                            {session.titleLocked && (
-                              <span className="fn-title-locked" aria-hidden>
-                                ·
+                            <span className="fn-session-item-title">
+                              {session.title}
+                              {session.titleLocked && (
+                                <span className="fn-title-locked" aria-hidden>
+                                  ·
+                                </span>
+                              )}
+                            </span>
+                            {modelLabel ? (
+                              <span className="fn-session-item-model">
+                                {modelLabel}
                               </span>
-                            )}
+                            ) : null}
                           </button>
                         )}
 

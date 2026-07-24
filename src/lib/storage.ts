@@ -2,6 +2,7 @@ import type { ChatSession, SessionStore, ThreadRoot } from "../types";
 import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
 import { loadProjectPrefs } from "./project";
+import { migrateSessionApiFields } from "./sessionApi";
 import { migrateGlobalProjectBinding } from "./sessionProject";
 import { firstUserMessage, normalizeThread } from "./thread";
 
@@ -24,6 +25,7 @@ export function createEmptySession(): ChatSession {
     titleLocked: false,
     thread: null,
     projectRoot: null,
+    api: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -65,7 +67,7 @@ export function loadSessionStore(): SessionStore {
           ...parsed,
           sessions: parsed.sessions.map((s) => {
             const thread = s.thread ? normalizeThread(s.thread) : null;
-            const base = { ...s, thread };
+            const base = migrateSessionApiFields({ ...s, thread });
             // Drop stale archive mode so UI "Full thread" matches askMain
             const resolved = resolveConversationContext(base);
             if (resolved.repairedToLive) {
@@ -137,10 +139,12 @@ export function parseSessionStoreImport(raw: string): SessionStore {
   if (!parsed || !Array.isArray(parsed.sessions)) {
     throw new Error("Invalid backup: missing sessions array");
   }
-  const sessions = parsed.sessions.map((s) => ({
-    ...s,
-    thread: s.thread ? normalizeThread(s.thread) : null,
-  }));
+  const sessions = parsed.sessions.map((s) =>
+    migrateSessionApiFields({
+      ...s,
+      thread: s.thread ? normalizeThread(s.thread) : null,
+    }),
+  );
   if (sessions.length === 0) {
     const session = createEmptySession();
     return { sessions: [session], activeSessionId: session.id };
