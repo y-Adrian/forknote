@@ -1,0 +1,40 @@
+# Auto-label PRs by changed paths (.github/labeler.yml).
+# Opens/updates on PR sync; labels are created on first run if missing.
+name: PR Labeler
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure area labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ensure_label() {
+            gh label create "$1" --color "$2" --description "$3" --force
+          }
+          ensure_label ui 1d76db "React components, CSS, and static assets"
+          ensure_label ai 5319e7 "AI agent, LLM API, and context pipeline"
+          ensure_label sidecar 006b75 "Local project sidecar and file tools"
+          ensure_label i18n fbca04 "Internationalization and locale strings"
+          ensure_label settings c5def5 "App settings and theme preferences"
+          ensure_label store bfdadc "Zustand store and session persistence"
+          ensure_label feature a2eeef "Core product logic (branches, archive, clarify)"
+          ensure_label infra d4c5f9 "Build, CI, scripts, and project config"
+          # documentation label ships with GitHub defaults; refresh description only
+          ensure_label documentation 0075ca "README and docs"
+
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ github.token }}
+          sync-labels: true

@@ -1,0 +1,83 @@
+# Path → label mappings for actions/labeler (see .github/workflows/pr-labeler.yml).
+# Labels are created automatically on first workflow run if missing.
+
+ui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/components/**'
+          - 'src/App.tsx'
+          - 'src/main.tsx'
+          - 'src/index.css'
+          - 'src/assets/**'
+          - 'public/**'
+
+ai:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lib/agentTools.ts'
+          - 'src/lib/contextBuilder.ts'
+          - 'src/lib/openai.ts'
+          - 'src/lib/reasoning.ts'
+          - 'src/lib/mem0.ts'
+          - 'src/lib/contextMemory.ts'
+          - 'src/lib/conversationContext.ts'
+          - 'src/lib/apiError.ts'
+
+sidecar:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'sidecar/**'
+          - 'src/lib/sidecar.ts'
+          - 'src/lib/project.ts'
+
+i18n:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lib/i18n.ts'
+
+settings:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lib/settings.ts'
+          - 'src/lib/theme.ts'
+          - 'src/components/SettingsPanel.tsx'
+
+store:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/store/**'
+          - 'src/lib/storage.ts'
+          - 'src/lib/sessionGroups.ts'
+
+feature:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lib/branches.ts'
+          - 'src/lib/branchFloat.ts'
+          - 'src/lib/floatPosition.ts'
+          - 'src/lib/points.ts'
+          - 'src/lib/thread.ts'
+          - 'src/lib/selection.ts'
+          - 'src/lib/domHighlight.ts'
+          - 'src/lib/id.ts'
+          - 'src/lib/archive.ts'
+
+infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'vite.config.ts'
+          - 'tsconfig*.json'
+          - 'package.json'
+          - 'package-lock.json'
+          - 'scripts/**'
+          - 'index.html'
+          - '.env.example'
+          - 'src/vite-env.d.ts'
+          - 'src/types.ts'
+          - '.github/**'
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
+          - 'docs/**'
