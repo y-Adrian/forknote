@@ -1,5 +1,6 @@
 import type { ApiSettings } from "../types";
 import { formatApiError } from "./apiError";
+import { diffSplitReasoning } from "./reasoning";
 import {
   isLikelyLocalEndpoint,
   proxyTargetFromBaseUrl,
@@ -40,13 +41,67 @@ export type StreamChatOptions = {
     | "none"
     | "required"
     | { type: "function"; function: { name: string } };
+  /** DeepSeek / Ollama-style reasoning deltas (and think-tags peeled from content) */
+  onReasoningDelta?: (text: string) => void;
 };
 
 export type StreamChatResult = {
   content: string;
+  /** Accumulated reasoning (empty if provider omits it) */
+  reasoning: string;
   toolCalls: ToolCall[];
   finishReason: string | null;
 };
+
+/** Models / hosts that can emit a real reasoning channel when asked. */
+function attachThinkingRequestOptions(
+  body: Record<string, unknown>,
+  settings: ApiSettings,
+): void {
+  const model = settings.model.toLowerCase();
+  const base = settings.baseUrl.toLowerCase();
+  const isDeepSeek =
+    base.includes("deepseek") || model.includes("deepseek");
+  const isLocal = isLikelyLocalEndpoint(settings.baseUrl);
+  // Heuristic: only enable when the model is known to support thinking.
+  // Plain instruct models (e.g. qwen2.5-coder) get nothing — do not invent CoT.
+  const looksThinkingModel =
+    /reasoner|thinking|\br1\b|deepseek-r1|qwen3|qwq|gpt-oss|magistral|distill-r1/.test(
+      model,
+    );
+
+  if (isDeepSeek) {
+    // deepseek-reasoner / R1 already stream delta.reasoning_content with no flag.
+    // Newer DeepSeek V4-style chat models need an explicit enable.
+    if (/v4/.test(model)) {
+      body.thinking = { type: "enabled" };
+    }
+  }
+
+  if (isLocal && looksThinkingModel) {
+    // Ollama `/v1/chat/completions` maps reasoning_effort → native think.
+    // Streamed field is delta.reasoning (native message.thinking), not reasoning_content.
+    body.reasoning_effort = "medium";
+  }
+}
+
+function reasoningPieceFromDelta(delta: {
+  reasoning_content?: string | null;
+  reasoning?: string | null;
+  thinking?: string | null;
+}): string {
+  // Field names vary by provider — prefer explicit reasoning channels only.
+  if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
+    return delta.reasoning_content;
+  }
+  if (typeof delta.reasoning === "string" && delta.reasoning) {
+    return delta.reasoning;
+  }
+  if (typeof delta.thinking === "string" && delta.thinking) {
+    return delta.thinking;
+  }
+  return "";
+}
 
 export async function streamChat(
   settings: ApiSettings,
@@ -82,6 +137,7 @@ export async function streamChat(
     body.tools = opts.tools;
     body.tool_choice = opts.toolChoice ?? "auto";
   }
+  attachThinkingRequestOptions(body, settings);
 
   const response = await fetch(url, {
     method: "POST",
@@ -108,12 +164,18 @@ export async function streamChat(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let full = "";
+  /** Raw content channel (may still contain think-tags). */
+  let contentRaw = "";
+  /** Clean answer text after peeling think-tags. */
+  let contentClean = "";
+  let reasoningFull = "";
   let finishReason: string | null = null;
+  let splitCursor = { contentLen: 0, reasoningLen: 0 };
   const toolAcc = new Map<
     number,
     { id: string; name: string; arguments: string }
   >();
+  const onReasoningDelta = opts.onReasoningDelta;
 
   const throwIfAborted = () => {
     if (opts.signal?.aborted) {
@@ -126,6 +188,28 @@ export async function streamChat(
     void reader.cancel().catch(() => undefined);
   };
   opts.signal?.addEventListener("abort", onAbort);
+
+  const appendApiReasoning = (piece: string) => {
+    if (!piece) return;
+    reasoningFull += piece;
+    onReasoningDelta?.(piece);
+  };
+
+  const ingestContentPiece = (piece: string) => {
+    if (!piece) return;
+    contentRaw += piece;
+    const diff = diffSplitReasoning(splitCursor, contentRaw);
+    splitCursor = diff.next;
+    contentClean = diff.content;
+    if (diff.reasoningDelta) {
+      // Think-tags live in the content channel for some local models.
+      reasoningFull += diff.reasoningDelta;
+      onReasoningDelta?.(diff.reasoningDelta);
+    }
+    if (diff.contentDelta) {
+      onDelta(diff.contentDelta);
+    }
+  };
 
   try {
     throwIfAborted();
@@ -151,6 +235,9 @@ export async function streamChat(
               finish_reason?: string | null;
               delta?: {
                 content?: string | null;
+                reasoning_content?: string | null;
+                reasoning?: string | null;
+                thinking?: string | null;
                 tool_calls?: Array<{
                   index?: number;
                   id?: string;
@@ -167,9 +254,10 @@ export async function streamChat(
           const delta = choice?.delta;
           if (!delta) continue;
 
+          appendApiReasoning(reasoningPieceFromDelta(delta));
+
           if (typeof delta.content === "string" && delta.content) {
-            full += delta.content;
-            onDelta(delta.content);
+            ingestContentPiece(delta.content);
           }
 
           if (delta.tool_calls) {
@@ -218,7 +306,12 @@ export async function streamChat(
     }))
     .filter((tc) => Boolean(tc.function.name));
 
-  return { content: full, toolCalls, finishReason };
+  return {
+    content: contentClean,
+    reasoning: reasoningFull,
+    toolCalls,
+    finishReason,
+  };
 }
 
 /** True when the provider likely rejected the tools parameter. */

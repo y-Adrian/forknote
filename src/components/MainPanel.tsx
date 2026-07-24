@@ -1,45 +1,92 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { countBranchesInThread } from "../lib/branches";
+import { resolveConversationContext } from "../lib/conversationContext";
+import { useLocale } from "../lib/i18n";
 import { firstUserMessage } from "../lib/thread";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
 import { ChatComposer } from "./ChatComposer";
+import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
+import { ThinkingBlock } from "./ThinkingBlock";
 
 interface Props {
   onOpenProject: () => void;
 }
 
 export function MainPanel({ onOpenProject }: Props) {
+  const { t } = useLocale();
   const thread = useAppStore((s) => s.thread);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const sessions = useAppStore((s) => s.sessions);
   const loadingMain = useAppStore((s) => s.loadingMain);
+  const loadingArchive = useAppStore((s) => s.loadingArchive);
+  const loadingCompress = useAppStore((s) => s.loadingCompress);
   const loadingBranchId = useAppStore((s) => s.loadingBranchId);
   const error = useAppStore((s) => s.error);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const askMain = useAppStore((s) => s.askMain);
   const askBranch = useAppStore((s) => s.askBranch);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
+  const archiveCurrent = useAppStore((s) => s.archiveCurrent);
+  const compressContext = useAppStore((s) => s.compressContext);
+  const setArchivePanelOpen = useAppStore((s) => s.setArchivePanelOpen);
+  const setViewingArchiveId = useAppStore((s) => s.setViewingArchiveId);
+  const setContextMode = useAppStore((s) => s.setContextMode);
 
   const [input, setInput] = useState("");
   const [openBranchId, setOpenBranchId] = useState<NodeId | null>(null);
+  const [modeNotice, setModeNotice] = useState<{
+    archiveId: NodeId;
+    title: string;
+  } | null>(null);
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSentPromptRef = useRef("");
+  const prevLoadingArchiveRef = useRef(false);
+  const prevArchiveCountRef = useRef(0);
+  const modeNoticeTimerRef = useRef<number | null>(null);
+
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeSessionId),
+    [sessions, activeSessionId],
+  );
+  const archives = activeSession?.archives ?? [];
+  const resolvedContext = useMemo(
+    () => resolveConversationContext(activeSession),
+    [activeSession],
+  );
+  const activeArchive = resolvedContext.archive;
+  const hasArchives = archives.length > 0;
+  /** Must match askMain: only true when archive snapshot resolves */
+  const inArchiveMode = resolvedContext.mode === "archive";
 
   const forkCount = useMemo(
     () => (thread ? countBranchesInThread(thread) : 0),
     [thread],
   );
 
+  const hasThreadContent = useMemo(
+    () => Boolean(thread?.messages.some((m) => m.content.trim())),
+    [thread],
+  );
+
+  const composerBusy = loadingMain || loadingArchive || loadingCompress;
+
   useEffect(() => {
     setInput("");
     setOpenBranchId(null);
+    setModeNotice(null);
     closeAllBranchFloats();
+    const session = useAppStore
+      .getState()
+      .sessions.find((s) => s.id === activeSessionId);
+    prevArchiveCountRef.current = session?.archives?.length ?? 0;
+    prevLoadingArchiveRef.current = false;
   }, [activeSessionId, closeAllBranchFloats]);
 
   useEffect(() => {
@@ -57,14 +104,83 @@ export function MainPanel({ onOpenProject }: Props) {
     }
   }, [loadingBranchId, openBranchId]);
 
+  // After a successful archive, briefly reinforce the new context mode.
+  useEffect(() => {
+    const wasLoading = prevLoadingArchiveRef.current;
+    prevLoadingArchiveRef.current = loadingArchive;
+
+    // While generating, keep the pre-archive count baseline so we can detect growth.
+    if (loadingArchive) return;
+
+    const grew = archives.length > prevArchiveCountRef.current;
+    prevArchiveCountRef.current = archives.length;
+
+    if (wasLoading && grew && inArchiveMode && activeArchive) {
+      setModeNotice({
+        archiveId: activeArchive.id,
+        title: activeArchive.title,
+      });
+      if (modeNoticeTimerRef.current) {
+        window.clearTimeout(modeNoticeTimerRef.current);
+      }
+      modeNoticeTimerRef.current = window.setTimeout(() => {
+        setModeNotice(null);
+        modeNoticeTimerRef.current = null;
+      }, 9000);
+    }
+  }, [loadingArchive, archives.length, inArchiveMode, activeArchive]);
+
+  useEffect(() => {
+    return () => {
+      if (modeNoticeTimerRef.current) {
+        window.clearTimeout(modeNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
   const toggleBranch = (branchId: NodeId | null) => {
     setOpenBranchId(branchId);
+  };
+
+  const openArchivePanel = (archiveId?: NodeId | null) => {
+    setViewingArchiveId(
+      archiveId ??
+        activeSession?.activeArchiveId ??
+        archives[archives.length - 1]?.id ??
+        null,
+    );
+    setArchivePanelOpen(true);
+  };
+
+  const dismissModeNotice = () => {
+    setModeNotice(null);
+    if (modeNoticeTimerRef.current) {
+      window.clearTimeout(modeNoticeTimerRef.current);
+      modeNoticeTimerRef.current = null;
+    }
+  };
+
+  const switchToLive = () => {
+    // Always write live so a stale archive id cannot leave askMain on archive
+    setContextMode("live");
+    dismissModeNotice();
+  };
+
+  const switchToArchive = (archiveId?: NodeId) => {
+    const targetId =
+      archiveId ??
+      activeSession?.activeArchiveId ??
+      archives[archives.length - 1]?.id;
+    if (!targetId) return;
+    setContextMode("archive", targetId);
   };
 
   const submit = () => {
     const saved = input.trim();
     if (!saved) return;
     if (useAppStore.getState().loadingMain) return;
+    if (useAppStore.getState().loadingArchive) return;
+    if (useAppStore.getState().loadingCompress) return;
     lastSentPromptRef.current = saved;
     setInput("");
     void (async () => {
@@ -77,7 +193,6 @@ export function MainPanel({ onOpenProject }: Props) {
         return;
       }
       await pending;
-      // After Stop, askMain rolls back the turn; keep restored composer text
     })();
   };
 
@@ -90,27 +205,32 @@ export function MainPanel({ onOpenProject }: Props) {
     }
   };
 
+  const editUserMessage = (text: string) => {
+    lastSentPromptRef.current = text;
+    setInput(text);
+  };
+
   if (!thread) {
     return (
       <main className="ds-main ds-main-empty fn-main-empty">
         <div className="fn-empty">
           <div className="fn-empty-brand">
             <ForkNoteLogo showWordmark className="fn-empty-logo" iconHeight={48} />
-            <p className="fn-empty-tagline">Clarify as you read</p>
+            <p className="fn-empty-tagline">{t("main.tagline")}</p>
           </div>
 
-          <ol className="fn-empty-steps" aria-label="How to use">
+          <ol className="fn-empty-steps" aria-label={t("main.howTo")}>
             <li>
               <span className="fn-step-num">1</span>
-              <span>Ask a development or research question</span>
+              <span>{t("main.step1")}</span>
             </li>
             <li>
               <span className="fn-step-num">2</span>
-              <span>Select unfamiliar text and clarify instantly</span>
+              <span>{t("main.step2")}</span>
             </li>
             <li>
               <span className="fn-step-num">3</span>
-              <span>Verdict each point — reject errors, keep what you accept</span>
+              <span>{t("main.step3")}</span>
             </li>
           </ol>
 
@@ -121,11 +241,9 @@ export function MainPanel({ onOpenProject }: Props) {
             onChange={setInput}
             onSubmit={submit}
             onStop={handleStop}
-            loading={loadingMain}
+            loading={composerBusy}
             placeholder={
-              projectRoot
-                ? "Ask about the project, e.g. read package.json and add a note to the README…"
-                : undefined
+              projectRoot ? t("main.placeholderProject") : undefined
             }
           />
           {error && <p className="ds-error">{error}</p>}
@@ -134,40 +252,27 @@ export function MainPanel({ onOpenProject }: Props) {
     );
   }
 
-  const title = firstUserMessage(thread) || "Untitled";
+  const title = firstUserMessage(thread) || t("main.untitled");
 
   return (
     <main className="ds-main ds-main-chat">
       <header className="fn-chat-header">
         <div className="fn-chat-header-main">
-          <span className="fn-chat-kicker">notes</span>
+          <span className="fn-chat-kicker">{t("main.notesKicker")}</span>
           <h1 className="fn-chat-title" title={title}>
             {title}
           </h1>
         </div>
-        <div className="fn-chat-header-meta">
-          {projectRoot && (
-            <button
-              type="button"
-              className="fn-project-chip is-connected"
-              title={projectRoot}
-              onClick={onOpenProject}
-            >
-              <span className="fn-project-dot" aria-hidden />
-              <span className="fn-project-chip-label">
-                {projectRoot.split(/[/\\]/).filter(Boolean).slice(-2).join("/")}
-              </span>
-            </button>
-          )}
-          {forkCount > 0 && (
+        {forkCount > 0 && (
+          <div className="fn-chat-header-meta">
             <span
               className="fn-fork-chip"
-              title="Open fork nodes from the graph on the right"
+              title={t("main.forksTitle")}
             >
-              {forkCount} forks
+              {t("main.forks", { count: forkCount })}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       <div className="ds-chat-body">
@@ -179,36 +284,62 @@ export function MainPanel({ onOpenProject }: Props) {
                   <div
                     key={msg.id}
                     data-msg-id={msg.id}
-                    className="ds-bubble ds-bubble-user"
+                    className="fn-msg fn-msg-user"
                   >
-                    <p>{msg.content}</p>
+                    <div className="ds-bubble ds-bubble-user">
+                      <p>{msg.content}</p>
+                    </div>
+                    <MessageActions
+                      text={msg.content}
+                      align="end"
+                      onEdit={() => editUserMessage(msg.content)}
+                    />
                   </div>
                 ) : (
                   <div
                     key={msg.id}
                     data-msg-id={msg.id}
-                    className="ds-bubble ds-bubble-assistant"
+                    className="fn-msg fn-msg-assistant"
                   >
-                    {msg.content ? (
-                      <SelectableAnswer
-                        parentId={msg.id}
-                        parentContent={msg.content}
-                        content={msg.content}
-                        branches={msg.children}
-                        onAskBranch={askBranch}
-                        branchLoading={loadingBranchId !== null}
-                        activeBranchId={openBranchId}
-                        onToggleBranch={toggleBranch}
-                        compact
-                        pointVerdicts={msg.pointVerdicts}
-                        pointDoubts={msg.pointDoubts}
+                    {msg.reasoning?.trim() ? (
+                      <ThinkingBlock
+                        reasoning={msg.reasoning}
+                        seconds={msg.thinkingSeconds}
+                        streaming={
+                          loadingMain && index === thread.messages.length - 1
+                        }
                       />
+                    ) : null}
+                    {msg.content ? (
+                      <>
+                        <div className="ds-bubble ds-bubble-assistant">
+                          <SelectableAnswer
+                            parentId={msg.id}
+                            parentContent={msg.content}
+                            content={msg.content}
+                            branches={msg.children}
+                            onAskBranch={askBranch}
+                            branchLoading={loadingBranchId !== null}
+                            activeBranchId={openBranchId}
+                            onToggleBranch={toggleBranch}
+                            compact
+                            pointVerdicts={msg.pointVerdicts}
+                            pointDoubts={msg.pointDoubts}
+                          />
+                        </div>
+                        <MessageActions text={msg.content} align="start" />
+                      </>
                     ) : loadingMain && index === thread.messages.length - 1 ? (
-                      <div className="ds-typing" aria-label="Thinking">
-                        <span />
-                        <span />
-                        <span />
-                      </div>
+                      !msg.reasoning?.trim() ? (
+                        <div
+                          className="ds-typing"
+                          aria-label={t("main.thinking")}
+                        >
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                      ) : null
                     ) : null}
                   </div>
                 ),
@@ -218,18 +349,132 @@ export function MainPanel({ onOpenProject }: Props) {
           </div>
 
           <footer className="ds-chat-footer">
-            <ProjectStatusBar onOpenProject={onOpenProject} />
+            {modeNotice && inArchiveMode && (
+              <div className="fn-context-banner fn-context-banner-footer" role="status">
+                <p className="fn-context-banner-text">
+                  {t("main.bannerText")}
+                  <span className="fn-context-banner-meta">
+                    · {modeNotice.title}
+                  </span>
+                </p>
+                <div className="fn-context-banner-actions">
+                  <button
+                    type="button"
+                    className="fn-context-banner-btn"
+                    onClick={() => openArchivePanel(modeNotice.archiveId)}
+                  >
+                    {t("main.viewArchive")}
+                  </button>
+                  <button
+                    type="button"
+                    className="fn-context-banner-btn is-quiet"
+                    onClick={dismissModeNotice}
+                  >
+                    {t("main.gotIt")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {inArchiveMode && (
+              <p className="fn-context-composer-hint">
+                {t("main.archiveComposerHint")}
+              </p>
+            )}
+
+            <div className="fn-composer-toolbar">
+              <ProjectStatusBar onOpenProject={onOpenProject} />
+
+              {hasArchives && (
+                <span className="fn-composer-toolbar-sep" aria-hidden>
+                  ·
+                </span>
+              )}
+
+              {hasArchives && (
+                <div
+                  className="fn-context-mode"
+                  role="group"
+                  aria-label={t("main.contextModeAria")}
+                >
+                  <div
+                    className="fn-context-segment"
+                    aria-label={t("main.switchContextAria")}
+                  >
+                    <button
+                      type="button"
+                      className={`fn-context-seg${inArchiveMode ? " is-active" : ""}`}
+                      aria-pressed={inArchiveMode}
+                      disabled={composerBusy}
+                      title={t("main.archiveContextTitle")}
+                      onClick={() => switchToArchive()}
+                    >
+                      {t("main.archiveContext")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`fn-context-seg${!inArchiveMode ? " is-active" : ""}`}
+                      aria-pressed={!inArchiveMode}
+                      disabled={composerBusy}
+                      title={t("main.fullThreadTitle")}
+                      onClick={switchToLive}
+                    >
+                      {t("main.fullThread")}
+                    </button>
+                  </div>
+
+                  {archives.length > 1 && (
+                    <button
+                      type="button"
+                      className="fn-archive-view-btn"
+                      title={t("main.archivesViewTitle")}
+                      onClick={() => openArchivePanel()}
+                    >
+                      {t("main.archivesCount", { count: archives.length })}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {hasThreadContent && (
+                <div className="fn-composer-memory-actions">
+                  <button
+                    type="button"
+                    className="fn-archive-btn"
+                    disabled={composerBusy}
+                    title={t("main.compressTitle")}
+                    onClick={() => void compressContext()}
+                  >
+                    {loadingCompress
+                      ? t("main.compressing")
+                      : t("main.compress")}
+                  </button>
+                  <button
+                    type="button"
+                    className="fn-archive-btn"
+                    disabled={composerBusy}
+                    title={t("main.archiveTitle")}
+                    onClick={() => void archiveCurrent()}
+                  >
+                    {loadingArchive ? t("main.archiving") : t("main.archive")}
+                  </button>
+                </div>
+              )}
+            </div>
+
             <ChatComposer
               value={input}
               onChange={setInput}
               onSubmit={submit}
               onStop={handleStop}
-              loading={loadingMain}
+              loading={composerBusy}
               compact
               placeholder={
-                projectRoot
-                  ? "Continue the main thread, or ask the assistant to read/write project files…"
-                  : "Continue the main thread…"
+                inArchiveMode
+                  ? t("main.placeholderArchive")
+                  : projectRoot
+                    ? t("main.placeholderContinueProject")
+                    : t("main.placeholderContinue")
               }
             />
           </footer>

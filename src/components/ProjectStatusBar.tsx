@@ -1,7 +1,9 @@
 import { useAppStore } from "../store/useAppStore";
+import { useLocale } from "../lib/i18n";
 
 /** Compact chip + activity / changes for the connected local project. */
 export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void }) {
+  const { t } = useLocale();
   const projectRoot = useAppStore((s) => s.projectRoot);
   const agentActivity = useAppStore((s) => s.agentActivity);
   const agentChanges = useAppStore((s) => s.agentChanges);
@@ -31,7 +33,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
             className="fn-project-chip"
             onClick={onOpenProject}
           >
-            Open project
+            {t("projectBar.open")}
           </button>
         )}
         {projectRoot && (
@@ -40,7 +42,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
             className="btn ghost sm"
             onClick={() => disconnectProject()}
           >
-            Disconnect
+            {t("common.disconnect")}
           </button>
         )}
         {(agentActivity.length > 0 || agentChanges.length > 0) && (
@@ -49,13 +51,13 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
             className="btn ghost sm"
             onClick={() => clearAgentLog()}
           >
-            Clear log
+            {t("projectBar.clearLog")}
           </button>
         )}
       </div>
 
       {agentActivity.length > 0 && (
-        <ul className="fn-agent-activity" aria-label="Agent activity">
+        <ul className="fn-agent-activity" aria-label={t("projectBar.activityAria")}>
           {agentActivity.slice(-6).map((a) => (
             <li key={a.id} className={`is-${a.kind}`}>
               {a.message}
@@ -66,7 +68,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
 
       {agentChanges.length > 0 && (
         <div className="fn-agent-changes">
-          <div className="fn-agent-changes-title">Changes this turn</div>
+          <div className="fn-agent-changes-title">{t("projectBar.changes")}</div>
           <ul>
             {agentChanges.map((c) => (
               <li key={`${c.path}-${c.at}`}>

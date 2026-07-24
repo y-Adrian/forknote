@@ -5,7 +5,10 @@ export interface SessionGroup {
   sessions: ChatSession[];
 }
 
-export function groupSessionsByDate(sessions: ChatSession[]): SessionGroup[] {
+export function groupSessionsByDate(
+  sessions: ChatSession[],
+  labels?: { today: string; previous7: string },
+): SessionGroup[] {
   const now = new Date();
   const startOfToday = new Date(
     now.getFullYear(),
@@ -34,9 +37,12 @@ export function groupSessionsByDate(sessions: ChatSession[]): SessionGroup[] {
     }
   }
 
+  const todayLabel = labels?.today ?? "Today";
+  const weekLabel = labels?.previous7 ?? "Previous 7 days";
+
   const groups: SessionGroup[] = [];
-  if (today.length) groups.push({ label: "Today", sessions: today });
-  if (week.length) groups.push({ label: "Previous 7 days", sessions: week });
+  if (today.length) groups.push({ label: todayLabel, sessions: today });
+  if (week.length) groups.push({ label: weekLabel, sessions: week });
   for (const [label, list] of [...older.entries()].sort((a, b) =>
     b[0].localeCompare(a[0]),
   )) {

@@ -1,11 +1,13 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
 import { ForkNoteLogo } from "./BranchLogo";
+import { useLocale } from "../lib/i18n";
 import { groupSessionsByDate } from "../lib/sessionGroups";
 import { useTheme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
@@ -22,10 +24,18 @@ function ThemeToggleButton({
   theme,
   onToggle,
   className = "ds-icon-btn",
+  toLightLabel,
+  toDarkLabel,
+  lightTitle,
+  darkTitle,
 }: {
   theme: "light" | "dark";
   onToggle: () => void;
   className?: string;
+  toLightLabel: string;
+  toDarkLabel: string;
+  lightTitle: string;
+  darkTitle: string;
 }) {
   const toLight = theme === "dark";
   return (
@@ -33,8 +43,8 @@ function ThemeToggleButton({
       type="button"
       className={className}
       onClick={onToggle}
-      aria-label={toLight ? "Switch to light mode" : "Switch to dark mode"}
-      title={toLight ? "Light mode" : "Dark mode"}
+      aria-label={toLight ? toLightLabel : toDarkLabel}
+      title={toLight ? lightTitle : darkTitle}
     >
       {toLight ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -67,6 +77,7 @@ export function SessionSidebar({
   onOpenSettings,
   onOpenProject,
 }: Props) {
+  const { t } = useLocale();
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const loadingMain = useAppStore((s) => s.loadingMain);
@@ -83,7 +94,14 @@ export function SessionSidebar({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommit = useRef(false);
 
-  const groups = groupSessionsByDate(sessions);
+  const groups = useMemo(
+    () =>
+      groupSessionsByDate(sessions, {
+        today: t("sidebar.today"),
+        previous7: t("sidebar.previous7"),
+      }),
+    [sessions, t],
+  );
 
   useEffect(() => {
     if (renamingId) {
@@ -139,16 +157,25 @@ export function SessionSidebar({
   const handleDelete = (e: MouseEvent, id: NodeId) => {
     e.stopPropagation();
     setMenuId(null);
-    if (confirm("Delete this note? This cannot be undone.")) {
+    if (confirm(t("sidebar.deleteConfirm"))) {
       if (renamingId === id) cancelRename();
       deleteSession(id);
     }
   };
 
+  const themeToggleProps = {
+    theme,
+    onToggle: toggleTheme,
+    toLightLabel: t("sidebar.toLight"),
+    toDarkLabel: t("sidebar.toDark"),
+    lightTitle: t("sidebar.lightMode"),
+    darkTitle: t("sidebar.darkMode"),
+  };
+
   return (
     <aside
       className={`ds-sidebar fn-sidebar${collapsed ? " collapsed" : ""}`}
-      aria-label="Notes"
+      aria-label={t("sidebar.notesAria")}
     >
       <div className="ds-sidebar-top">
         {collapsed ? (
@@ -156,8 +183,8 @@ export function SessionSidebar({
             type="button"
             className="ds-brand fn-sidebar-brand-btn"
             onClick={onToggleCollapse}
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
+            aria-label={t("sidebar.expand")}
+            title={t("sidebar.expand")}
           >
             <ForkNoteLogo collapsed />
           </button>
@@ -168,13 +195,13 @@ export function SessionSidebar({
         )}
         {!collapsed && (
           <div className="ds-sidebar-tools">
-            <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
+            <ThemeToggleButton {...themeToggleProps} />
             <button
               type="button"
               className="ds-icon-btn"
               onClick={onToggleCollapse}
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
+              aria-label={t("sidebar.collapse")}
+              title={t("sidebar.collapse")}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
@@ -205,12 +232,12 @@ export function SessionSidebar({
                 strokeLinecap="round"
               />
             </svg>
-            New note
+            {t("sidebar.newNote")}
           </button>
 
           <div className="ds-session-scroll">
             {groups.length === 0 && (
-              <p className="fn-sidebar-empty">No notes yet — ask a question on the right.</p>
+              <p className="fn-sidebar-empty">{t("sidebar.empty")}</p>
             )}
             {groups.map((group) => (
               <div key={group.label} className="ds-session-group">
@@ -234,7 +261,7 @@ export function SessionSidebar({
                             onChange={(e) => setDraftTitle(e.target.value)}
                             onKeyDown={handleRenameKey}
                             onBlur={handleRenameBlur}
-                            aria-label="Rename note"
+                            aria-label={t("sidebar.renameAria")}
                             maxLength={80}
                           />
                         ) : (
@@ -246,7 +273,9 @@ export function SessionSidebar({
                               e.preventDefault();
                               startRename(session.id, session.title);
                             }}
-                            title={`${session.title} (double-click to rename)`}
+                            title={t("sidebar.renameHint", {
+                              title: session.title,
+                            })}
                           >
                             {session.title}
                             {session.titleLocked && (
@@ -262,9 +291,9 @@ export function SessionSidebar({
                             <button
                               type="button"
                               className="fn-session-action"
-                              aria-label="More actions"
+                              aria-label={t("sidebar.moreAria")}
                               aria-expanded={menuOpen}
-                              title="More"
+                              title={t("sidebar.more")}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMenuId(menuOpen ? null : session.id);
@@ -285,7 +314,7 @@ export function SessionSidebar({
                                     startRename(session.id, session.title)
                                   }
                                 >
-                                  Rename
+                                  {t("sidebar.rename")}
                                 </button>
                                 <button
                                   type="button"
@@ -293,7 +322,7 @@ export function SessionSidebar({
                                   className="is-danger"
                                   onClick={(e) => handleDelete(e, session.id)}
                                 >
-                                  Delete
+                                  {t("sidebar.delete")}
                                 </button>
                               </div>
                             )}
@@ -312,20 +341,28 @@ export function SessionSidebar({
               type="button"
               className="ds-footer-user fn-project-btn"
               onClick={onOpenProject}
-              title={projectRoot ? `Project: ${projectRoot}` : "Open local project"}
-              aria-label={projectRoot ? "Project connected" : "Open local project"}
+              title={
+                projectRoot
+                  ? t("sidebar.projectTitle", { path: projectRoot })
+                  : t("sidebar.openProjectAria")
+              }
+              aria-label={
+                projectRoot
+                  ? t("sidebar.projectConnected")
+                  : t("sidebar.openProjectAria")
+              }
             >
               <span className={`fn-project-dot${projectRoot ? " is-on" : ""}`} aria-hidden />
               <span className="fn-project-btn-label">
-                {projectRoot ? "Project" : "Open project"}
+                {projectRoot ? t("sidebar.project") : t("sidebar.openProject")}
               </span>
             </button>
             <button
               type="button"
               className="ds-footer-user fn-settings-btn"
               onClick={onOpenSettings}
-              title="API settings"
-              aria-label="API settings"
+              title={t("common.settings")}
+              aria-label={t("common.settings")}
             >
               <span className="ds-avatar">F</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -356,8 +393,8 @@ export function SessionSidebar({
             className="ds-icon-btn"
             onClick={() => createSession()}
             disabled={loadingMain}
-            aria-label="New note"
-            title="New note"
+            aria-label={t("sidebar.newNote")}
+            title={t("sidebar.newNote")}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path
@@ -368,13 +405,17 @@ export function SessionSidebar({
               />
             </svg>
           </button>
-          <ThemeToggleButton theme={theme} onToggle={toggleTheme} />
+          <ThemeToggleButton {...themeToggleProps} />
           <button
             type="button"
             className="ds-icon-btn"
             onClick={onOpenProject}
-            aria-label="Open local project"
-            title={projectRoot ? `Project: ${projectRoot}` : "Open local project"}
+            aria-label={t("sidebar.openProjectAria")}
+            title={
+              projectRoot
+                ? t("sidebar.projectTitle", { path: projectRoot })
+                : t("sidebar.openProjectAria")
+            }
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
@@ -389,8 +430,8 @@ export function SessionSidebar({
             type="button"
             className="ds-icon-btn"
             onClick={onOpenSettings}
-            aria-label="API settings"
-            title="API settings"
+            aria-label={t("common.settings")}
+            title={t("common.settings")}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path

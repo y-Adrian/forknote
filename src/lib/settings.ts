@@ -7,11 +7,22 @@ function envApiKey(): string {
   return (import.meta.env.VITE_OPENAI_API_KEY || "").trim();
 }
 
+function envMem0ApiKey(): string {
+  return (import.meta.env.VITE_MEM0_API_KEY || "").trim();
+}
+
 const defaults: ApiSettings = {
   baseUrl: (import.meta.env.VITE_OPENAI_BASE_URL || "https://api.deepseek.com").trim(),
   apiKey: envApiKey(),
   model: (import.meta.env.VITE_OPENAI_MODEL || "deepseek-chat").trim(),
   useProxy: true,
+  contextMemoryEnabled: true,
+  compressAfterArchive: false,
+  memoryDir: ".forknote/memory",
+  mem0Enabled: false,
+  mem0ApiKey: envMem0ApiKey(),
+  mem0UserId: "",
+  mem0Host: (import.meta.env.VITE_MEM0_HOST || "").trim(),
 };
 
 /** 合并默认值、环境变量与 localStorage；空 Key 不覆盖 .env */
@@ -23,8 +34,18 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     model: (raw.model ?? defaults.model).trim(),
     apiKey: (raw.apiKey ?? defaults.apiKey).trim(),
     useProxy: raw.useProxy ?? defaults.useProxy,
+    contextMemoryEnabled: raw.contextMemoryEnabled ?? defaults.contextMemoryEnabled,
+    compressAfterArchive: raw.compressAfterArchive ?? defaults.compressAfterArchive,
+    memoryDir:
+      (raw.memoryDir ?? defaults.memoryDir ?? ".forknote/memory").trim() ||
+      ".forknote/memory",
+    mem0Enabled: raw.mem0Enabled ?? defaults.mem0Enabled,
+    mem0ApiKey: (raw.mem0ApiKey ?? defaults.mem0ApiKey ?? "").trim(),
+    mem0UserId: (raw.mem0UserId ?? defaults.mem0UserId ?? "").trim(),
+    mem0Host: (raw.mem0Host ?? defaults.mem0Host ?? "").trim(),
   };
   if (!merged.apiKey) merged.apiKey = envApiKey();
+  if (!merged.mem0ApiKey) merged.mem0ApiKey = envMem0ApiKey();
   return merged;
 }
 
@@ -50,6 +71,9 @@ export function loadSettings(): ApiSettings {
     // Drop stored key if blank
     if (!String(fromStorage.apiKey ?? "").trim()) {
       delete fromStorage.apiKey;
+    }
+    if (!String(fromStorage.mem0ApiKey ?? "").trim()) {
+      delete fromStorage.mem0ApiKey;
     }
 
     // If localStorage points to a remote URL but .env now points local,

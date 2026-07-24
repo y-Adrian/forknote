@@ -1,4 +1,5 @@
 import type { ChatSession, SessionStore, ThreadRoot } from "../types";
+import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
 import { firstUserMessage, normalizeThread } from "./thread";
 
@@ -55,10 +56,20 @@ export function loadSessionStore(): SessionStore {
       if (parsed.sessions?.length) {
         return {
           ...parsed,
-          sessions: parsed.sessions.map((s) => ({
-            ...s,
-            thread: s.thread ? normalizeThread(s.thread) : null,
-          })),
+          sessions: parsed.sessions.map((s) => {
+            const thread = s.thread ? normalizeThread(s.thread) : null;
+            const base = { ...s, thread };
+            // Drop stale archive mode so UI "Full thread" matches askMain
+            const resolved = resolveConversationContext(base);
+            if (resolved.repairedToLive) {
+              return {
+                ...base,
+                contextMode: "live" as const,
+                activeArchiveId: null,
+              };
+            }
+            return base;
+          }),
         };
       }
     }
@@ -97,4 +108,39 @@ export function loadSessionStore(): SessionStore {
 export function saveSessionStore(store: SessionStore): void {
   localStorage.setItem(STORE_KEY, JSON.stringify(store));
   localStorage.removeItem(LEGACY_STORE_KEY);
+}
+
+/** Keys ForkNote writes to localStorage (for Data settings UI). */
+export const LOCAL_STORAGE_KEYS = {
+  sessions: STORE_KEY,
+  settings: "forknote-settings",
+  project: "forknote-project",
+  theme: "forknote-theme",
+  locale: "forknote-locale",
+} as const;
+
+export function exportSessionStoreJson(): string {
+  const store = loadSessionStore();
+  return JSON.stringify(store, null, 2);
+}
+
+export function parseSessionStoreImport(raw: string): SessionStore {
+  const parsed = JSON.parse(raw) as Partial<SessionStore>;
+  if (!parsed || !Array.isArray(parsed.sessions)) {
+    throw new Error("Invalid backup: missing sessions array");
+  }
+  const sessions = parsed.sessions.map((s) => ({
+    ...s,
+    thread: s.thread ? normalizeThread(s.thread) : null,
+  }));
+  if (sessions.length === 0) {
+    const session = createEmptySession();
+    return { sessions: [session], activeSessionId: session.id };
+  }
+  const activeSessionId =
+    (parsed.activeSessionId &&
+      sessions.some((s) => s.id === parsed.activeSessionId) &&
+      parsed.activeSessionId) ||
+    sessions[0].id;
+  return { sessions, activeSessionId };
 }
