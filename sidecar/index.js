@@ -712,8 +712,68 @@ server.listen(PORT, HOST, () => {
   console.log(`  health:   GET /health`);
 });
 
-// Fail fast if port taken
+function portOwnerHint() {
+  return process.platform === "win32"
+    ? `netstat -ano | findstr :${PORT}`
+    : `lsof -nP -iTCP:${PORT} -sTCP:LISTEN`;
+}
+
+/** @returns {Promise<boolean>} */
+function probeOwnHealth() {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: HOST, port: PORT, path: "/health", timeout: 800 },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => {
+          body += c;
+        });
+        res.on("end", () => {
+          try {
+            const data = JSON.parse(body);
+            resolve(res.statusCode === 200 && data && data.ok === true);
+          } catch {
+            resolve(false);
+          }
+        });
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+// Fail fast if port taken — with an actionable message (and reuse if already us).
 server.on("error", (err) => {
+  const code = /** @type {{ code?: string }} */ (err).code;
+  if (code === "EADDRINUSE") {
+    void probeOwnHealth().then((healthy) => {
+      if (healthy) {
+        console.log(
+          `ForkNote sidecar already listening on http://${HOST}:${PORT} — nothing to start.`,
+        );
+        console.log(`  health: GET http://${HOST}:${PORT}/health`);
+        process.exit(0);
+        return;
+      }
+      console.error(
+        `ForkNote sidecar could not bind http://${HOST}:${PORT} (address already in use).`,
+      );
+      console.error(
+        `  Another process owns that port and it is not a healthy ForkNote sidecar.`,
+      );
+      console.error(`  See who owns it: ${portOwnerHint()}`);
+      console.error(
+        `  Free the port, or set SIDECAR_PORT to an unused port, then retry.`,
+      );
+      process.exit(1);
+    });
+    return;
+  }
   console.error(err);
   process.exit(1);
 });

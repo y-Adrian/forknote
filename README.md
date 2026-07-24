@@ -18,6 +18,8 @@
 
 ## 安装与运行
 
+需要 **Node.js ≥ 18**（Vite 6 要求）。
+
 ```bash
 npm install
 npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
@@ -27,11 +29,21 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 
 | 脚本 | 作用 |
 |------|------|
-| `npm run dev` | **推荐**：Vite + sidecar 一起启动，Ctrl+C 全部停止 |
-| `npm run dev:web` | 仅 Vite（不需要本地项目工具时用） |
-| `npm run sidecar` | 仅 sidecar（`127.0.0.1:8787`，项目读写工具必需） |
+| `npm run dev` | **推荐**：Vite + sidecar 一起启动；若 `:8787` 已有健康 sidecar 会复用，不因端口占用直接崩溃 |
+| `npm run dev:web` | 仅 Vite（会在需要时自动拉起 sidecar） |
+| `npm run sidecar` | 仅 sidecar（`127.0.0.1:8787`）；已在跑且 `/health` 正常时直接退出 0 |
 | `npm run build` | 类型检查 + 生产构建 |
 | `npm run preview` | 预览构建产物 |
+
+若启动失败（常见原因：端口被占用）：
+
+```bash
+# 看谁占用了 8787 / 5173
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+# 确认 sidecar 是否健康
+curl -sS http://127.0.0.1:8787/health
+```
 
 ---
 

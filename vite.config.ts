@@ -54,11 +54,19 @@ function sidecarDevPlugin(): Plugin {
         weStarted = true;
         child.on("exit", (code, signal) => {
           if (!weStarted) return;
-          // Another process may have won a short race for the port.
+          // Another process may have won a short race for the port, or
+          // sidecar exited 0 because one was already healthy (idempotent).
           void isPortOpen(SIDECAR_PORT, SIDECAR_HOST).then((up) => {
-            if (up) return;
+            if (up) {
+              weStarted = false;
+              child = null;
+              return;
+            }
             console.error(
-              `[forknote] sidecar exited (code=${code ?? "null"} signal=${signal ?? "null"})`,
+              `[forknote] sidecar exited before becoming ready (code=${code ?? "null"} signal=${signal ?? "null"}).`,
+            );
+            console.error(
+              `  Try: npm run sidecar   — or free port ${SIDECAR_PORT} and restart Vite.`,
             );
           });
         });
@@ -69,6 +77,12 @@ function sidecarDevPlugin(): Plugin {
         if (!(await isPortOpen(SIDECAR_PORT, SIDECAR_HOST))) {
           console.error(
             `[forknote] sidecar did not become ready on http://${SIDECAR_HOST}:${SIDECAR_PORT}`,
+          );
+          console.error(
+            `  Run \`npm run sidecar\` in another terminal to see the listen error,`,
+          );
+          console.error(
+            `  or: lsof -nP -iTCP:${SIDECAR_PORT} -sTCP:LISTEN`,
           );
         }
       }
