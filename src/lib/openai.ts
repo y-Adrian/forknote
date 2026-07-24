@@ -108,7 +108,13 @@ export async function streamChat(
     "Content-Type": "application/json",
   };
   if (settings.useProxy) {
-    headers["X-Forknote-Target"] = proxyTargetFromBaseUrl(settings.baseUrl);
+    const proxyTarget = proxyTargetFromBaseUrl(settings.baseUrl);
+    if (!proxyTarget) {
+      throw new Error(
+        "Invalid Base URL for dev proxy. Open Settings → API, set Base URL (include https://), Save, and retry.",
+      );
+    }
+    headers["X-Forknote-Target"] = proxyTarget;
   }
   // 本机服务通常不需要 Key；避免 localStorage 里残留的云端 Key 被误带上
   const apiKey = settings.apiKey.trim();

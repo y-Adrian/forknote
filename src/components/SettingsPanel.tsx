@@ -523,8 +523,9 @@ function ApiPanel({
           type="button"
           className="btn primary"
           onClick={() => {
-            saveSettings(draft);
-            onSave(draft);
+            const next = normalizeApiSettings(draft);
+            saveSettings(next);
+            onSave(next);
             onClose();
           }}
         >

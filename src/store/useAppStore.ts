@@ -68,7 +68,11 @@ import {
   saveSessionStore,
   sessionTitleFromThread,
 } from "../lib/storage";
-import { isLikelyLocalEndpoint, loadSettings } from "../lib/settings";
+import {
+  isLikelyLocalEndpoint,
+  isValidApiBaseUrl,
+  loadSettings,
+} from "../lib/settings";
 import {
   appendBranchToMessage,
   findAssistantMessageForBranch,
@@ -371,6 +375,9 @@ function requireApiKey(settings: ApiSettings): string | null {
   const locale = getLocale();
   if (!settings.baseUrl.trim()) {
     return t("api.missingBaseUrl", undefined, locale);
+  }
+  if (!isValidApiBaseUrl(settings.baseUrl)) {
+    return t("api.invalidBaseUrl", undefined, locale);
   }
   if (!settings.model.trim()) {
     return t("api.missingModel", undefined, locale);

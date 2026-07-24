@@ -128,6 +128,8 @@ const en = {
   "api.hint":
     "Start the local server first. For Ollama, run ollama list; Model must match a listed name (e.g. qwen2.5:7b).",
   "api.missingBaseUrl": "Set Base URL in settings (or pick a preset).",
+  "api.invalidBaseUrl":
+    "Base URL must be a full http(s) URL (e.g. https://api.deepseek.com). Pick a preset or include https://, then Save.",
   "api.missingModel": "Set Model in settings (must match your provider or local server).",
   "api.missingKey":
     "Add an API Key in settings for your configured endpoint, or switch to a local model such as Ollama.",
@@ -373,6 +375,8 @@ const zh: Record<MessageKey, string> = {
   "api.hint":
     "请先启动本地服务。Ollama 可运行 ollama list；模型名须与列表一致（如 qwen2.5:7b）。",
   "api.missingBaseUrl": "请在设置中填写 Base URL（或选择预设）。",
+  "api.invalidBaseUrl":
+    "Base URL 须为完整 http(s) 地址（如 https://api.deepseek.com）。请选择预设或补全 https:// 后保存。",
   "api.missingModel": "请在设置中填写模型名（须与服务商或本地服务一致）。",
   "api.missingKey":
     "请在设置中为当前端点填写 API Key，或改用 Ollama 等本地模型。",
