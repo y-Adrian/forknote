@@ -2,6 +2,7 @@ import type { ChatSession, SessionStore, ThreadRoot } from "../types";
 import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
 import { loadProjectPrefs } from "./project";
+import { migrateGlobalProjectBinding } from "./sessionProject";
 import { firstUserMessage, normalizeThread } from "./thread";
 
 const STORE_KEY = "forknote-sessions-v1";
@@ -28,27 +29,8 @@ export function createEmptySession(): ChatSession {
   };
 }
 
-/** Move legacy global project binding onto the active session (once). */
-function migrateGlobalProjectBinding(store: SessionStore): SessionStore {
-  const globalPath = loadProjectPrefs().lastPath.trim();
-  if (!globalPath) return store;
-
-  const activeId =
-    store.activeSessionId && store.sessions.some((s) => s.id === store.activeSessionId)
-      ? store.activeSessionId
-      : store.sessions[0]?.id;
-
-  let migrated = false;
-  const sessions = store.sessions.map((s) => {
-    if (s.projectRoot !== undefined) return s;
-    migrated = true;
-    return {
-      ...s,
-      projectRoot: s.id === activeId ? globalPath : null,
-    };
-  });
-
-  return migrated ? { ...store, sessions } : store;
+function migrateLoadedStore(store: SessionStore): SessionStore {
+  return migrateGlobalProjectBinding(store, loadProjectPrefs().lastPath);
 }
 
 function loadLegacyThread(): ThreadRoot | null {
@@ -79,7 +61,7 @@ export function loadSessionStore(): SessionStore {
     if (raw) {
       const parsed = JSON.parse(raw) as SessionStore;
       if (parsed.sessions?.length) {
-        const store = migrateGlobalProjectBinding({
+        const store = migrateLoadedStore({
           ...parsed,
           sessions: parsed.sessions.map((s) => {
             const thread = s.thread ? normalizeThread(s.thread) : null;
@@ -114,7 +96,7 @@ export function loadSessionStore(): SessionStore {
       updatedAt: Date.now(),
     };
     localStorage.removeItem(LEGACY_THREAD_KEY);
-    const store: SessionStore = migrateGlobalProjectBinding({
+    const store: SessionStore = migrateLoadedStore({
       sessions: [session],
       activeSessionId: session.id,
     });

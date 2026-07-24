@@ -59,6 +59,10 @@ import {
 import { mergeReasoningChannels } from "../lib/reasoning";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
+  flushActiveSession,
+  patchSessionProject,
+} from "../lib/sessionProject";
+import {
   closeProject as sidecarCloseProject,
   openProject as sidecarOpenProject,
 } from "../lib/sidecar";
@@ -259,32 +263,6 @@ function patchActiveSessionMeta(
   const now = Date.now();
   return sessions.map((s) =>
     s.id === activeSessionId ? { ...s, ...patch, updatedAt: now } : s,
-  );
-}
-
-function patchSessionProject(
-  sessions: ChatSession[],
-  sessionId: NodeId | null,
-  projectRoot: string | null,
-): ChatSession[] {
-  if (!sessionId) return sessions;
-  const now = Date.now();
-  return sessions.map((s) =>
-    s.id === sessionId ? { ...s, projectRoot, updatedAt: now } : s,
-  );
-}
-
-/** Persist in-flight thread + bound project for the session being left. */
-function flushActiveSession(
-  sessions: ChatSession[],
-  activeSessionId: NodeId | null,
-  thread: ThreadRoot | null,
-  projectRoot: string | null,
-): ChatSession[] {
-  return patchSessionProject(
-    upsertActiveSession(sessions, activeSessionId, thread),
-    activeSessionId,
-    projectRoot,
   );
 }
 
@@ -524,31 +502,50 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!quiet) set({ projectError: "Enter a project absolute path" });
       return;
     }
-    const { sidecarUrl, activeSessionId, sessions } = get();
+    // Bind to the session that initiated Connect — ignore UI if user switches mid-await.
+    const { sidecarUrl, activeSessionId: bindingSessionId } = get();
     try {
       const { root } = await sidecarOpenProject(path, sidecarUrl);
       saveProjectPrefs({ lastPath: root, sidecarUrl });
-      const nextSessions = patchSessionProject(sessions, activeSessionId, root);
+      const { sessions, activeSessionId } = get();
+      const nextSessions = patchSessionProject(
+        sessions,
+        bindingSessionId,
+        root,
+      );
       persistSessions(nextSessions, activeSessionId);
-      set({
-        sessions: nextSessions,
-        projectRoot: root,
-        projectError: null,
-        agentActivity: [],
-        agentChanges: [],
-      });
+      if (activeSessionId === bindingSessionId) {
+        set({
+          sessions: nextSessions,
+          projectRoot: root,
+          projectError: null,
+          agentActivity: [],
+          agentChanges: [],
+        });
+      } else {
+        set({ sessions: nextSessions });
+      }
     } catch (e) {
-      const nextSessions = patchSessionProject(sessions, activeSessionId, null);
+      const { sessions, activeSessionId } = get();
+      const nextSessions = patchSessionProject(
+        sessions,
+        bindingSessionId,
+        null,
+      );
       persistSessions(nextSessions, activeSessionId);
-      set({
-        sessions: nextSessions,
-        projectRoot: null,
-        projectError: quiet
-          ? null
-          : e instanceof Error
-            ? e.message
-            : "Could not reach sidecar (run npm run sidecar first)",
-      });
+      if (activeSessionId === bindingSessionId) {
+        set({
+          sessions: nextSessions,
+          projectRoot: null,
+          projectError: quiet
+            ? null
+            : e instanceof Error
+              ? e.message
+              : "Could not reach sidecar (run npm run sidecar first)",
+        });
+      } else {
+        set({ sessions: nextSessions });
+      }
     }
   },
   disconnectProject: () => {
@@ -1068,6 +1065,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeSessionId,
       thread,
       projectRoot,
+      upsertActiveSession,
     );
     const session = createEmptySession();
     nextSessions = [session, ...nextSessions];
@@ -1102,6 +1100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeSessionId,
       thread,
       projectRoot,
+      upsertActiveSession,
     );
     const target = nextSessions.find((s) => s.id === sessionId);
     if (!target) return;
@@ -1152,7 +1151,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     let nextSessions =
       sessionId === activeSessionId
         ? sessions
-        : flushActiveSession(sessions, activeSessionId, thread, projectRoot);
+        : flushActiveSession(
+            sessions,
+            activeSessionId,
+            thread,
+            projectRoot,
+            upsertActiveSession,
+          );
     nextSessions = nextSessions.filter((s) => s.id !== sessionId);
 
     const nextActive =
