@@ -7,6 +7,10 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.SIDECAR_PORT || 8787);
 const HOST = process.env.SIDECAR_HOST || "127.0.0.1";
@@ -151,6 +155,98 @@ async function handleOpen(body) {
   }
   projectRoot = resolved;
   return { root: projectRoot };
+}
+
+/**
+ * Open a native OS folder dialog and return the absolute path.
+ * Cancel → { cancelled: true, path: null }.
+ */
+async function handlePickFolder() {
+  const platform = process.platform;
+  try {
+    if (platform === "darwin") {
+      const { stdout } = await execFileAsync(
+        "osascript",
+        [
+          "-e",
+          'POSIX path of (choose folder with prompt "Select a ForkNote project folder")',
+        ],
+        { timeout: 300_000, maxBuffer: 1024 * 1024 },
+      );
+      const picked = stdout.trim().replace(/\/+$/, "");
+      if (!picked) return { cancelled: true, path: null };
+      return { cancelled: false, path: path.resolve(picked) };
+    }
+
+    if (platform === "win32") {
+      const script = [
+        "Add-Type -AssemblyName System.Windows.Forms | Out-Null",
+        "$b = New-Object System.Windows.Forms.FolderBrowserDialog",
+        '$b.Description = "Select a ForkNote project folder"',
+        "$b.ShowNewFolderButton = $true",
+        "if ($b.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {",
+        "  [Console]::Out.Write($b.SelectedPath)",
+        "}",
+      ].join("; ");
+      const { stdout } = await execFileAsync(
+        "powershell.exe",
+        ["-NoProfile", "-STA", "-Command", script],
+        { timeout: 300_000, maxBuffer: 1024 * 1024, windowsHide: true },
+      );
+      const picked = stdout.trim().replace(/[\\/]+$/, "");
+      if (!picked) return { cancelled: true, path: null };
+      return { cancelled: false, path: path.resolve(picked) };
+    }
+
+    // Linux / other: prefer zenity, then kdialog
+    try {
+      const { stdout } = await execFileAsync(
+        "zenity",
+        ["--file-selection", "--directory", "--title=Select a ForkNote project folder"],
+        { timeout: 300_000, maxBuffer: 1024 * 1024 },
+      );
+      const picked = stdout.trim().replace(/\/+$/, "");
+      if (!picked) return { cancelled: true, path: null };
+      return { cancelled: false, path: path.resolve(picked) };
+    } catch (zenityErr) {
+      const code = /** @type {{ code?: number|string }} */ (zenityErr).code;
+      // zenity cancel → exit 1
+      if (code === 1) return { cancelled: true, path: null };
+      try {
+        const { stdout } = await execFileAsync(
+          "kdialog",
+          ["--getexistingdirectory", process.env.HOME || "/", "Select a ForkNote project folder"],
+          { timeout: 300_000, maxBuffer: 1024 * 1024 },
+        );
+        const picked = stdout.trim().replace(/\/+$/, "");
+        if (!picked) return { cancelled: true, path: null };
+        return { cancelled: false, path: path.resolve(picked) };
+      } catch (kErr) {
+        const kCode = /** @type {{ code?: number|string }} */ (kErr).code;
+        if (kCode === 1) return { cancelled: true, path: null };
+        throw Object.assign(
+          new Error(
+            "Folder picker needs zenity or kdialog on Linux. Install one, or paste an absolute path.",
+          ),
+          { status: 501 },
+        );
+      }
+    }
+  } catch (e) {
+    const err = /** @type {{ code?: number|string, message?: string }} */ (e);
+    // macOS user cancelled choose folder
+    if (
+      platform === "darwin" &&
+      (err.code === 1 || /User canceled|cancelled/i.test(String(err.message ?? "")))
+    ) {
+      return { cancelled: true, path: null };
+    }
+    if (err.status) throw e;
+    throw Object.assign(
+      new Error(e instanceof Error ? e.message : "Folder picker failed"),
+      { status: 500 },
+    );
+  }
 }
 
 async function handleList(query) {
@@ -648,6 +744,9 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/project/open") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleOpen(body));
+    }
+    if (req.method === "POST" && pathname === "/project/pick-folder") {
+      return sendJson(res, 200, await handlePickFolder());
     }
     if (req.method === "GET" && pathname === "/project") {
       return sendJson(res, 200, { root: projectRoot });

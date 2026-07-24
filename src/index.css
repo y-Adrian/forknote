@@ -3766,6 +3766,24 @@ mark.branch-highlight:hover {
   box-sizing: border-box;
 }
 
+.fn-project-path-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.fn-project-path-row input {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.fn-project-path-row .btn {
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
 .project-modal input:focus {
   outline: none;
   border-color: var(--ds-brand);
