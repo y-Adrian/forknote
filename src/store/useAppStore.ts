@@ -6,8 +6,12 @@ import {
   executeToolCall,
   inferCreateFilePath,
   inferExploreIntent,
+  inferMultiStepPlan,
   inferOfficeCreateIntent,
-  MAX_AGENT_ROUNDS,
+  multiStepFollowUpHint,
+  multiStepSystemHint,
+  synthesizeExploreToolCall,
+  synthesizeOfficeFromIntent,
   nativeToolResultMessage,
   PROJECT_OPENAI_TOOLS,
   stripToolCalls,
@@ -17,6 +21,9 @@ import {
   type AgentFileChange,
   type AgentToolCall,
 } from "../lib/agentTools";
+import {
+  resolveAgentMaxRounds,
+} from "../lib/settings";
 import {
   archiveSystemPrompt,
   archiveTitleFromContent,
@@ -1172,11 +1179,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const { projectRoot, sidecarUrl } = get();
       const createPathEarly = inferCreateFilePath(trimmed);
-      if (createPathEarly && !projectRoot) {
+      const officeIntentEarly = inferOfficeCreateIntent(trimmed);
+      if ((createPathEarly || officeIntentEarly) && !projectRoot) {
         set({
           loadingMain: false,
           error:
-            "Open a local project first (Open project), then ask to create the file — e.g. connect /Users/debris/cursor/code-test.",
+            "Open a local project first (Open project), then ask to create files — e.g. connect /Users/debris/cursor/code-test.",
         });
         // Roll back the empty turn so the prompt can stay editable
         rollbackMainTurn(get, set, { userId, assistantId });
@@ -1186,6 +1194,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         return "rolled_back";
       }
+
+      const agentMaxRounds = resolveAgentMaxRounds(settings);
 
       const codingToolsSystem = projectRoot
         ? buildCodingToolsSystem(projectRoot)
@@ -1223,6 +1233,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const officeIntent = projectRoot
         ? inferOfficeCreateIntent(trimmed)
         : null;
+      const multiStepPlan = projectRoot ? inferMultiStepPlan(trimmed) : [];
       // create / office win over explore — only force list/read/search when neither applies
       const exploreIntent =
         projectRoot && !createPath && !officeIntent
@@ -1247,7 +1258,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           content:
             officeIntent.tool === "write_xlsx"
               ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
-              : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落字符串数组（可加 title）。禁止只把 JSON 贴在 Markdown 里。禁止用 write_file。`,
+              : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落数组（空白文档用 [] 或 [""]）。禁止只把 JSON 贴在 Markdown 里；禁止未调用工具就声称已创建。禁止用 write_file。`,
         });
       } else if (exploreIntent) {
         apiMessages.push({
@@ -1259,14 +1270,18 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ? `用户要求阅读文件。你必须调用函数 read_file：path 必须为 "${exploreIntent.path}"。禁止编造文件内容。`
                 : `用户要求搜索代码。你必须调用函数 search_files：query 必须为 "${exploreIntent.query}"。禁止凭记忆假装已搜索。`,
         });
+      } else if (multiStepPlan.length >= 2) {
+        apiMessages.push({
+          role: "system",
+          content: multiStepSystemHint(multiStepPlan),
+        });
       }
 
       let visibleContent = "";
       let round = 0;
       let useNativeTools = Boolean(projectRoot);
       let forcedWrite = Boolean(createPath && projectRoot);
-      const forcedOfficeTool = officeIntent?.tool ?? null;
-      const forcedExploreTool =
+      let forcedExploreTool =
         exploreIntent?.kind === "list"
           ? "list_dir"
           : exploreIntent?.kind === "read"
@@ -1274,8 +1289,90 @@ export const useAppStore = create<AppState>((set, get) => ({
             : exploreIntent?.kind === "search"
               ? "search_files"
               : null;
+      let officeFallbackUsed = false;
+      let exploreFallbackUsed = false;
+      let officeToolFailed = false;
+      let toolBatchesExecuted = 0;
 
-      while (round < MAX_AGENT_ROUNDS) {
+      // Pre-flight list_dir so the model cannot hallucinate a directory listing
+      const preflightList =
+        projectRoot &&
+        !signal.aborted &&
+        (exploreIntent?.kind === "list" ||
+          multiStepPlan[0]?.tool === "list_dir");
+      if (preflightList) {
+        const listCall: AgentToolCall =
+          exploreIntent?.kind === "list"
+            ? synthesizeExploreToolCall(exploreIntent)
+            : { tool: "list_dir", path: multiStepPlan[0]?.path ?? "." };
+        patchAssistantContent("Listing project root…");
+        const pre = await abortable(
+          executeToolCall(listCall, sidecarUrl, signal, projectRoot),
+          signal,
+        );
+        if (!signal.aborted) {
+          set((s) => ({
+            agentActivity: [
+              ...s.agentActivity,
+              {
+                id: createId(),
+                at: Date.now(),
+                ...pre.activity,
+              },
+            ],
+          }));
+          toolBatchesExecuted = 1;
+          exploreFallbackUsed = true;
+          forcedExploreTool = null;
+          apiMessages.push({
+            role: "user",
+            content: pre.ok
+              ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此继续后续步骤（如 read_file package.json、修改 README）；未完成则继续调工具，完成后再中文总结。`
+              : `【list_dir 失败】${pre.resultText}\n\n请向用户说明 sidecar/项目绑定问题，不要编造目录内容。`,
+          });
+          if (!pre.ok) {
+            patchAssistantContent(
+              `Could not list directory: ${pre.resultText}`,
+            );
+          }
+        }
+      }
+
+      // Pre-flight planned read_file steps (do not skip just because file absent from listing)
+      if (multiStepPlan.length >= 2 && projectRoot && !signal.aborted) {
+        for (const step of multiStepPlan) {
+          if (step.tool !== "read_file" || !step.path) continue;
+          patchAssistantContent(`Reading ${step.path}…`);
+          const readExec = await abortable(
+            executeToolCall(step, sidecarUrl, signal, projectRoot),
+            signal,
+          );
+          if (signal.aborted) break;
+          set((s) => ({
+            agentActivity: [
+              ...s.agentActivity,
+              {
+                id: createId(),
+                at: Date.now(),
+                ...readExec.activity,
+              },
+            ],
+          }));
+          toolBatchesExecuted += 1;
+          apiMessages.push({
+            role: "user",
+            content: `【工具结果：read_file path="${step.path}"】\n${readExec.resultText}`,
+          });
+        }
+        const followUp = multiStepFollowUpHint(trimmed);
+        if (followUp) {
+          apiMessages.push({ role: "user", content: followUp });
+        }
+      }
+
+      const forcedOfficeTool = officeIntent?.tool ?? null;
+
+      while (round < agentMaxRounds) {
         if (signal.aborted) break;
 
         let roundText = "";
@@ -1425,7 +1522,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
           }
         } else if (projectRoot) {
-          for (const agent of collectToolCalls(roundText)) {
+          for (const agent of collectToolCalls(roundText, trimmed, apiReasoning)) {
             if (
               officeIntent &&
               agent.tool === officeIntent.tool &&
@@ -1470,10 +1567,46 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
 
+        // Explore: model pasted {"path":"."} or skipped native tool_calls
+        if (
+          exploreIntent &&
+          projectRoot &&
+          !exploreFallbackUsed &&
+          toolBatchesExecuted === 0 &&
+          !pending.some(
+            (p) =>
+              p.agent.tool ===
+              (exploreIntent.kind === "list"
+                ? "list_dir"
+                : exploreIntent.kind === "read"
+                  ? "read_file"
+                  : "search_files"),
+          )
+        ) {
+          pending.push({
+            agent: synthesizeExploreToolCall(exploreIntent),
+          });
+          exploreFallbackUsed = true;
+        }
+
+        // Office: model often claims success without calling write_docx / write_xlsx
+        if (
+          officeIntent &&
+          projectRoot &&
+          !officeFallbackUsed &&
+          !officeToolFailed &&
+          !pending.some((p) => p.agent.tool === officeIntent.tool)
+        ) {
+          pending.push({
+            agent: synthesizeOfficeFromIntent(officeIntent, trimmed),
+          });
+          officeFallbackUsed = true;
+        }
+
         const cleanedRound = stripToolCalls(roundText);
 
         if (pending.length === 0) {
-          // One nudge if create intent and model ignored tools/fences
+          // Specific round-0 nudges when model ignored tools
           if (createPath && projectRoot && round === 0) {
             apiMessages.push({
               role: "assistant",
@@ -1491,7 +1624,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             forcedWrite = useNativeTools;
             continue;
           }
-          if (officeIntent && projectRoot && round === 0) {
+          if (
+            officeIntent &&
+            projectRoot &&
+            round === 0 &&
+            toolBatchesExecuted === 0
+          ) {
             apiMessages.push({
               role: "assistant",
               content: cleanedRound || roundText || "",
@@ -1501,7 +1639,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               content:
                 officeIntent.tool === "write_xlsx"
                   ? `不要把工具 JSON 贴给用户。请立刻调用函数 write_xlsx，path="${officeIntent.path}"，rows=完整二维数组。`
-                  : `不要把工具 JSON 贴给用户。请立刻调用函数 write_docx，path="${officeIntent.path}"，paragraphs=完整段落数组。`,
+                  : `不要把工具 JSON 贴给用户。请立刻调用函数 write_docx，path="${officeIntent.path}"，paragraphs 为段落数组（空白文档可用 []）。`,
             });
             visibleContent = cleanedRound;
             patchAssistantContent(
@@ -1531,7 +1669,43 @@ export const useAppStore = create<AppState>((set, get) => ({
             round += 1;
             continue;
           }
-          visibleContent = cleanedRound;
+
+          // General project task: model replied with text but never ran tools yet
+          if (projectRoot && toolBatchesExecuted === 0 && round < 2) {
+            apiMessages.push({
+              role: "assistant",
+              content: cleanedRound || roundText || "",
+            });
+            apiMessages.push({
+              role: "user",
+              content:
+                "请立刻调用工具执行（list_dir / read_file / write_file / search_replace / write_docx 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
+            });
+            visibleContent = cleanedRound;
+            patchAssistantContent(
+              visibleContent || "Using project tools…",
+            );
+            round += 1;
+            continue;
+          }
+
+          // Tools already ran but model returned empty — ask for final summary
+          if (
+            projectRoot &&
+            toolBatchesExecuted > 0 &&
+            !cleanedRound.trim() &&
+            round < agentMaxRounds - 1
+          ) {
+            apiMessages.push({
+              role: "user",
+              content:
+                "工具已执行。请根据上述工具结果给出最终中文总结，不要再调用工具。",
+            });
+            round += 1;
+            continue;
+          }
+
+          visibleContent = cleanedRound || visibleContent;
           patchAssistantContent(visibleContent);
           break;
         }
@@ -1563,6 +1737,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
 
         let wroteTarget = false;
+        let batchHadTools = pending.length > 0;
+        let batchHadSuccess = false;
         for (const item of pending) {
           if (signal.aborted) break;
           const executed = await abortable(
@@ -1570,6 +1746,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             signal,
           );
           if (signal.aborted) break;
+          if (executed.ok) {
+            batchHadSuccess = true;
+          }
           if (
             item.agent.tool === "write_file" &&
             executed.ok &&
@@ -1583,6 +1762,13 @@ export const useAppStore = create<AppState>((set, get) => ({
             executed.ok
           ) {
             wroteTarget = true;
+          }
+          if (
+            officeIntent &&
+            item.agent.tool === officeIntent.tool &&
+            !executed.ok
+          ) {
+            officeToolFailed = true;
           }
           const activity: AgentActivity = {
             id: createId(),
@@ -1612,6 +1798,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
 
+        if (batchHadTools) {
+          toolBatchesExecuted += 1;
+        }
+
         if (signal.aborted) break;
 
         // After a successful create-file write, ask for a short summary then stop looping tools
@@ -1626,12 +1816,33 @@ export const useAppStore = create<AppState>((set, get) => ({
             role: "user",
             content: `文件 ${officeIntent.path} 已写入磁盘。请用一两句中文确认路径，不要再调用工具，也不要把工具 JSON 贴给用户。`,
           });
+        } else if (
+          projectRoot &&
+          toolBatchesExecuted > 0 &&
+          batchHadTools &&
+          batchHadSuccess &&
+          !wroteTarget &&
+          !createPath &&
+          !officeIntent
+        ) {
+          // After a read/list/search batch, nudge the model to continue or summarize
+          apiMessages.push({
+            role: "user",
+            content:
+              "请根据上述工具结果继续下一步（如需更多文件操作请继续调用工具）；若任务已全部完成，请给出最终中文总结且不要再调用工具。",
+          });
+        } else if (officeIntent && officeToolFailed) {
+          visibleContent =
+            (visibleContent || cleanedRound) +
+            `\n\n（创建 ${officeIntent.path} 失败：${officeIntent.tool} 未成功写入。请确认 npm run dev 已启动 sidecar，或重启 dev 后再试。）`;
+          patchAssistantContent(visibleContent.trim());
+          break;
         }
 
         round += 1;
-        if (round >= MAX_AGENT_ROUNDS) {
+        if (round >= agentMaxRounds) {
           const note =
-            "\n\n(Reached the tool-round limit. Continue from the results so far, or send another message.)";
+            `\n\n(Reached the tool-round limit (${agentMaxRounds}). Continue from the results so far, or send another message.)`;
           visibleContent = (visibleContent || cleanedRound) + note;
           patchAssistantContent(visibleContent.trim());
         }

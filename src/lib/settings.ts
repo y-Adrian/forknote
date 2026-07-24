@@ -3,6 +3,11 @@ import type { ApiSettings } from "../types";
 const STORAGE_KEY = "forknote-settings";
 const LEGACY_STORAGE_KEY = "branch-chat-settings";
 
+/** Default max tool loop rounds per main chat turn (project bound). */
+export const DEFAULT_AGENT_MAX_ROUNDS = 20;
+export const MIN_AGENT_MAX_ROUNDS = 1;
+export const MAX_AGENT_MAX_ROUNDS = 64;
+
 /** First-run defaults when nothing is saved in localStorage. */
 const APP_DEFAULTS: ApiSettings = {
   baseUrl: "https://api.deepseek.com",
@@ -16,7 +21,17 @@ const APP_DEFAULTS: ApiSettings = {
   mem0ApiKey: "",
   mem0UserId: "",
   mem0Host: "",
+  agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
 };
+
+export function resolveAgentMaxRounds(settings: ApiSettings): number {
+  const n = settings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS;
+  if (!Number.isFinite(n)) return DEFAULT_AGENT_MAX_ROUNDS;
+  return Math.min(
+    MAX_AGENT_MAX_ROUNDS,
+    Math.max(MIN_AGENT_MAX_ROUNDS, Math.round(n)),
+  );
+}
 
 /** Merge saved settings with app defaults (Settings UI is the source of truth). */
 export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
@@ -38,6 +53,9 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     mem0ApiKey: (raw.mem0ApiKey ?? APP_DEFAULTS.mem0ApiKey ?? "").trim(),
     mem0UserId: (raw.mem0UserId ?? APP_DEFAULTS.mem0UserId ?? "").trim(),
     mem0Host: (raw.mem0Host ?? APP_DEFAULTS.mem0Host ?? "").trim(),
+    agentMaxRounds: resolveAgentMaxRounds({
+      agentMaxRounds: raw.agentMaxRounds ?? APP_DEFAULTS.agentMaxRounds,
+    } as ApiSettings),
   };
 }
 

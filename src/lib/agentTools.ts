@@ -12,7 +12,14 @@ import {
   type SearchHit,
 } from "./sidecar";
 
-export const MAX_AGENT_ROUNDS = 8;
+/** Default max tool loop rounds per main chat turn (project bound). */
+export const DEFAULT_AGENT_MAX_ROUNDS = 20;
+
+export const MIN_AGENT_MAX_ROUNDS = 1;
+export const MAX_AGENT_MAX_ROUNDS = 64;
+
+/** @deprecated use DEFAULT_AGENT_MAX_ROUNDS / resolveAgentMaxRounds */
+export const MAX_AGENT_ROUNDS = DEFAULT_AGENT_MAX_ROUNDS;
 
 export type AgentToolName =
   | "list_dir"
@@ -234,7 +241,8 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
           paragraphs: {
             type: "array",
             items: { type: "string" },
-            description: "Body paragraphs in order (non-empty strings).",
+            description:
+              "Body paragraphs in order. Use [\"\"] or [] for an empty document.",
           },
         },
         required: ["path", "paragraphs"],
@@ -314,7 +322,13 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 
 只把内容写在 Markdown 里不会写入磁盘。
 路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径。
-write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。`;
+write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
+
+多轮工作流（一次用户消息内可循环多轮）：
+1. 收到用户任务 → 先调用工具（不要只写计划）
+2. 阅读 tool / 工具结果 返回的磁盘现状
+3. 未完成 → 继续调用下一批工具（例如先 list_dir 再 read_file 再 write_file）
+4. 全部做完 → 最后一轮用中文总结，不要再调工具`;
 }
 
 export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
@@ -593,11 +607,20 @@ export function extractWriteIntentsFromMarkdown(text: string): AgentToolCall[] {
   return calls;
 }
 
-export function collectToolCalls(text: string): AgentToolCall[] {
+export function collectToolCalls(
+  text: string,
+  userText = "",
+  reasoning = "",
+): AgentToolCall[] {
+  const assistantCtx = reasoning.trim()
+    ? `${text}\n${reasoning}`
+    : text;
   const explicit = parseToolCalls(text);
   if (explicit.length > 0) return explicit;
   const jsonStyle = parseJsonStyleToolCalls(text);
   if (jsonStyle.length > 0) return jsonStyle;
+  const argsOnly = parseArgsOnlyToolCalls(text, userText, assistantCtx);
+  if (argsOnly.length > 0) return argsOnly;
   return extractWriteIntentsFromMarkdown(text);
 }
 
@@ -695,6 +718,137 @@ function extractBalancedJsonObject(s: string, start: number): string | null {
     }
   }
   return null;
+}
+
+/** JSON blob with path/query/old_string but no tool name — models often paste these in Markdown. */
+function looksLikeToolArgsObject(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object" || looksLikeToolObject(obj)) return false;
+  const o = obj as Record<string, unknown>;
+  return (
+    typeof o.path === "string" ||
+    typeof o.query === "string" ||
+    typeof o.old_string === "string" ||
+    typeof o.content === "string" ||
+    Array.isArray(o.paragraphs) ||
+    Array.isArray(o.rows)
+  );
+}
+
+function inferToolFromPartialObject(
+  obj: Record<string, unknown>,
+  userText: string,
+  assistantText: string,
+): AgentToolName | null {
+  const path = typeof obj.path === "string" ? obj.path.trim() : undefined;
+  const query = typeof obj.query === "string" ? obj.query.trim() : undefined;
+  const ctx = `${userText}\n${assistantText}`;
+
+  if (/list_dir\b/i.test(assistantText) && path !== undefined) return "list_dir";
+  if (/read_file\b/i.test(assistantText) && path) return "read_file";
+  if (/write_docx\b/i.test(assistantText) && path) return "write_docx";
+  if (/write_xlsx\b/i.test(assistantText) && path) return "write_xlsx";
+  if (/search_files\b/i.test(assistantText) && query) return "search_files";
+  if (/search_replace\b/i.test(assistantText) && path) return "search_replace";
+  if (/apply_patch\b/i.test(assistantText) && path) return "apply_patch";
+  if (/write_file\b/i.test(assistantText) && path) return "write_file";
+  if (/mkdir\b/i.test(assistantText) && path) return "mkdir";
+
+  if (query && /搜索|search/i.test(ctx)) return "search_files";
+  if (typeof obj.old_string === "string") return "search_replace";
+  if (Array.isArray(obj.paragraphs)) return "write_docx";
+  if (Array.isArray(obj.rows)) return "write_xlsx";
+  if (typeof obj.content === "string" && path) return "write_file";
+
+  if (path !== undefined) {
+    if (
+      path === "." ||
+      path === "./" ||
+      (!/\.\w+$/.test(path) &&
+        /列出|目录|文件夹|list\s|list_dir|\bls\b/i.test(ctx))
+    ) {
+      return "list_dir";
+    }
+    if (/\.\w+$/.test(path) && /读|读取|read_file|\bread\b/i.test(ctx)) {
+      return "read_file";
+    }
+    if (/\.\w+$/.test(path)) return "read_file";
+    return "list_dir";
+  }
+
+  return null;
+}
+
+function agentCallFromPartialObject(
+  obj: Record<string, unknown>,
+  userText: string,
+  assistantText: string,
+): AgentToolCall | null {
+  const tool = inferToolFromPartialObject(obj, userText, assistantText);
+  if (!tool) return null;
+
+  const call: AgentToolCall = { tool };
+  if (typeof obj.path === "string") call.path = normalizeRelPath(obj.path);
+  if (typeof obj.query === "string") call.query = obj.query.trim();
+  if (typeof obj.title === "string") call.title = obj.title;
+  if (typeof obj.content === "string") call.content = obj.content;
+  if (typeof obj.old_string === "string") call.old_string = obj.old_string;
+  if (typeof obj.new_string === "string") call.new_string = obj.new_string;
+  if (typeof obj.replace_all === "boolean") call.replace_all = obj.replace_all;
+  if (Array.isArray(obj.paragraphs)) {
+    call.paragraphs = obj.paragraphs.map((p) => String(p ?? ""));
+  }
+  if (Array.isArray(obj.rows)) {
+    call.rows = obj.rows as AgentToolCall["rows"];
+  }
+  if (Array.isArray(obj.edits)) {
+    call.edits = obj.edits as TextEdit[];
+  }
+  if (typeof obj.sheet_name === "string") call.sheet_name = obj.sheet_name;
+  return call;
+}
+
+/** Parse ```json {"path":"."}``` blobs that omit tool/name (common with DeepSeek). */
+export function parseArgsOnlyToolCalls(
+  text: string,
+  userText: string,
+  assistantText: string,
+): AgentToolCall[] {
+  const calls: AgentToolCall[] = [];
+  const seen = new Set<string>();
+
+  const pushObj = (obj: unknown) => {
+    if (!obj || typeof obj !== "object" || !looksLikeToolArgsObject(obj)) return;
+    const call = agentCallFromPartialObject(
+      obj as Record<string, unknown>,
+      userText,
+      assistantText,
+    );
+    if (!call) return;
+    const key = `${call.tool}:${call.path ?? ""}:${call.query ?? ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    calls.push(call);
+  };
+
+  const fenceRe = /```(?:json|javascript|js|txt)?\s*\n?([\s\S]*?)```/gi;
+  let fm: RegExpExecArray | null;
+  while ((fm = fenceRe.exec(text)) !== null) {
+    const body = (fm[1] ?? "").trim();
+    if (!body) continue;
+    tryParseJsonBlob(body, (obj) => {
+      if (looksLikeToolObject(obj)) return;
+      pushObj(obj);
+    });
+  }
+
+  if (calls.length === 0) {
+    tryParseJsonBlob(text, (obj) => {
+      if (looksLikeToolObject(obj)) return;
+      pushObj(obj);
+    });
+  }
+
+  return calls;
 }
 
 function looksLikeToolObject(obj: unknown): boolean {
@@ -813,6 +967,26 @@ export function inferOfficeCreateIntent(
   return null;
 }
 
+/** Build a write_docx / write_xlsx call when the model skipped tools. */
+export function synthesizeOfficeFromIntent(
+  intent: { tool: "write_docx" | "write_xlsx"; path: string },
+  userText: string,
+): AgentToolCall {
+  const blank = /空(白)?(的)?|empty|blank/i.test(userText);
+  if (intent.tool === "write_docx") {
+    return {
+      tool: "write_docx",
+      path: intent.path,
+      paragraphs: blank ? [] : [""],
+    };
+  }
+  return {
+    tool: "write_xlsx",
+    path: intent.path,
+    rows: blank ? [[""]] : [["Column A"], [""]],
+  };
+}
+
 /**
  * Detect "看看当前目录有什么 / 读一下某文件" explore intents.
  */
@@ -830,6 +1004,11 @@ export function inferExploreIntent(
     /列出|罗列|有哪些|有什么文件|目录|文件夹|项目结构|树形|ls\b|list\s+(files|dir|directory)|what('s| is) in|show\s+(me\s+)?(the\s+)?(files|dir|directory|folder|tree)|当前(目录|文件夹|项目)/i.test(
       t,
     ) || /看看.*(目录|文件夹|项目|文件)/i.test(t);
+
+  // Multi-step: 先列出…再读… — list first even if a filename appears later
+  if (wantsList && /先.*(列出|list|ls\b|目录|文件夹)/i.test(t)) {
+    return { kind: "list", path: "." };
+  }
 
   const readNamed = t.match(
     /(?:读取|打开|查看|看看|读一下|显示|cat|read|open|show)\s*[：:\s]*[`"'“”]?([\w./\\-]+\.\w{1,10})[`"'“”]?/i,
@@ -869,6 +1048,71 @@ export function inferExploreIntent(
   return null;
 }
 
+export function synthesizeExploreToolCall(
+  intent: NonNullable<ReturnType<typeof inferExploreIntent>>,
+): AgentToolCall {
+  if (intent.kind === "list") {
+    return { tool: "list_dir", path: intent.path };
+  }
+  if (intent.kind === "read") {
+    return { tool: "read_file", path: intent.path };
+  }
+  return { tool: "search_files", query: intent.query };
+}
+
+/** Multi-step project tasks like 先列出…再读 package.json…最后改 README */
+export function inferMultiStepPlan(userText: string): AgentToolCall[] {
+  const t = userText.trim();
+  if (!t) return [];
+  const steps: AgentToolCall[] = [];
+
+  if (
+    /先.*(列出|list|ls\b|目录|文件夹)/i.test(t) ||
+    /列出.*再/i.test(t)
+  ) {
+    steps.push({ tool: "list_dir", path: "." });
+  }
+  if (/\bpackage\.json\b/i.test(t) && /读|read|查看|read_file/i.test(t)) {
+    steps.push({ tool: "read_file", path: "package.json" });
+  }
+  if (
+    /\bREADME(?:\.md)?\b/i.test(t) &&
+    /加|写|改|修改|顶部|prepend|append|search_replace/i.test(t)
+  ) {
+    steps.push({ tool: "read_file", path: "README.md" });
+  }
+
+  return steps.length >= 2 ? steps : [];
+}
+
+export function multiStepSystemHint(steps: AgentToolCall[]): string {
+  const labels = steps.map((s, i) => {
+    if (s.tool === "list_dir") return `${i + 1}. list_dir(${s.path ?? "."})`;
+    if (s.tool === "read_file") return `${i + 1}. read_file(${s.path})`;
+    return `${i + 1}. ${s.tool}`;
+  });
+  return `用户多步任务（必须逐步调用工具，禁止凭猜测跳过步骤）：\n${labels.join("\n")}\n全部完成后再中文总结。`;
+}
+
+/** After planned reads fail, tell the model to create files instead of stopping. */
+export function multiStepFollowUpHint(userText: string): string | null {
+  const parts: string[] = [];
+  if (/\bpackage\.json\b/i.test(userText) && /读|read|查看/i.test(userText)) {
+    parts.push(
+      "若 read_file package.json 返回错误，则文件不存在——不要假装全文搜索；可 write_file 新建，或明确告知用户当前项目根下无此文件。",
+    );
+  }
+  if (
+    /\bREADME(?:\.md)?\b/i.test(userText) &&
+    /加|写|改|修改|顶部|说明/i.test(userText)
+  ) {
+    parts.push(
+      "若 README.md 不存在，必须用 write_file 创建并写入（含用户要的项目说明）；若存在则用 search_replace 在文件开头插入一行。禁止只报告失败而不调工具。",
+    );
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
 export function stripToolCalls(text: string): string {
   let out = text
     .replace(TOOL_CALL_RE, "")
@@ -879,7 +1123,7 @@ export function stripToolCalls(text: string): string {
     const inner = String(body ?? "").trim();
     try {
       const obj = JSON.parse(inner);
-      if (looksLikeToolObject(obj)) return "";
+      if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return "";
     } catch {
       if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files)"/.test(inner)) {
         return "";
@@ -980,6 +1224,22 @@ function formatHits(hits: SearchHit[]): string {
   return hits
     .map((h) => `${h.path}:${h.line}: ${h.text}`)
     .join("\n");
+}
+
+/** Ensure blank Word docs work even with an older sidecar still running. */
+function normalizeDocxPayload(
+  title: string | undefined,
+  paragraphs: string[] | undefined,
+): { title?: string; paragraphs: string[] } {
+  const paras = (paragraphs ?? []).map((p) => String(p ?? ""));
+  const t = title?.trim() || undefined;
+  const blank =
+    !t && (paras.length === 0 || paras.every((p) => !p.trim()));
+  if (blank) {
+    // Zero-width space survives legacy sidecar non-empty checks.
+    return { paragraphs: ["\u200b"] };
+  }
+  return { title: t, paragraphs: paras };
 }
 
 export async function executeToolCall(
@@ -1169,17 +1429,10 @@ export async function executeToolCall(
             activity: { kind: "error", message: "write_docx missing path" },
           };
         }
-        const paragraphs = (call.paragraphs ?? [])
-          .map((p) => String(p ?? "").trim())
-          .filter(Boolean);
-        const title = call.title?.trim() || undefined;
-        if (!title && paragraphs.length === 0) {
-          return {
-            ok: false,
-            resultText: "Error: provide title and/or paragraphs",
-            activity: { kind: "error", message: "write_docx missing body" },
-          };
-        }
+        const { title, paragraphs } = normalizeDocxPayload(
+          call.title,
+          call.paragraphs,
+        );
         const { size, path: writtenPath } = await writeDocx(
           path,
           { title, paragraphs },
@@ -1306,6 +1559,8 @@ export function nativeToolResultMessage(
     role: "tool",
     tool_call_id: toolCallId,
     name,
-    content: truncated,
+    content:
+      truncated +
+      "\n\n(If the task is not finished, call the next tool. If done, reply with a final summary in Chinese — no more tool calls.)",
   };
 }

@@ -136,6 +136,11 @@ export interface ApiSettings {
   mem0UserId?: string;
   /** Override Platform host; default https://api.mem0.ai */
   mem0Host?: string;
+  /**
+   * Max model↔tool loop rounds per main-turn when a project is bound.
+   * Task ends early when the model finishes without calling more tools.
+   */
+  agentMaxRounds?: number;
 }
 
 export interface SelectionInfo {

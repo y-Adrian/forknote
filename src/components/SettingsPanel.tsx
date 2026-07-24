@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
-import { saveSettings } from "../lib/settings";
+import {
+  DEFAULT_AGENT_MAX_ROUNDS,
+  MAX_AGENT_MAX_ROUNDS,
+  MIN_AGENT_MAX_ROUNDS,
+  normalizeApiSettings,
+  saveSettings,
+} from "../lib/settings";
 import {
   exportSessionStoreJson,
   LOCAL_STORAGE_KEYS,
@@ -638,23 +644,43 @@ function ProjectSettingsPanel() {
   const { t } = useLocale();
   const sidecarUrl = useAppStore((s) => s.sidecarUrl);
   const projectRoot = useAppStore((s) => s.projectRoot);
+  const settings = useAppStore((s) => s.settings);
+  const setSettings = useAppStore((s) => s.setSettings);
   const setSidecarUrl = useAppStore((s) => s.setSidecarUrl);
   const setProjectOpen = useAppStore((s) => s.setProjectOpen);
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
 
   const [urlDraft, setUrlDraft] = useState(sidecarUrl);
+  const [roundsDraft, setRoundsDraft] = useState(
+    settings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS,
+  );
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const prefs = loadProjectPrefs();
     setUrlDraft(sidecarUrl || prefs.sidecarUrl || "/sidecar");
+    setRoundsDraft(settings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS);
     setSaved(false);
-  }, [sidecarUrl]);
+  }, [sidecarUrl, settings.agentMaxRounds]);
 
   const save = () => {
     const next = urlDraft.trim() || "/sidecar";
     setSidecarUrl(next);
     saveProjectPrefs({ sidecarUrl: next });
+    const clamped = Math.min(
+      MAX_AGENT_MAX_ROUNDS,
+      Math.max(
+        MIN_AGENT_MAX_ROUNDS,
+        Math.round(Number(roundsDraft) || DEFAULT_AGENT_MAX_ROUNDS),
+      ),
+    );
+    const nextSettings = normalizeApiSettings({
+      ...settings,
+      agentMaxRounds: clamped,
+    });
+    saveSettings(nextSettings);
+    setSettings(nextSettings);
+    setRoundsDraft(nextSettings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS);
     setSaved(true);
   };
 
@@ -675,6 +701,22 @@ function ProjectSettingsPanel() {
           spellCheck={false}
         />
       </label>
+
+      <label>
+        {t("projectSettings.agentMaxRounds")}
+        <input
+          type="number"
+          min={MIN_AGENT_MAX_ROUNDS}
+          max={MAX_AGENT_MAX_ROUNDS}
+          step={1}
+          value={roundsDraft}
+          onChange={(e) => {
+            setRoundsDraft(Number(e.target.value));
+            setSaved(false);
+          }}
+        />
+      </label>
+      <p className="hint local-hint">{t("projectSettings.agentMaxRoundsHint")}</p>
 
       {projectRoot ? (
         <p className="project-connected-hint">

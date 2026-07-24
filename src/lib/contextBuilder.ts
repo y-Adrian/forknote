@@ -96,7 +96,9 @@ ${HISTORY_CONTEXT_RULE}
 3. 只把代码贴在 Markdown 里不会写入磁盘。
 4. 路径用相对项目根的相对路径（如 soft/hello.c），不要用绝对路径。
 5. 新建纯文本用 write_file；修改已有文件优先 search_replace / apply_patch；Word 用 write_docx；Excel 用 write_xlsx。
-6. 工具执行完后再用简短总结；可用【N】分点，但不要用分点代替工具调用。`;
+6. 工具执行完后再用简短总结；可用【N】分点，但不要用分点代替工具调用。
+7. 禁止在未调用工具、未收到工具结果前声称文件已创建或已写入磁盘。
+8. 复杂任务分多轮：先工具、看结果、再工具；全部完成后再总结，不要第一轮只描述计划就结束。`;
 
 export type ConversationOptions = {
   /** When set, append coding tool instructions for the local project sidecar. */

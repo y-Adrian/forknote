@@ -174,6 +174,9 @@ const en = {
   "projectSettings.connected": "Connected:",
   "projectSettings.none": "No project connected.",
   "projectSettings.open": "Open project…",
+  "projectSettings.agentMaxRounds": "Agent tool rounds (per message)",
+  "projectSettings.agentMaxRoundsHint":
+    "Max model↔tool loops when a project is bound (1–64). Default 20. Ends early when the task is done.",
 
   "about.title": "About",
   "about.tag":
@@ -400,6 +403,9 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.connected": "已连接：",
   "projectSettings.none": "尚未连接项目。",
   "projectSettings.open": "打开项目…",
+  "projectSettings.agentMaxRounds": "Agent 工具循环轮数（每条消息）",
+  "projectSettings.agentMaxRoundsHint":
+    "绑定项目后，单次发送最多允许的模型↔工具往返次数（1–64，默认 20）。任务完成会提前结束。",
 
   "about.title": "关于",
   "about.tag":
