@@ -3,7 +3,7 @@
  * Supports complete and still-open blocks (streaming).
  *
  * Provider formats differ:
- * - DeepSeek / many OpenAI-compat gateways: `delta.reasoning_content`
+ * - Many OpenAI-compat gateways: `delta.reasoning_content`
  * - Ollama OpenAI `/v1`: `delta.reasoning` (from native `message.thinking`)
  * - Some local / older templates: `<think>…</think>` (or thinking/reasoning) inside `content`
  */

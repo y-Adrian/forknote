@@ -7,6 +7,7 @@ import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
+import { AgentPlanReview } from "./AgentPlanReview";
 import { ChatComposer } from "./ChatComposer";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
@@ -26,6 +27,7 @@ export function MainPanel({ onOpenProject }: Props) {
   const loadingArchive = useAppStore((s) => s.loadingArchive);
   const loadingCompress = useAppStore((s) => s.loadingCompress);
   const loadingBranchId = useAppStore((s) => s.loadingBranchId);
+  const agentPendingPlan = useAppStore((s) => s.agentPendingPlan);
   const error = useAppStore((s) => s.error);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const askMain = useAppStore((s) => s.askMain);
@@ -78,7 +80,8 @@ export function MainPanel({ onOpenProject }: Props) {
     [thread],
   );
 
-  const composerBusy = loadingMain || loadingArchive || loadingCompress;
+  const composerBusy =
+    loadingMain || loadingArchive || loadingCompress || Boolean(agentPendingPlan);
 
   useEffect(() => {
     setInput("");
@@ -211,6 +214,7 @@ export function MainPanel({ onOpenProject }: Props) {
     const saved = input.trim();
     if (!saved) return;
     if (useAppStore.getState().loadingMain) return;
+    if (useAppStore.getState().agentPendingPlan) return;
     if (useAppStore.getState().loadingArchive) return;
     if (useAppStore.getState().loadingCompress) return;
     lastSentPromptRef.current = saved;
@@ -267,6 +271,8 @@ export function MainPanel({ onOpenProject }: Props) {
           </ol>
 
           <ProjectStatusBar onOpenProject={onOpenProject} />
+
+          <AgentPlanReview />
 
           <ChatComposer
             value={input}
@@ -493,6 +499,8 @@ export function MainPanel({ onOpenProject }: Props) {
                 </div>
               )}
             </div>
+
+            <AgentPlanReview />
 
             <ChatComposer
               value={input}

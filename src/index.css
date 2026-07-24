@@ -1,6 +1,6 @@
 /* ============================================================
    ForkNote — Design System
-   DeepSeek-inspired chat UI: airy white, soft lavender-blue
+   Airy white chat UI, soft lavender-blue accents
    Minimal chrome, large composer radius, clean UI sans
    ============================================================ */
 
@@ -80,7 +80,7 @@
 /* ── CSS Variables ────────────────────────────────────────── */
 
 :root {
-  /* Shape — soft consumer chrome, DeepSeek-like */
+  /* Shape — soft consumer chrome */
   --ds-radius:          12px;
   --ds-radius-lg:       16px;
   --ds-radius-xl:       20px;
@@ -114,7 +114,7 @@
   --fn-text-chat:       1.05rem;   /* ~16.8px — was ~0.975rem / ~15.6px */
   --fn-text-chat-sm:    1rem;      /* compact composer — was ~0.925rem */
 
-  /* Typography — clean UI sans (DeepSeek-like clarity); mono for code */
+  /* Typography — clean UI sans; mono for code */
   --ds-font-ui:
     "DM Sans",
     "Segoe UI",
@@ -221,7 +221,7 @@
   --ds-text-dim:        #4a5568;
   --ds-muted:           #8b95a8;
 
-  /* Soft lavender-blue (DeepSeek-like chips / send) — not neon purple */
+  /* Soft lavender-blue (chips / send) — not neon purple */
   --ds-brand:           #4d6bfe;
   --ds-brand-2:         #6b84ff;
   --ds-brand-grad:      #4d6bfe;
@@ -765,11 +765,6 @@ body {
   background: transparent;
 }
 
-.ds-chat-footer .ds-composer-deepseek {
-  max-width: var(--ds-content-max-width);
-  margin: 0 auto;
-}
-
 /* Empty state */
 .ds-main-empty .ds-empty-center {
   flex: 1;
@@ -804,73 +799,7 @@ body {
 }
 
 
-/* ── Composer ─────────────────────────────────────────────── */
-
-.ds-composer-deepseek {
-  width: 100%;
-  max-width: var(--ds-content-max-width);
-  display: flex;
-  flex-direction: column;
-  background: var(--ds-composer-bg);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-composer-radius);
-  padding: 18px 20px 14px;
-  box-shadow: var(--ds-composer-shadow);
-  transition:
-    border-color var(--dur-base) ease,
-    box-shadow var(--dur-base) ease;
-}
-
-.ds-composer-deepseek:focus-within {
-  border-color: color-mix(in srgb, var(--ds-accent) 35%, var(--ds-border));
-  box-shadow:
-    var(--ds-composer-shadow),
-    0 0 0 3px var(--ds-focus-ring);
-}
-
-.ds-composer-deepseek.is-compact {
-  padding: 14px 16px 12px;
-  border-radius: var(--ds-composer-radius);
-}
-
-.ds-composer-deepseek.is-hero {
-  box-shadow: var(--ds-composer-shadow);
-}
-
-.ds-composer-deepseek textarea {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--ds-text);
-  font: inherit;
-  font-size: var(--fn-text-chat);
-  resize: none;
-  outline: none;
-  line-height: 1.55;
-  padding: 0;
-  margin: 0 0 10px;
-  caret-color: var(--ds-accent);
-}
-
-.ds-composer-deepseek.is-compact textarea {
-  min-height: 24px;
-  max-height: 120px;
-  margin-bottom: 8px;
-  font-size: var(--fn-text-chat-sm);
-}
-
-.ds-composer-deepseek.is-hero textarea {
-  min-height: 56px;
-}
-
-.ds-composer-deepseek textarea::placeholder {
-  color: var(--ds-muted);
-  transition: color var(--dur-base) ease;
-}
-
-.ds-composer-deepseek:focus-within textarea::placeholder {
-  color: color-mix(in srgb, var(--ds-muted) 70%, transparent);
-}
+/* ── Composer (legacy ds-composer-toolbar — see fn-composer below) ── */
 
 .ds-composer-toolbar {
   display: flex;
@@ -1157,7 +1086,7 @@ body {
   font-size: var(--fn-text-chat);
 }
 
-/* DeepSeek-style copy / edit under bubbles */
+/* Copy / edit actions under bubbles */
 .fn-msg-actions {
   display: flex;
   align-items: center;
@@ -3621,6 +3550,67 @@ mark.branch-highlight:hover {
 .fn-agent-changes-meta {
   color: var(--ds-muted);
   flex-shrink: 0;
+}
+
+.fn-agent-plan {
+  width: 100%;
+  max-width: var(--ds-content-max-width);
+  margin: 0 auto 10px;
+  padding: 12px 14px;
+  border-radius: var(--ds-radius-md);
+  border: 1px solid color-mix(in srgb, var(--ds-accent) 28%, var(--ds-border));
+  background: color-mix(in srgb, var(--ds-accent-soft) 65%, var(--ds-surface));
+}
+
+.fn-agent-plan-header {
+  margin-bottom: 8px;
+}
+
+.fn-agent-plan-kicker {
+  display: block;
+  font-size: var(--fn-text-ui-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-accent);
+  margin-bottom: 4px;
+}
+
+.fn-agent-plan-lead {
+  margin: 0;
+  font-size: var(--fn-text-ui-sm);
+  color: var(--ds-muted);
+  line-height: 1.45;
+}
+
+.fn-agent-plan-steps {
+  margin: 0 0 10px;
+  padding-left: 1.25rem;
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.5;
+}
+
+.fn-agent-plan-steps li + li {
+  margin-top: 4px;
+}
+
+.fn-agent-plan-body {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  font: inherit;
+  font-size: var(--fn-text-ui-sm);
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.fn-agent-plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .project-modal.modal {

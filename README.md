@@ -41,12 +41,12 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 | **General** | 主题 Light / Dark / System；界面语言 English / 中文（模型回复语言跟随） |
 | **API** | 提供商预设、Base URL / Model / Key、开发代理；上下文记忆包与可选 mem0 |
 | **Data** | 导出 / 导入笔记 JSON；清空本地笔记 |
-| **Project** | Sidecar URL、打开本地项目 |
+| **Project** | Sidecar URL、打开本地项目、Agent 工具轮数 / 计划批准 |
 | **About** | 产品说明 |
 
 ### API
 
-1. 点预设芯片（如 **Ollama**、**LM Studio**、**DeepSeek**），或手动填 **Base URL** / **Model** / **API Key**
+1. 首次使用 **Base URL / Model 为空**，无内置默认提供商；点预设芯片（云端 / 国内 / 本机等分组，如 **OpenAI**、**DeepSeek**、**Ollama**），或手动填 **Base URL** / **Model** / **API Key**
 2. 本机服务一般 **API Key 留空**；云端填控制台密钥
 3. 开发时勾选 **Use local proxy in development**（推荐）：请求走 `/openai/...`，由 Vite 按当前 Base URL 转发，减轻 CORS
 4. **Save** 保存（亦写入 `localStorage`）
@@ -136,6 +136,16 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 4. 路径记在 `localStorage`；下次若 sidecar 已开可自动重连
 5. **Disconnect** 解除绑定
 
+### Agent 工作流（绑定项目后）
+
+主对话在已连接项目时会进入 **多轮工具循环**（模型 ↔ sidecar 工具往返，任务完成可提前结束）：
+
+1. **计划批准（默认开启）**：Settings → **Project** → **执行工具前需批准计划**。开启后，模型先输出执行计划；输入区上方出现 **AgentPlanReview** 栏，点 **批准并执行** 才读写文件，**取消** 丢弃本轮。
+2. **工具轮数**：同页 **Agent 工具循环轮数** 可调（1–64，**默认 20**），控制单条消息内最多往返次数。
+3. 关闭计划批准后，模型会直接调用工具（仍受轮数上限约束）。
+
+活动日志与 **Changes this turn** 显示本轮读/写过的路径；可 **Clear log**。
+
 ### 工具能力
 
 | 工具 | 作用 |
@@ -149,8 +159,6 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `write_xlsx` | 生成真实 Excel `.xlsx`（`rows` 二维数组） |
 | `mkdir` | 创建目录 |
 | `search_files` | 简单全文搜索 |
-
-一轮内最多约 **8** 轮工具往返。活动日志与 **Changes this turn** 显示本轮读/写过的路径；可 **Clear log**。
 
 示例提问：
 
@@ -190,7 +198,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ## API 与模型（系统设置 → API）
 
-在应用内配置即可，**不需要** `.env` 文件：
+在应用内配置即可，**不需要** `.env` 或 `VITE_OPENAI_*` 等环境变量（见 `.env.example` 说明）：
 
 | 项 | 说明 |
 |------|------|
@@ -291,7 +299,10 @@ flowchart TD
   arch --> build
   md --> build
   m0 --> build
-  build --> stream[streamChat + tools loop]
+  build --> plan{Project + require approval?}
+  plan -->|yes| review[AgentPlanReview approve]
+  plan -->|no| stream[streamChat + tools loop]
+  review --> stream
   stream --> UI[MainPanel bubbles / ThinkingBlock]
   stream --> persist[Persist thread + optional mem0 add]
 ```
@@ -319,7 +330,8 @@ flowchart TD
 | 记忆包 | `contextMemory.ts` | Compress → 三 MD；`askMain` 注入 |
 | mem0 | `mem0.ts` | 可选云检索 / 写入（默认关） |
 | 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
-| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / … |
+| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / …；多轮循环 + 计划批准门控 |
+| 计划审核 | `AgentPlanReview.tsx` | 绑定项目且开启批准时，工具执行前的计划审阅栏 |
 | 设置 / i18n | `SettingsPanel.tsx`、`i18n.ts`、`theme.ts` | 系统设置；EN/ZH；主题 |
 | 类型 | `types.ts` | `ChatSession`、`ThreadRoot`、归档、记忆包等 |
 

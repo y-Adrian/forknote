@@ -1,3 +1,4 @@
+import type { Locale } from "./i18n";
 import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
 import {
   applyPatch,
@@ -301,6 +302,66 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     },
   },
 ];
+
+/** Planning-only system addendum — no tools until the user approves. */
+export function buildPlanningPhaseSystem(locale: Locale): string {
+  if (locale === "zh") {
+    return `
+【计划阶段】用户已连接本地项目。此轮只输出执行计划，禁止调用任何工具，禁止声称已读写文件。
+
+请严格使用以下 Markdown 结构：
+## 计划
+1. 第一步…
+2. 第二步…
+
+## 预期操作（可选）
+- list_dir / read_file / write_file 等：简要说明
+
+计划应具体、可执行。用户点击「批准并执行」后才会真正调用工具。`;
+  }
+  return `
+[Planning phase] A local project is connected. Output an execution plan ONLY — do not call tools or claim files were read/written.
+
+Use this Markdown structure:
+## Plan
+1. First step…
+2. Second step…
+
+## Expected operations (optional)
+- list_dir / read_file / write_file etc.: brief note
+
+Be specific. Tools run only after the user clicks Approve & run.`;
+}
+
+export function parseAgentPlan(text: string): {
+  planText: string;
+  steps: string[];
+} {
+  const planText = stripToolCalls(text).trim();
+  const steps: string[] = [];
+  const re = /^\s*(?:\d+[.)]|[-*•])\s+(.+)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(planText)) !== null) {
+    const step = m[1]?.trim();
+    if (step) steps.push(step);
+  }
+  return { planText, steps };
+}
+
+export function isWriteTool(tool: AgentToolName): boolean {
+  return (
+    tool === "write_file" ||
+    tool === "search_replace" ||
+    tool === "apply_patch" ||
+    tool === "write_docx" ||
+    tool === "write_xlsx" ||
+    tool === "mkdir"
+  );
+}
+
+export function batchNeedsWriteApproval(calls: AgentToolCall[]): boolean {
+  return calls.some((c) => isWriteTool(c.tool));
+}
 
 /** System prompt appendix when a local project is bound. */
 export function buildCodingToolsSystem(projectRoot: string): string {
@@ -807,7 +868,7 @@ function agentCallFromPartialObject(
   return call;
 }
 
-/** Parse ```json {"path":"."}``` blobs that omit tool/name (common with DeepSeek). */
+/** Parse ```json {"path":"."}``` blobs that omit tool/name (some models). */
 export function parseArgsOnlyToolCalls(
   text: string,
   userText: string,

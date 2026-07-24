@@ -27,7 +27,7 @@ function targetHeader(req: {
 }
 
 /** Dev proxy fallback when X-Forknote-Target is missing (should not happen in normal use). */
-const PROXY_FALLBACK_ROOT = normalizeApiRoot("https://api.deepseek.com");
+const PROXY_FALLBACK_ROOT = normalizeApiRoot("http://127.0.0.1:11434");
 
 export default defineConfig({
   plugins: [react()],

@@ -36,7 +36,7 @@ export interface ChatMessage {
   createdAt: number;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
-  /** Chain-of-thought / reasoning (DeepSeek-style), not shown as the answer body */
+  /** Chain-of-thought / reasoning channel, not shown as the answer body */
   reasoning?: string;
   /** Seconds from request start until first visible answer token */
   thinkingSeconds?: number;
@@ -141,6 +141,21 @@ export interface ApiSettings {
    * Task ends early when the model finishes without calling more tools.
    */
   agentMaxRounds?: number;
+  /**
+   * When a project is bound, ask the model for a plan first and wait for user
+   * approval before running tools. Default true.
+   */
+  agentRequireApproval?: boolean;
+}
+
+/** Agent plan awaiting user approval before tool execution. */
+export interface AgentPendingPlan {
+  id: NodeId;
+  userPrompt: string;
+  planText: string;
+  steps: string[];
+  userId: NodeId;
+  assistantId: NodeId;
 }
 
 export interface SelectionInfo {
