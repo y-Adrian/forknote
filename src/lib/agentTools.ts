@@ -80,13 +80,14 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     function: {
       name: "list_dir",
       description:
-        "List files and subdirectories under a path relative to the project root.",
+        "List files and subdirectories under a path relative to the project root. Use path=\".\" for the project root / current project folder. Call this before guessing what files exist.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
-            description: 'Relative directory path. Use "." for project root.',
+            description:
+              'Relative directory path. Use "." for project root (default if omitted).',
           },
         },
       },
@@ -96,7 +97,8 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read a UTF-8 text file relative to the project root.",
+      description:
+        "Read a UTF-8 text file relative to the project root. Use after list_dir when you need file contents.",
       parameters: {
         type: "object",
         properties: {
@@ -299,9 +301,17 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 你已连接到本地项目：${projectRoot}
 
 你有原生函数工具：list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files。
-- 新建纯文本 → write_file。
-- 修改已有文本文件 → 优先 search_replace（或 apply_patch 多处修改）；先 read_file 再精确替换，不要整文件重写除非必要。
-- Word（.docx）→ write_docx；Excel（.xlsx）→ write_xlsx。
+
+查看项目（必须用工具，不要凭空猜目录内容）：
+- 列出目录 → list_dir（项目根用 path="."；子目录如 "src"）
+- 阅读文件 → read_file（先 list_dir 再读具体路径）
+- 全文搜索 → search_files
+
+写入：
+- 新建纯文本 → write_file
+- 修改已有文本 → 优先 search_replace / apply_patch（先 read_file）
+- Word → write_docx；Excel → write_xlsx
+
 只把内容写在 Markdown 里不会写入磁盘。
 路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径。
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。`;
@@ -798,6 +808,62 @@ export function inferOfficeCreateIntent(
       "document";
     const path = /\.docx$/i.test(base) ? base : `${base}.docx`;
     return { tool: "write_docx", path: normalizeRelPath(path) };
+  }
+
+  return null;
+}
+
+/**
+ * Detect "看看当前目录有什么 / 读一下某文件" explore intents.
+ */
+export function inferExploreIntent(
+  userText: string,
+):
+  | { kind: "list"; path: string }
+  | { kind: "read"; path: string }
+  | { kind: "search"; query: string }
+  | null {
+  const t = userText.trim();
+  if (!t) return null;
+
+  const wantsList =
+    /列出|罗列|有哪些|有什么文件|目录|文件夹|项目结构|树形|ls\b|list\s+(files|dir|directory)|what('s| is) in|show\s+(me\s+)?(the\s+)?(files|dir|directory|folder|tree)|当前(目录|文件夹|项目)/i.test(
+      t,
+    ) || /看看.*(目录|文件夹|项目|文件)/i.test(t);
+
+  const readNamed = t.match(
+    /(?:读取|打开|查看|看看|读一下|显示|cat|read|open|show)\s*[：:\s]*[`"'“”]?([\w./\\-]+\.\w{1,10})[`"'“”]?/i,
+  );
+  if (readNamed?.[1]) {
+    return { kind: "read", path: normalizeRelPath(readNamed[1]) };
+  }
+
+  const tickRead = t.match(
+    /(?:读取|打开|查看|读一下|read|open|cat).{0,20}[`"'“”]([\w./\\-]+\.\w{1,10})[`"'“”]/i,
+  );
+  if (tickRead?.[1]) {
+    return { kind: "read", path: normalizeRelPath(tickRead[1]) };
+  }
+
+  const searchQ = t.match(
+    /(?:搜索|查找|找一下|全文搜索|search(?:\s+for)?)\s*[：:\s]*[`"'“”]?([^`'“”\n]{2,80})[`"'“”]?/i,
+  );
+  if (searchQ?.[1] && /搜索|查找|search/i.test(t)) {
+    return { kind: "search", query: searchQ[1].trim() };
+  }
+
+  if (wantsList) {
+    const sub = t.match(
+      /(?:目录|文件夹|folder|dir(?:ectory)?)\s*[：:\s]*[`"'“”]?([\w./\\-]+)[`"'“”]?/i,
+    );
+    let path = ".";
+    if (sub?.[1] && !/^(?:里|下|中|内|下有|里面)$/i.test(sub[1])) {
+      const candidate = sub[1].replace(/\.(xlsx|docx|png|jpg)$/i, "");
+      if (candidate && !/\.\w{1,8}$/.test(candidate)) {
+        path = normalizeRelPath(candidate) || ".";
+      }
+    }
+    return { kind: "list", path: path || "." };
   }
 
   return null;
