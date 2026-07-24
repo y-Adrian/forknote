@@ -79,11 +79,24 @@ export interface ChatSession {
   /** Bound local project absolute path for this session (via sidecar), or null */
   projectRoot?: string | null;
   /**
-   * Model id for this session (snapshotted from settings when created).
-   * Null / missing / empty → fall back to settings.model at call time.
+   * Per-session API overrides (connection + model).
+   * Missing / empty → inherit all from system Settings → API (live).
+   * Only fields that differ from globals are stored.
+   */
+  api?: SessionApiOverride | null;
+  /**
+   * @deprecated Legacy model-only field; migrated into `api.model` on load.
    */
   model?: string | null;
 }
+
+/** Connection/model fields a note may override (subset of ApiSettings). */
+export type SessionApiOverride = Partial<{
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  useProxy: boolean;
+}>;
 
 /** LLM-compressed long-term context for agent recovery */
 export interface ContextMemoryPack {

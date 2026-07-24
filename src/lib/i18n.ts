@@ -115,16 +115,16 @@ const en = {
 
   "api.title": "API",
   "api.lead":
-    "Connection settings (Base URL, API Key, proxy) are global. The Model field is the default for newly created notes — each note can override its own model in the composer.",
+    "Default for sessions without custom API settings. Each note can open Session API settings from the composer to override Base URL, key, model, or proxy.",
   "api.group.cloud": "Cloud / aggregators",
   "api.group.china": "China providers",
   "api.group.local": "Local",
   "api.baseUrl": "Base URL",
   "api.apiKey": "API Key (usually blank for local)",
-  "api.model": "Default model (new notes)",
+  "api.model": "Default model",
   "api.modelPlaceholder": "Must match a locally loaded model name",
   "api.modelHint":
-    "Copied into each new note at creation. Change a note’s model from the composer without editing global connection settings.",
+    "Used by new notes and any note that has not set its own API settings. Override per note from the composer.",
   "api.useProxy":
     "Use local proxy in development (recommended for local models)",
   "api.hint":
@@ -133,7 +133,7 @@ const en = {
   "api.invalidBaseUrl":
     "Base URL must be a full http(s) URL (e.g. https://api.deepseek.com). Pick a preset or include https://, then Save.",
   "api.missingModel":
-    "Set a model for this note (composer) or a default in Settings → API.",
+    "Set a model in Session API settings or a default in Settings → API.",
   "api.missingKey":
     "Add an API Key in settings for your configured endpoint, or switch to a local model such as Ollama.",
   "api.memoryPack.title": "Context memory pack",
@@ -300,6 +300,25 @@ const en = {
   "composer.modelTitle": "Model for this note (overrides Settings default)",
   "composer.modelAria": "Model for this note",
 
+  "sessionApi.button": "API",
+  "sessionApi.buttonAria": "API settings for this note",
+  "sessionApi.buttonTitleDefault":
+    "Using system API defaults — click to customize for this note",
+  "sessionApi.buttonTitleCustom":
+    "This note has custom API settings — click to edit",
+  "sessionApi.noModel": "Set model",
+  "sessionApi.title": "Session API settings",
+  "sessionApi.lead":
+    "These apply to this note only. System Settings → API remain the defaults for notes without custom settings.",
+  "sessionApi.inheritHint":
+    "Showing inherited system values. Edit and Save to create overrides for this note.",
+  "sessionApi.customHint":
+    "This note has custom API settings. Reset clears overrides and inherits system defaults again.",
+  "sessionApi.model": "Model",
+  "sessionApi.modelHint":
+    "Only fields that differ from System Settings are stored as overrides.",
+  "sessionApi.reset": "Reset to defaults",
+
   "archive.title": "Development log archive",
   "archive.hintLoading":
     "Summarizing the main thread and point verdicts…",
@@ -368,16 +387,16 @@ const zh: Record<MessageKey, string> = {
 
   "api.title": "API",
   "api.lead":
-    "连接设置（Base URL、API Key、代理）为全局。模型字段是新建笔记的默认模型 —— 每条笔记可在输入框旁单独改模型。",
+    "未单独配置会话 API 时使用的默认设置。每条笔记可在输入框旁打开「会话 API 设置」覆盖 Base URL、密钥、模型或代理。",
   "api.group.cloud": "云端 / 聚合",
   "api.group.china": "国内服务商",
   "api.group.local": "本地",
   "api.baseUrl": "Base URL",
   "api.apiKey": "API Key（本地通常留空）",
-  "api.model": "默认模型（新建笔记）",
+  "api.model": "默认模型",
   "api.modelPlaceholder": "须与本地已加载的模型名一致",
   "api.modelHint":
-    "创建笔记时写入该笔记；可在输入框旁改当前笔记的模型，无需改动全局连接设置。",
+    "用于新建笔记，以及尚未单独设置 API 的笔记。可在输入框旁按笔记覆盖。",
   "api.useProxy": "开发环境使用本地代理（推荐用于本地模型）",
   "api.hint":
     "请先启动本地服务。Ollama 可运行 ollama list；模型名须与列表一致（如 qwen2.5:7b）。",
@@ -385,7 +404,7 @@ const zh: Record<MessageKey, string> = {
   "api.invalidBaseUrl":
     "Base URL 须为完整 http(s) 地址（如 https://api.deepseek.com）。请选择预设或补全 https:// 后保存。",
   "api.missingModel":
-    "请为当前笔记设置模型（输入框旁），或在设置 → API 填写默认模型。",
+    "请在会话 API 设置中填写模型，或在设置 → API 填写默认模型。",
   "api.missingKey":
     "请在设置中为当前端点填写 API Key，或改用 Ollama 等本地模型。",
   "api.memoryPack.title": "上下文记忆包",
@@ -544,6 +563,25 @@ const zh: Record<MessageKey, string> = {
   "composer.modelPlaceholder": "模型 ID",
   "composer.modelTitle": "本笔记使用的模型（覆盖设置中的默认）",
   "composer.modelAria": "本笔记模型",
+
+  "sessionApi.button": "API",
+  "sessionApi.buttonAria": "本笔记的 API 设置",
+  "sessionApi.buttonTitleDefault":
+    "使用系统 API 默认 — 点击可为当前笔记单独配置",
+  "sessionApi.buttonTitleCustom":
+    "本笔记已有自定义 API 设置 — 点击编辑",
+  "sessionApi.noModel": "设置模型",
+  "sessionApi.title": "会话 API 设置",
+  "sessionApi.lead":
+    "仅作用于当前笔记。系统设置 → API 仍是未单独配置笔记的默认值。",
+  "sessionApi.inheritHint":
+    "当前显示的是系统继承值。修改并保存后，将为本笔记创建覆盖项。",
+  "sessionApi.customHint":
+    "本笔记已有自定义 API。重置会清除覆盖，重新继承系统默认。",
+  "sessionApi.model": "模型",
+  "sessionApi.modelHint":
+    "仅与系统设置不同的字段会作为覆盖保存。",
+  "sessionApi.reset": "恢复默认",
 
   "archive.title": "开发日志归档",
   "archive.hintLoading": "正在归纳主线与分点裁决…",

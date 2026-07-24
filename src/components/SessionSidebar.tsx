@@ -11,7 +11,7 @@ import { useLocale } from "../lib/i18n";
 import {
   resolveSessionModel,
   truncateModelLabel,
-} from "../lib/sessionModel";
+} from "../lib/sessionApi";
 import { groupSessionsByDate } from "../lib/sessionGroups";
 import { useTheme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";

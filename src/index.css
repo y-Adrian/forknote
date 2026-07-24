@@ -3121,45 +3121,76 @@ mark.branch-highlight:hover {
   flex: 1;
 }
 
-.fn-session-model {
+.fn-session-api-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  max-width: min(42%, 220px);
+  max-width: min(48%, 240px);
+  height: 28px;
+  padding: 0 8px;
   margin: 0;
-  font-size: var(--fn-text-ui-xs);
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  background: var(--ds-surface);
   color: var(--ds-muted);
+  font: inherit;
+  font-size: var(--fn-text-ui-xs);
+  cursor: pointer;
 }
 
-.fn-session-model-label-text {
+.fn-session-api-btn:hover:not(:disabled) {
+  border-color: var(--ds-accent);
+  color: var(--ds-text);
+}
+
+.fn-session-api-btn.is-custom {
+  border-color: color-mix(in srgb, var(--ds-accent) 45%, var(--ds-border));
+  color: var(--ds-text);
+}
+
+.fn-session-api-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fn-session-api-label {
   flex-shrink: 0;
   font-weight: 600;
   color: var(--ds-text-dim);
 }
 
-.fn-session-model-input {
+.fn-session-api-model {
   min-width: 0;
-  width: 100%;
-  max-width: 160px;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--ds-border);
-  border-radius: 8px;
-  background: var(--ds-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ds-text);
-  font: inherit;
-  font-size: var(--fn-text-ui-xs);
 }
 
-.fn-session-model-input:focus {
-  outline: none;
-  border-color: var(--ds-accent);
+.fn-session-api-modal.modal {
+  max-width: min(520px, 94vw);
+  max-height: min(88vh, 720px);
 }
 
-.fn-session-model-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.fn-session-api-panel {
+  padding: 0 20px 20px;
+  overflow: auto;
+  max-height: calc(min(88vh, 720px) - 56px);
+}
+
+.fn-session-api-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fn-session-api-actions-end {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .fn-composer-hint {

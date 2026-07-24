@@ -9,7 +9,7 @@ interface Props {
   loading?: boolean;
   placeholder?: string;
   compact?: boolean;
-  /** Optional control before the Enter hint (e.g. session model). */
+  /** Optional control before the Enter hint (e.g. session API settings). */
   leading?: ReactNode;
 }
 

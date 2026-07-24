@@ -72,7 +72,7 @@ import {
   saveSessionStore,
   sessionTitleFromThread,
 } from "../lib/storage";
-import { patchSessionModel, settingsForSession } from "../lib/sessionModel";
+import { patchSessionApi, settingsForSession } from "../lib/sessionApi";
 import {
   isLikelyLocalEndpoint,
   isValidApiBaseUrl,
@@ -108,6 +108,7 @@ import type {
   PointVerdict,
   PointVerdictMap,
   SessionStore,
+  SessionApiOverride,
   SettingsTab,
   ThreadRoot,
 } from "../types";
@@ -208,7 +209,8 @@ interface AppState {
   /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
   renameSession: (sessionId: NodeId, title: string) => boolean;
   /** Set the model for the active session (snapshotted; empty clears to inherit settings). */
-  setSessionModel: (model: string) => void;
+  setSessionApi: (api: SessionApiOverride | null) => void;
+  clearSessionApi: () => void;
 
   askMain: (question: string) => Promise<"started" | "rejected" | "rolled_back">;
   askBranch: (
@@ -1063,7 +1065,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   createSession: () => {
     clearPendingAgentPlan(set);
     pendingAgentContinuation = null;
-    const { sessions, activeSessionId, thread, projectRoot, sidecarUrl, settings } =
+    const { sessions, activeSessionId, thread, projectRoot, sidecarUrl } =
       get();
     let nextSessions = flushActiveSession(
       sessions,
@@ -1072,9 +1074,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projectRoot,
       upsertActiveSession,
     );
-    const session = createEmptySession({
-      model: settings.model.trim() || null,
-    });
+    const session = createEmptySession();
     nextSessions = [session, ...nextSessions];
     persistSessions(nextSessions, session.id);
     set({
@@ -1276,14 +1276,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     return true;
   },
 
-  setSessionModel: (model) => {
+  setSessionApi: (api) => {
     const { sessions, activeSessionId } = get();
     if (!activeSessionId) return;
-    const nextSessions = patchSessionModel(
-      sessions,
-      activeSessionId,
-      model.trim() || null,
-    );
+    const nextSessions = patchSessionApi(sessions, activeSessionId, api);
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
+  clearSessionApi: () => {
+    const { sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const nextSessions = patchSessionApi(sessions, activeSessionId, null);
     persistSessions(nextSessions, activeSessionId);
     set({ sessions: nextSessions });
   },
@@ -1300,9 +1304,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     let sessionId = activeSessionId;
     let currentSessions = sessions;
     if (!sessionId || !getActiveSession(get())) {
-      const session = createEmptySession({
-        model: settings.model.trim() || null,
-      });
+      const session = createEmptySession();
       currentSessions = [session, ...currentSessions];
       sessionId = session.id;
       set({ sessions: currentSessions, activeSessionId: sessionId });
