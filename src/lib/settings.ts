@@ -17,10 +17,6 @@ const APP_DEFAULTS: ApiSettings = {
   contextMemoryEnabled: true,
   compressAfterArchive: false,
   memoryDir: ".forknote/memory",
-  mem0Enabled: false,
-  mem0ApiKey: "",
-  mem0UserId: "",
-  mem0Host: "",
   agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
   agentRequireApproval: true,
 };
@@ -81,10 +77,6 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     memoryDir:
       (raw.memoryDir ?? APP_DEFAULTS.memoryDir ?? ".forknote/memory").trim() ||
       ".forknote/memory",
-    mem0Enabled: raw.mem0Enabled ?? APP_DEFAULTS.mem0Enabled,
-    mem0ApiKey: (raw.mem0ApiKey ?? APP_DEFAULTS.mem0ApiKey ?? "").trim(),
-    mem0UserId: (raw.mem0UserId ?? APP_DEFAULTS.mem0UserId ?? "").trim(),
-    mem0Host: (raw.mem0Host ?? APP_DEFAULTS.mem0Host ?? "").trim(),
     agentMaxRounds: resolveAgentMaxRounds({
       agentMaxRounds: raw.agentMaxRounds ?? APP_DEFAULTS.agentMaxRounds,
     } as ApiSettings),
@@ -116,9 +108,11 @@ export function loadSettings(): ApiSettings {
     if (!String(fromStorage.apiKey ?? "").trim()) {
       delete fromStorage.apiKey;
     }
-    if (!String(fromStorage.mem0ApiKey ?? "").trim()) {
-      delete fromStorage.mem0ApiKey;
-    }
+    // Drop legacy mem0 fields if present in older localStorage.
+    delete (fromStorage as { mem0Enabled?: unknown }).mem0Enabled;
+    delete (fromStorage as { mem0ApiKey?: unknown }).mem0ApiKey;
+    delete (fromStorage as { mem0UserId?: unknown }).mem0UserId;
+    delete (fromStorage as { mem0Host?: unknown }).mem0Host;
 
     return normalizeApiSettings(fromStorage);
   } catch {

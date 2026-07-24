@@ -18,7 +18,6 @@ ai:
           - 'src/lib/contextBuilder.ts'
           - 'src/lib/openai.ts'
           - 'src/lib/reasoning.ts'
-          - 'src/lib/mem0.ts'
           - 'src/lib/contextMemory.ts'
           - 'src/lib/conversationContext.ts'
           - 'src/lib/apiError.ts'

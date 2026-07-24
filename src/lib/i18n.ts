@@ -146,16 +146,6 @@ const en = {
   "api.memoryPack.afterArchive": "Also compress after Archive",
   "api.memoryPack.dir": "Memory folder (relative to project)",
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
-  "api.mem0.title": "Long-term (mem0 cloud)",
-  "api.mem0.lead":
-    "Optional overlay on top of the local MD pack. Off by default — local SUMMARY/TASKS/DECISIONS stay local-first.",
-  "api.mem0.enable": "Enable mem0 cloud memory",
-  "api.mem0.apiKey": "mem0 API Key",
-  "api.mem0.userId": "mem0 user id",
-  "api.mem0.userIdPlaceholder": "Blank = stable id for this browser",
-  "api.mem0.host": "mem0 host (optional)",
-  "api.mem0.privacy":
-    "Privacy: when enabled, turns / archives / compress packs may be sent to the mem0 host. Prefer the local MD pack for local-first workflows.",
 
   "data.title": "Data",
   "data.lead":
@@ -420,16 +410,6 @@ const zh: Record<MessageKey, string> = {
   "api.memoryPack.afterArchive": "归档后自动压缩",
   "api.memoryPack.dir": "记忆目录（相对项目根）",
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
-  "api.mem0.title": "长期记忆（mem0 云）",
-  "api.mem0.lead":
-    "可选，叠加在本地 MD 记忆包之上。默认关闭 —— 本地 SUMMARY/TASKS/DECISIONS 仍为本地优先。",
-  "api.mem0.enable": "启用 mem0 云端记忆",
-  "api.mem0.apiKey": "mem0 API Key",
-  "api.mem0.userId": "mem0 用户 ID",
-  "api.mem0.userIdPlaceholder": "留空则为本浏览器生成稳定 ID",
-  "api.mem0.host": "mem0 主机（可选）",
-  "api.mem0.privacy":
-    "隐私：开启后，对话 / 归档 / 压缩包可能发送到 mem0 主机。本地优先请只用 MD 记忆包。",
 
   "data.title": "数据",
   "data.lead":

@@ -49,9 +49,7 @@ import {
   packThroughMessageId,
   parseCompressedOutput,
   saveContextMemoryPack,
-  syncPackToMem0,
 } from "../lib/contextMemory";
-import { isMem0Enabled, rememberArchive, rememberMainTurn } from "../lib/mem0";
 import {
   isToolsUnsupportedError,
   streamChat,
@@ -954,10 +952,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           : {}),
       });
 
-      if (isMem0Enabled(settings)) {
-        void rememberArchive(settings, snapshot, { sessionId });
-      }
-
       if (isCompressAfterArchiveEnabled(settings)) {
         // Fire after archive UI settles; compress uses its own loading flag
         if (get().activeSessionId === sessionId) {
@@ -1082,8 +1076,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       persistSessions(nextSessions, get().activeSessionId);
       set({ sessions: nextSessions });
-
-      void syncPackToMem0(settings, saved, { sessionId });
     } catch (e) {
       if (!isAbortError(e)) {
         set({
@@ -2361,16 +2353,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ? `用户已批准以下计划。请立即按计划执行，只调用完成该计划所必需的工具；不要额外添加验证步骤（如未经要求的 list_dir）。若计划写明无需工具，则只总结、不要调工具。\n\n${approvedPlanText}`
                 : `User approved the plan. Execute it now with only the tools required by the plan; do not add extra verification steps (e.g. unrequested list_dir). If the plan says no tools are needed, summarize only and do not call tools.\n\n${approvedPlanText}`,
           });
-          const result = await executeTools();
-          if (
-            !signal.aborted &&
-            isMem0Enabled(settings) &&
-            result.trim()
-          ) {
-            void rememberMainTurn(settings, trimmed, result, {
-              sessionId,
-            });
-          }
+          await executeTools();
         });
 
         setSessionMainLoading(set, sessionId, false);
@@ -2389,16 +2372,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       visibleContent = await executeTools();
-
-      if (
-        !signal.aborted &&
-        isMem0Enabled(settings) &&
-        visibleContent.trim()
-      ) {
-        void rememberMainTurn(settings, trimmed, visibleContent, {
-          sessionId,
-        });
-      }
     } catch (e) {
       if (!isAbortError(e)) {
         set({ error: e instanceof Error ? e.message : "Answer request failed" });
