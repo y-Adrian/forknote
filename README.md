@@ -11,6 +11,9 @@
 - **多笔记**：左侧列表新建 / 重命名 / 切换 / 删除
 - 无登录；笔记与设置保存在浏览器 `localStorage`
 
+仓库已开启 GitHub **Automatically delete head branches**：PR 合并进 `leading` 后会自动删除远端 head 分枝，避免 `pr/*` 堆积。
+
+
 ---
 
 ## 安装与运行
