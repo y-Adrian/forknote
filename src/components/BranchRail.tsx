@@ -28,15 +28,15 @@ const Y_GAP   = 28;   // vertical gap between DFS-ordered nodes
 const TRUNK_R = 5.5;
 const NODE_R  = 4.5;
 
-// ── Colors ─────────────────────────────────────────────────
-const C_TRUNK_LINE  = "rgba(45,212,191,0.18)";
-const C_TRUNK_NODE  = "#2dd4bf";
-const C_TRUNK_PLAIN = "rgba(45,180,160,0.28)";
-const C_CURVE       = "rgba(45,212,191,0.55)";
-const C_CURVE_OPEN  = "rgba(94,234,212,0.95)";
-const C_LEAF        = "rgba(20,184,166,0.65)";
-const C_LEAF_OPEN   = "#2dd4bf";
-const C_LEAF_RING   = "rgba(153,246,228,0.70)";
+// ── Colors (muted lavender / amethyst) ─────────────────────
+const C_TRUNK_LINE  = "rgba(168,152,200,0.20)";
+const C_TRUNK_NODE  = "#a995c4";
+const C_TRUNK_PLAIN = "rgba(150,135,180,0.28)";
+const C_CURVE       = "rgba(168,152,200,0.55)";
+const C_CURVE_OPEN  = "rgba(198,184,220,0.95)";
+const C_LEAF        = "rgba(140,120,175,0.65)";
+const C_LEAF_OPEN   = "#a995c4";
+const C_LEAF_RING   = "rgba(220,210,235,0.70)";
 
 // ── DFS layout ─────────────────────────────────────────────
 /**
@@ -164,7 +164,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
               <circle
                 cx={TRUNK_X} cy={forkY} r={TRUNK_R}
                 fill={hasBranch ? C_TRUNK_NODE : C_TRUNK_PLAIN}
-                stroke={hasBranch ? "rgba(153,246,228,0.5)" : "none"}
+                stroke={hasBranch ? "rgba(210,198,230,0.5)" : "none"}
                 strokeWidth="1.5"
               />
               {/* Small horizontal tick when there are branches */}
@@ -172,7 +172,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
                 <line
                   x1={TRUNK_X} y1={forkY}
                   x2={TRUNK_X + X_STEP * 0.6} y2={forkY}
-                  stroke="rgba(45,212,191,0.35)"
+                  stroke="rgba(168,152,200,0.35)"
                   strokeWidth="1.5"
                   strokeLinecap="round"
                 />
@@ -214,7 +214,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
                       y={n.y + 3.5}
                       fontSize="9"
                       fontFamily="system-ui,sans-serif"
-                      fill={open ? "rgba(204,251,241,0.9)" : "rgba(130,180,170,0.7)"}
+                      fill={open ? "rgba(230,222,242,0.9)" : "rgba(160,148,180,0.7)"}
                       style={{ pointerEvents: "none", userSelect: "none" }}
                     >
                       {label}{n.branch.userQuestion.length > 10 ? "…" : ""}

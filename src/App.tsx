@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArchivePanel } from "./components/ArchivePanel";
 import { BranchFloatLayer } from "./components/BranchFloatLayer";
 import { MainPanel } from "./components/MainPanel";
 import { ProjectPanel } from "./components/ProjectPanel";
@@ -42,6 +43,7 @@ export default function App() {
         open={projectOpen}
         onClose={() => setProjectOpen(false)}
       />
+      <ArchivePanel />
     </div>
   );
 }

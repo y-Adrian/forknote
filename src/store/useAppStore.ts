@@ -15,14 +15,36 @@ import {
   type AgentFileChange,
   type AgentToolCall,
 } from "../lib/agentTools";
+import {
+  archiveSystemPrompt,
+  archiveTitleFromContent,
+  archiveUserPrompt,
+  buildArchiveSource,
+  lastNonEmptyMessageId,
+} from "../lib/archive";
+import { resolveConversationContext } from "../lib/conversationContext";
 import { buildBranchQuestionMessages, buildConversationMessages } from "../lib/contextBuilder";
+import { getLocale } from "../lib/i18n";
 import { createId } from "../lib/id";
+import {
+  buildAgentMemoryAddendum,
+  buildCompressSource,
+  compressChatMessages,
+  isCompressAfterArchiveEnabled,
+  loadContextMemoryPack,
+  packThroughMessageId,
+  parseCompressedOutput,
+  saveContextMemoryPack,
+  syncPackToMem0,
+} from "../lib/contextMemory";
+import { isMem0Enabled, rememberArchive, rememberMainTurn } from "../lib/mem0";
 import {
   isToolsUnsupportedError,
   streamChat,
   type ChatMessage as ApiChatMessage,
   type ToolCall,
 } from "../lib/openai";
+import { mergeReasoningChannels } from "../lib/reasoning";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
   closeProject as sidecarCloseProject,
@@ -52,14 +74,19 @@ import {
 import type {
   Anchor,
   ApiSettings,
+  ArchiveSnapshot,
   BranchNode,
   ChatMessage,
   ChatSession,
+  ContextMemoryPack,
+  ContextMode,
   FocusTarget,
   NodeId,
   PointDoubtMap,
   PointVerdict,
   PointVerdictMap,
+  SessionStore,
+  SettingsTab,
   ThreadRoot,
 } from "../types";
 
@@ -69,10 +96,19 @@ interface AppState {
   thread: ThreadRoot | null;
   settings: ApiSettings;
   settingsOpen: boolean;
+  /** Active category inside System settings modal */
+  settingsTab: SettingsTab;
   projectOpen: boolean;
   focus: FocusTarget;
   loadingMain: boolean;
   loadingBranchId: NodeId | null;
+  loadingArchive: boolean;
+  /** Streaming context compression (SUMMARY/TASKS/DECISIONS) */
+  loadingCompress: boolean;
+  archivePanelOpen: boolean;
+  viewingArchiveId: NodeId | null;
+  /** Streaming draft while archiveCurrent runs */
+  archiveDraft: string;
   error: string | null;
   branchFloatStack: BranchFloatEntry[];
   /** 递增后关闭所有划选追问浮层 */
@@ -87,7 +123,8 @@ interface AppState {
 
   init: () => void;
   setSettings: (settings: ApiSettings) => void;
-  setSettingsOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean, tab?: SettingsTab) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
   setProjectOpen: (open: boolean) => void;
   setSidecarUrl: (url: string) => void;
   openProject: (absPath: string, quiet?: boolean) => Promise<void>;
@@ -97,6 +134,16 @@ interface AppState {
   clearError: () => void;
   /** Abort in-flight generation. Returns the stopped main prompt to restore in the composer. */
   stopGeneration: () => string | null;
+  archiveCurrent: () => Promise<void>;
+  /**
+   * Compress thread → SUMMARY.md + TASKS.md + DECISIONS.md
+   * (project disk when bound, else session localStorage).
+   */
+  compressContext: () => Promise<void>;
+  setContextMode: (mode: ContextMode, archiveId?: NodeId | null) => void;
+  setArchivePanelOpen: (open: boolean) => void;
+  setViewingArchiveId: (id: NodeId | null) => void;
+  deleteArchive: (archiveId: NodeId) => void;
   /**
    * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认采纳）。
    * 切换离开存疑时会清掉对应 doubt。
@@ -126,6 +173,10 @@ interface AppState {
   createSession: () => void;
   switchSession: (sessionId: NodeId) => void;
   deleteSession: (sessionId: NodeId) => void;
+  /** Replace all notes with a single empty session (localStorage). */
+  clearAllSessions: () => void;
+  /** Replace the in-memory + persisted session store (e.g. after import). */
+  replaceSessionStore: (store: SessionStore) => void;
   /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
   renameSession: (sessionId: NodeId, title: string) => boolean;
 
@@ -170,6 +221,24 @@ function upsertActiveSession(
   );
 }
 
+/** Patch session fields (archives / context mode / memory) without replacing the thread. */
+function patchActiveSessionMeta(
+  sessions: ChatSession[],
+  activeSessionId: NodeId | null,
+  patch: Partial<
+    Pick<
+      ChatSession,
+      "archives" | "contextMode" | "activeArchiveId" | "contextMemory"
+    >
+  >,
+): ChatSession[] {
+  if (!activeSessionId) return sessions;
+  const now = Date.now();
+  return sessions.map((s) =>
+    s.id === activeSessionId ? { ...s, ...patch, updatedAt: now } : s,
+  );
+}
+
 function appendChild(
   nodes: BranchNode[],
   parentId: NodeId,
@@ -189,6 +258,8 @@ function appendChild(
 // Module-level abort controllers — not in Zustand state (no re-render needed)
 let mainAbortCtrl: AbortController | null = null;
 let branchAbortCtrl: AbortController | null = null;
+let archiveAbortCtrl: AbortController | null = null;
+let compressAbortCtrl: AbortController | null = null;
 
 /** In-flight main turn — rolled back synchronously on Stop so UI doesn't wait on hung streams. */
 let activeMainTurn: {
@@ -276,10 +347,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   thread: null,
   settings: loadSettings(),
   settingsOpen: false,
+  settingsTab: "general",
   projectOpen: false,
   focus: { type: "root" },
   loadingMain: false,
   loadingBranchId: null,
+  loadingArchive: false,
+  loadingCompress: false,
+  archivePanelOpen: false,
+  viewingArchiveId: null,
+  archiveDraft: "",
   error: null,
   branchFloatStack: [],
   floatOverlayDismissToken: 0,
@@ -309,7 +386,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSettings: (settings) => set({ settings }),
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setSettingsOpen: (open, tab) =>
+    set({
+      settingsOpen: open,
+      ...(tab ? { settingsTab: tab } : {}),
+    }),
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
   setProjectOpen: (open) => set({ projectOpen: open }),
   setSidecarUrl: (url) => {
     const next = url.trim() || "/sidecar";
@@ -361,10 +443,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const turn = activeMainTurn;
     const ctrl = mainAbortCtrl;
     const branchCtrl = branchAbortCtrl;
+    const archiveCtrl = archiveAbortCtrl;
+    const compressCtrl = compressAbortCtrl;
 
     // Abort first so in-flight fetch/reader/tool calls start unwinding
     ctrl?.abort();
     branchCtrl?.abort();
+    archiveCtrl?.abort();
+    compressCtrl?.abort();
 
     // Roll back the incomplete main turn immediately (don't wait for hung finally)
     if (turn && turn.ctrl === ctrl) {
@@ -374,8 +460,299 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     mainAbortCtrl = null;
     branchAbortCtrl = null;
-    set({ loadingMain: false, loadingBranchId: null });
+    archiveAbortCtrl = null;
+    compressAbortCtrl = null;
+    set({
+      loadingMain: false,
+      loadingBranchId: null,
+      loadingArchive: false,
+      loadingCompress: false,
+      archiveDraft: "",
+    });
     return turn?.prompt ?? null;
+  },
+
+  setArchivePanelOpen: (open) => {
+    set({
+      archivePanelOpen: open,
+      ...(open
+        ? {}
+        : { archiveDraft: get().loadingArchive ? get().archiveDraft : "" }),
+    });
+  },
+
+  setViewingArchiveId: (id) => set({ viewingArchiveId: id }),
+
+  setContextMode: (mode, archiveId) => {
+    const { sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+
+    const session = getActiveSession(get());
+    let nextArchiveId: NodeId | null | undefined = archiveId;
+    if (mode === "live") {
+      nextArchiveId = null;
+    } else if (mode === "archive") {
+      if (nextArchiveId === undefined) {
+        nextArchiveId =
+          session?.activeArchiveId ??
+          session?.archives?.[session.archives.length - 1]?.id ??
+          null;
+      }
+      if (!nextArchiveId) return;
+      const exists = session?.archives?.some((a) => a.id === nextArchiveId);
+      if (!exists) return;
+    }
+
+    const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
+      contextMode: mode,
+      activeArchiveId: nextArchiveId ?? null,
+    });
+    persistSessions(nextSessions, activeSessionId);
+    set({
+      sessions: nextSessions,
+      viewingArchiveId:
+        mode === "archive" && nextArchiveId
+          ? nextArchiveId
+          : get().viewingArchiveId,
+    });
+  },
+
+  deleteArchive: (archiveId) => {
+    const { sessions, activeSessionId, viewingArchiveId } = get();
+    if (!activeSessionId) return;
+    const session = getActiveSession(get());
+    if (!session?.archives?.length) return;
+
+    const archives = session.archives.filter((a) => a.id !== archiveId);
+    const wasActive = session.activeArchiveId === archiveId;
+    const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
+      archives,
+      ...(wasActive
+        ? { contextMode: "live" as const, activeArchiveId: null }
+        : {}),
+    });
+    persistSessions(nextSessions, activeSessionId);
+    set({
+      sessions: nextSessions,
+      viewingArchiveId:
+        viewingArchiveId === archiveId
+          ? archives[archives.length - 1]?.id ?? null
+          : viewingArchiveId,
+    });
+  },
+
+  archiveCurrent: async () => {
+    if (get().loadingArchive || get().loadingMain || get().loadingCompress) {
+      return;
+    }
+
+    const { settings, thread } = get();
+    if (!thread) return;
+
+    const hasContent = thread.messages.some((m) => m.content.trim());
+    if (!hasContent) return;
+
+    const throughMessageId = lastNonEmptyMessageId(thread);
+    if (!throughMessageId) return;
+
+    const authError = requireApiKey(settings);
+    if (authError) {
+      set({ error: authError, settingsOpen: true, settingsTab: "api" });
+      return;
+    }
+
+    const source = buildArchiveSource(thread);
+    if (!source.trim()) return;
+
+    archiveAbortCtrl?.abort();
+    const ctrl = new AbortController();
+    archiveAbortCtrl = ctrl;
+
+    set({
+      loadingArchive: true,
+      archivePanelOpen: true,
+      archiveDraft: "",
+      viewingArchiveId: null,
+      error: null,
+    });
+
+    try {
+      let content = "";
+      const locale = getLocale();
+      await streamChat(
+        settings,
+        [
+          { role: "system", content: archiveSystemPrompt(locale) },
+          {
+            role: "user",
+            content: archiveUserPrompt(source, locale),
+          },
+        ],
+        (delta) => {
+          if (archiveAbortCtrl !== ctrl || ctrl.signal.aborted) return;
+          content += delta;
+          set({ archiveDraft: content });
+        },
+        { signal: ctrl.signal, temperature: 0.3 },
+      );
+
+      if (ctrl.signal.aborted) return;
+
+      const trimmed = content.trim();
+      if (!trimmed) {
+        set({ error: "Archive came back empty — try again" });
+        return;
+      }
+
+      const snapshot: ArchiveSnapshot = {
+        id: createId(),
+        createdAt: Date.now(),
+        title: archiveTitleFromContent(trimmed, "Dev log draft"),
+        content: trimmed,
+        throughMessageId,
+      };
+
+      const { sessions, activeSessionId } = get();
+      const session = getActiveSession(get());
+      const archives = [...(session?.archives ?? []), snapshot];
+      const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
+        archives,
+        contextMode: "archive",
+        activeArchiveId: snapshot.id,
+      });
+      persistSessions(nextSessions, activeSessionId);
+      set({
+        sessions: nextSessions,
+        viewingArchiveId: snapshot.id,
+        archiveDraft: "",
+        archivePanelOpen: true,
+      });
+
+      if (isMem0Enabled(settings)) {
+        void rememberArchive(settings, snapshot, { sessionId: activeSessionId });
+      }
+
+      if (isCompressAfterArchiveEnabled(settings)) {
+        // Fire after archive UI settles; compress uses its own loading flag
+        void get().compressContext();
+      }
+    } catch (e) {
+      if (!isAbortError(e)) {
+        set({
+          error: e instanceof Error ? e.message : "Archive request failed",
+        });
+      }
+    } finally {
+      if (archiveAbortCtrl === ctrl) {
+        archiveAbortCtrl = null;
+        set({ loadingArchive: false });
+      }
+    }
+  },
+
+  compressContext: async () => {
+    if (
+      get().loadingCompress ||
+      get().loadingMain ||
+      get().loadingArchive
+    ) {
+      return;
+    }
+
+    const { settings, thread, projectRoot, sidecarUrl, activeSessionId } =
+      get();
+    if (!thread) return;
+
+    const hasContent = thread.messages.some((m) => m.content.trim());
+    if (!hasContent) return;
+
+    const authError = requireApiKey(settings);
+    if (authError) {
+      set({ error: authError, settingsOpen: true, settingsTab: "api" });
+      return;
+    }
+
+    const source = buildCompressSource(thread);
+    if (!source.trim()) return;
+
+    compressAbortCtrl?.abort();
+    const ctrl = new AbortController();
+    compressAbortCtrl = ctrl;
+
+    set({ loadingCompress: true, error: null });
+
+    try {
+      const session = getActiveSession(get());
+      const existing = await loadContextMemoryPack({
+        settings,
+        session,
+        projectRoot,
+        sidecarUrl,
+        signal: ctrl.signal,
+      });
+
+      let content = "";
+      const locale = getLocale();
+      await streamChat(
+        settings,
+        compressChatMessages(source, existing, locale),
+        (delta) => {
+          if (compressAbortCtrl !== ctrl || ctrl.signal.aborted) return;
+          content += delta;
+        },
+        { signal: ctrl.signal, temperature: 0.3 },
+      );
+
+      if (ctrl.signal.aborted) return;
+
+      const parsed = parseCompressedOutput(content);
+      if (
+        !parsed.summary.trim() &&
+        !parsed.tasks.trim() &&
+        !parsed.decisions.trim()
+      ) {
+        set({ error: "Context compress came back empty — try again" });
+        return;
+      }
+
+      const throughMessageId = packThroughMessageId(thread) ?? undefined;
+      const draft: ContextMemoryPack = {
+        ...parsed,
+        throughMessageId,
+      };
+
+      const saved = await saveContextMemoryPack({
+        pack: draft,
+        settings,
+        projectRoot,
+        sidecarUrl,
+        signal: ctrl.signal,
+      });
+
+      if (ctrl.signal.aborted) return;
+
+      const nextSessions = patchActiveSessionMeta(
+        get().sessions,
+        activeSessionId,
+        { contextMemory: saved },
+      );
+      persistSessions(nextSessions, activeSessionId);
+      set({ sessions: nextSessions });
+
+      void syncPackToMem0(settings, saved, { sessionId: activeSessionId });
+    } catch (e) {
+      if (!isAbortError(e)) {
+        set({
+          error:
+            e instanceof Error ? e.message : "Context compress request failed",
+        });
+      }
+    } finally {
+      if (compressAbortCtrl === ctrl) {
+        compressAbortCtrl = null;
+        set({ loadingCompress: false });
+      }
+    }
   },
 
   setPointVerdict: (targetId, pointIndex, verdict) => {
@@ -520,6 +897,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       focus: { type: "root" },
       error: null,
       branchFloatStack: [],
+      archivePanelOpen: false,
+      viewingArchiveId: null,
+      archiveDraft: "",
     });
   },
 
@@ -540,6 +920,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       focus: { type: "root" },
       error: null,
       branchFloatStack: [],
+      archivePanelOpen: false,
+      viewingArchiveId: null,
+      archiveDraft: "",
     });
   },
 
@@ -582,6 +965,53 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  clearAllSessions: () => {
+    get().stopGeneration();
+    const session = createEmptySession();
+    persistSessions([session], session.id);
+    set({
+      sessions: [session],
+      activeSessionId: session.id,
+      thread: null,
+      focus: { type: "root" },
+      error: null,
+      branchFloatStack: [],
+      archivePanelOpen: false,
+      viewingArchiveId: null,
+      archiveDraft: "",
+      agentActivity: [],
+      agentChanges: [],
+    });
+  },
+
+  replaceSessionStore: (store) => {
+    get().stopGeneration();
+    const sessions = store.sessions.length
+      ? store.sessions
+      : [createEmptySession()];
+    const activeSessionId =
+      (store.activeSessionId &&
+        sessions.some((s) => s.id === store.activeSessionId) &&
+        store.activeSessionId) ||
+      sessions[0].id;
+    const active = sessions.find((s) => s.id === activeSessionId);
+    const nextThread = active?.thread ? normalizeThread(active.thread) : null;
+    persistSessions(sessions, activeSessionId);
+    set({
+      sessions,
+      activeSessionId,
+      thread: nextThread,
+      focus: { type: "root" },
+      error: null,
+      branchFloatStack: [],
+      archivePanelOpen: false,
+      viewingArchiveId: null,
+      archiveDraft: "",
+      agentActivity: [],
+      agentChanges: [],
+    });
+  },
+
   renameSession: (sessionId, title) => {
     const trimmed = title.trim().replace(/\s+/g, " ");
     if (!trimmed) return false;
@@ -615,7 +1045,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       get();
     const authError = requireApiKey(settings);
     if (authError) {
-      set({ error: authError, settingsOpen: true });
+      set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
     }
 
@@ -644,11 +1074,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdAt: now,
     };
 
+    // Prefer in-memory thread; fall back to persisted session.thread if desynced
+    const sessionForThread = currentSessions.find((s) => s.id === sessionId);
+    const priorThread =
+      existingThread ??
+      (sessionForThread?.thread
+        ? normalizeThread(sessionForThread.thread)
+        : null);
+
     let thread: ThreadRoot;
-    if (existingThread) {
+    if (priorThread) {
       thread = normalizeThread({
-        ...existingThread,
-        messages: [...existingThread.messages, userMsg, assistantMsg],
+        ...priorThread,
+        messages: [...priorThread.messages, userMsg, assistantMsg],
       });
     } else {
       thread = {
@@ -688,12 +1126,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     const signal = ctrl.signal;
 
-    const patchAssistantContent = (content: string) => {
+    const requestStartedAt = Date.now();
+    let firstAnswerAt: number | null = null;
+    let apiReasoning = "";
+
+    const patchAssistantState = (patch: {
+      content?: string;
+      reasoning?: string;
+    }) => {
       // Ignore late patches after this request was aborted/superseded
       if (activeMainTurn?.ctrl !== ctrl || signal.aborted) return;
       const current = get().thread;
       if (!current) return;
-      const next = patchMessage(current, assistantId, { content });
+      // Elapsed Thought (Ns) only once answer tokens start — and only if real reasoning exists.
+      const reasoningText =
+        patch.reasoning !== undefined
+          ? patch.reasoning.trim()
+          : apiReasoning.trim();
+      const thinkingSeconds =
+        reasoningText && firstAnswerAt != null
+          ? Math.max(1, Math.round((firstAnswerAt - requestStartedAt) / 1000))
+          : undefined;
+      const next = patchMessage(current, assistantId, {
+        ...patch,
+        ...(patch.reasoning !== undefined
+          ? { reasoning: reasoningText || undefined }
+          : {}),
+        ...(thinkingSeconds != null ? { thinkingSeconds } : {}),
+      });
       const updatedSessions = upsertActiveSession(
         get().sessions,
         get().activeSessionId,
@@ -701,6 +1161,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       persistSessions(updatedSessions, get().activeSessionId);
       set({ thread: next, sessions: updatedSessions });
+    };
+
+    const patchAssistantContent = (content: string) => {
+      patchAssistantState({ content });
     };
 
     try {
@@ -724,9 +1188,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       const codingToolsSystem = projectRoot
         ? buildCodingToolsSystem(projectRoot)
         : null;
+      const session = getActiveSession(get());
+      const resolved = resolveConversationContext(session);
+      // Keep UI toggle and API path aligned when archive id is missing/stale
+      if (resolved.repairedToLive && sessionId) {
+        const repaired = patchActiveSessionMeta(get().sessions, sessionId, {
+          contextMode: "live",
+          activeArchiveId: null,
+        });
+        persistSessions(repaired, sessionId);
+        set({ sessions: repaired });
+      }
+      const memoryAddendum = await buildAgentMemoryAddendum({
+        settings,
+        query: trimmed,
+        session: getActiveSession(get()),
+        projectRoot,
+        sidecarUrl,
+        signal,
+      });
+
       const apiMessages: ApiChatMessage[] = buildConversationMessages(thread, {
         projectRoot,
         codingToolsSystem,
+        contextMode: resolved.mode,
+        activeArchive: resolved.archive,
+        locale: getLocale(),
+        memoryAddendum,
       });
 
       const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
@@ -752,14 +1240,19 @@ export const useAppStore = create<AppState>((set, get) => ({
             settings,
             apiMessages,
             (delta) => {
+              // Content channel is already peeled of think-tags inside streamChat.
               roundText += delta;
               const cleaned = stripToolCalls(roundText);
               if (cleaned.length > 0) {
-                patchAssistantContent(
-                  visibleContent
+                if (firstAnswerAt == null) firstAnswerAt = Date.now();
+                patchAssistantState({
+                  content: visibleContent
                     ? `${visibleContent}\n\n${cleaned}`.trim()
                     : cleaned,
-                );
+                  ...(apiReasoning.trim()
+                    ? { reasoning: apiReasoning }
+                    : {}),
+                });
               } else if (!visibleContent && projectRoot) {
                 patchAssistantContent(
                   createPath
@@ -778,6 +1271,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                   : useNativeTools
                     ? "auto"
                     : undefined,
+              onReasoningDelta: (piece) => {
+                apiReasoning += piece;
+                if (apiReasoning.trim()) {
+                  patchAssistantState({ reasoning: apiReasoning });
+                }
+              },
             },
           );
         } catch (e) {
@@ -793,6 +1292,31 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (signal.aborted) break;
 
         roundText = streamResult.content || roundText;
+        // Prefer streamChat totals (API channel + any think-tags peeled live).
+        if (streamResult.reasoning.length >= apiReasoning.length) {
+          apiReasoning = streamResult.reasoning;
+        }
+        {
+          // Safety net if a provider left residual tags in content.
+          const merged = mergeReasoningChannels(
+            apiReasoning,
+            stripToolCalls(roundText),
+          );
+          apiReasoning = merged.reasoning;
+          roundText = merged.content;
+          if (apiReasoning.trim()) {
+            patchAssistantState({
+              reasoning: apiReasoning,
+              ...(roundText
+                ? {
+                    content: visibleContent
+                      ? `${visibleContent}\n\n${roundText}`.trim()
+                      : roundText,
+                  }
+                : {}),
+            });
+          }
+        }
 
         type PendingCall = {
           agent: AgentToolCall;
@@ -943,6 +1467,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           patchAssistantContent(visibleContent.trim());
         }
       }
+
+      if (
+        !signal.aborted &&
+        isMem0Enabled(settings) &&
+        visibleContent.trim()
+      ) {
+        void rememberMainTurn(settings, trimmed, visibleContent, {
+          sessionId,
+        });
+      }
     } catch (e) {
       if (!isAbortError(e)) {
         set({ error: e instanceof Error ? e.message : "Answer request failed" });
@@ -972,7 +1506,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const authError = requireApiKey(settings);
     if (authError) {
-      set({ error: authError, settingsOpen: true });
+      set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
     }
 
@@ -1034,6 +1568,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           parentId,
           anchor.quotedText,
           trimmed,
+          getLocale(),
         );
         await streamChat(
           settings,
