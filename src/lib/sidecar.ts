@@ -14,6 +14,28 @@ export type SearchHit = {
   text: string;
 };
 
+const SIDECAR_DOWN_HINT =
+  "Could not reach sidecar (run npm run sidecar, or npm run dev). Then retry Open project.";
+
+function errorMessageFromBody(data: unknown, status: number, text: string): string {
+  if (data && typeof data === "object" && "error" in data) {
+    const err = (data as { error: unknown }).error;
+    if (typeof err === "string" && err.trim()) return err;
+    if (
+      err &&
+      typeof err === "object" &&
+      "message" in err &&
+      typeof (err as { message: unknown }).message === "string"
+    ) {
+      return (err as { message: string }).message;
+    }
+  }
+  // Vite proxy used to return empty HTTP 500 when :8787 was down.
+  if (status >= 500 && !text.trim()) return SIDECAR_DOWN_HINT;
+  if (text.trim()) return `Sidecar error ${status}: ${text.slice(0, 200)}`;
+  return `Sidecar error ${status}`;
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: unknown = null;
@@ -23,18 +45,11 @@ async function parseJson<T>(res: Response): Promise<T> {
     throw new Error(
       res.ok
         ? "Sidecar returned invalid JSON"
-        : `Sidecar error ${res.status}: ${text.slice(0, 200)}`,
+        : errorMessageFromBody(null, res.status, text),
     );
   }
   if (!res.ok) {
-    const msg =
-      data &&
-      typeof data === "object" &&
-      "error" in data &&
-      typeof (data as { error: unknown }).error === "string"
-        ? (data as { error: string }).error
-        : `Sidecar error ${res.status}`;
-    throw new Error(msg);
+    throw new Error(errorMessageFromBody(data, res.status, text));
   }
   return data as T;
 }

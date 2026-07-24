@@ -1,10 +1,123 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Plugin } from "vite";
+import type { Plugin, ProxyOptions } from "vite";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { isValidApiBaseUrl, normalizeBaseUrl } from "./src/lib/settings";
+
+const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
+const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
+const SIDECAR_UNREACHABLE = JSON.stringify({
+  error:
+    "Sidecar unreachable on 127.0.0.1:8787. Run npm run sidecar (or npm run dev), then retry Open project.",
+});
+
+function isPortOpen(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host }, () => {
+      socket.end();
+      resolve(true);
+    });
+    socket.on("error", () => resolve(false));
+  });
+}
+
+/**
+ * Ensure the local FS sidecar is up during `vite` / `npm run dev:web`.
+ * If `npm run dev` already started sidecar, we reuse it (no second listener).
+ */
+function sidecarDevPlugin(): Plugin {
+  let child: ChildProcess | null = null;
+  let weStarted = false;
+
+  return {
+    name: "forknote-sidecar-dev",
+    async configureServer(server) {
+      if (await isPortOpen(SIDECAR_PORT, SIDECAR_HOST)) {
+        console.log(
+          `[forknote] sidecar already on http://${SIDECAR_HOST}:${SIDECAR_PORT}`,
+        );
+      } else {
+        const root = path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+        );
+        child = spawn(process.execPath, [path.join(root, "sidecar/index.js")], {
+          cwd: root,
+          stdio: "inherit",
+          env: process.env,
+        });
+        weStarted = true;
+        child.on("exit", (code, signal) => {
+          if (!weStarted) return;
+          // Another process may have won a short race for the port, or
+          // sidecar exited 0 because one was already healthy (idempotent).
+          void isPortOpen(SIDECAR_PORT, SIDECAR_HOST).then((up) => {
+            if (up) {
+              weStarted = false;
+              child = null;
+              return;
+            }
+            console.error(
+              `[forknote] sidecar exited before becoming ready (code=${code ?? "null"} signal=${signal ?? "null"}).`,
+            );
+            console.error(
+              `  Try: npm run sidecar   — or free port ${SIDECAR_PORT} and restart Vite.`,
+            );
+          });
+        });
+        for (let i = 0; i < 40; i++) {
+          if (await isPortOpen(SIDECAR_PORT, SIDECAR_HOST)) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        if (!(await isPortOpen(SIDECAR_PORT, SIDECAR_HOST))) {
+          console.error(
+            `[forknote] sidecar did not become ready on http://${SIDECAR_HOST}:${SIDECAR_PORT}`,
+          );
+          console.error(
+            `  Run \`npm run sidecar\` in another terminal to see the listen error,`,
+          );
+          console.error(
+            `  or: lsof -nP -iTCP:${SIDECAR_PORT} -sTCP:LISTEN`,
+          );
+        }
+      }
+
+      const cleanup = () => {
+        if (!weStarted || !child || child.killed) return;
+        weStarted = false;
+        child.kill("SIGTERM");
+      };
+      server.httpServer?.once("close", cleanup);
+    },
+  };
+}
+
+function sidecarProxyError(
+  _err: Error,
+  _req: IncomingMessage,
+  res: ServerResponse | import("node:net").Socket,
+): void {
+  if (!("writeHead" in res) || res.headersSent) {
+    if ("destroy" in res) res.destroy();
+    return;
+  }
+  res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(SIDECAR_UNREACHABLE);
+}
+
+const sidecarProxy: ProxyOptions = {
+  target: `http://${SIDECAR_HOST}:${SIDECAR_PORT}`,
+  changeOrigin: true,
+  rewrite: (p) => p.replace(/^\/sidecar/, "") || "/",
+  configure: (proxy) => {
+    proxy.on("error", sidecarProxyError);
+  },
+};
 
 /** Path prefix on the API root, e.g. `/v1` or `/api/paas/v4`. */
 function pathPrefixOf(apiRoot: string): string {
@@ -155,17 +268,13 @@ function forwardOpenAi(
 }
 
 export default defineConfig({
-  plugins: [react(), openaiDevProxyPlugin()],
+  plugins: [react(), openaiDevProxyPlugin(), sidecarDevPlugin()],
   server: {
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
     proxy: {
-      "/sidecar": {
-        target: "http://127.0.0.1:8787",
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/sidecar/, "") || "/",
-      },
+      "/sidecar": sidecarProxy,
       // Optional mem0 Platform proxy (avoids browser CORS in `npm run dev`)
       "/mem0": {
         target: "https://api.mem0.ai",
