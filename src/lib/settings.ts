@@ -10,9 +10,9 @@ export const MAX_AGENT_MAX_ROUNDS = 64;
 
 /** First-run defaults when nothing is saved in localStorage. */
 const APP_DEFAULTS: ApiSettings = {
-  baseUrl: "https://api.deepseek.com",
+  baseUrl: "",
   apiKey: "",
-  model: "deepseek-v4-flash",
+  model: "",
   useProxy: true,
   contextMemoryEnabled: true,
   compressAfterArchive: false,
@@ -22,7 +22,12 @@ const APP_DEFAULTS: ApiSettings = {
   mem0UserId: "",
   mem0Host: "",
   agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
+  agentRequireApproval: true,
 };
+
+export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
+  return settings.agentRequireApproval ?? true;
+}
 
 export function resolveAgentMaxRounds(settings: ApiSettings): number {
   const n = settings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS;
@@ -56,6 +61,8 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     agentMaxRounds: resolveAgentMaxRounds({
       agentMaxRounds: raw.agentMaxRounds ?? APP_DEFAULTS.agentMaxRounds,
     } as ApiSettings),
+    agentRequireApproval:
+      raw.agentRequireApproval ?? APP_DEFAULTS.agentRequireApproval,
   };
 }
 

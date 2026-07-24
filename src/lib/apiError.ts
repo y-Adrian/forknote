@@ -15,10 +15,10 @@ export function formatApiError(status: number, errText: string): string {
 
   if (status === 401) {
     return [
-      "API 401: Authentication failed (DeepSeek governor).",
-      "Check: (1) Create and copy an API Key at platform.deepseek.com;",
-      "(2) In settings, Base URL is https://api.deepseek.com and Model is deepseek-v4-flash;",
-      "(3) Key has no leading/trailing spaces and is not an OpenAI sk- key; (4) Save and retry.",
+      "API 401: Authentication failed.",
+      "Check: (1) API Key in settings matches your configured Base URL provider;",
+      "(2) Key has no leading/trailing spaces;",
+      "(3) Model name matches the provider console; (4) Save and retry.",
       detail ? `Server: ${detail}` : "",
     ]
       .filter(Boolean)
@@ -26,7 +26,7 @@ export function formatApiError(status: number, errText: string): string {
   }
 
   if (status === 402) {
-    return `API 402: Insufficient balance — top up in the DeepSeek console.${detail ? ` (${detail})` : ""}`;
+    return `API 402: Insufficient balance — top up your provider account.${detail ? ` (${detail})` : ""}`;
   }
 
   return `API ${status}: ${detail}`;

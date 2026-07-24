@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   agentCallFromOpenAI,
   buildCodingToolsSystem,
+  buildPlanningPhaseSystem,
   collectToolCalls,
   executeToolCall,
   inferCreateFilePath,
@@ -10,6 +11,7 @@ import {
   inferOfficeCreateIntent,
   multiStepFollowUpHint,
   multiStepSystemHint,
+  parseAgentPlan,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
   nativeToolResultMessage,
@@ -23,6 +25,7 @@ import {
 } from "../lib/agentTools";
 import {
   resolveAgentMaxRounds,
+  resolveAgentRequireApproval,
 } from "../lib/settings";
 import {
   archiveSystemPrompt,
@@ -33,7 +36,7 @@ import {
 } from "../lib/archive";
 import { resolveConversationContext } from "../lib/conversationContext";
 import { buildBranchQuestionMessages, buildConversationMessages } from "../lib/contextBuilder";
-import { getLocale } from "../lib/i18n";
+import { getLocale, t } from "../lib/i18n";
 import { createId } from "../lib/id";
 import {
   buildAgentMemoryAddendum,
@@ -91,6 +94,7 @@ import type {
   ContextMode,
   FocusTarget,
   NodeId,
+  AgentPendingPlan,
   PointDoubtMap,
   PointVerdict,
   PointVerdictMap,
@@ -129,6 +133,8 @@ interface AppState {
   projectError: string | null;
   agentActivity: AgentActivity[];
   agentChanges: AgentFileChange[];
+  /** Plan awaiting user approval before tool execution (project agent). */
+  agentPendingPlan: AgentPendingPlan | null;
 
   init: () => void;
   setSettings: (settings: ApiSettings) => void;
@@ -139,6 +145,10 @@ interface AppState {
   openProject: (absPath: string, quiet?: boolean) => Promise<void>;
   disconnectProject: () => void;
   clearAgentLog: () => void;
+  /** Approve pending agent plan and run tools. */
+  approveAgentPlan: () => Promise<void>;
+  /** Reject pending agent plan and roll back the turn. */
+  rejectAgentPlan: () => void;
   setFocus: (focus: FocusTarget) => void;
   clearError: () => void;
   /** Abort in-flight generation. Returns the stopped main prompt to restore in the composer. */
@@ -287,6 +297,20 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
+/** Resume tool execution after the user approves a pending plan. */
+let pendingAgentContinuation: (() => Promise<void>) | null = null;
+
+function clearPendingAgentPlan(
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+): void {
+  pendingAgentContinuation = null;
+  set({ agentPendingPlan: null });
+}
+
 /** Reject when `signal` aborts so tool fetches can be interrupted promptly. */
 function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) {
@@ -344,10 +368,17 @@ function rollbackMainTurn(
 }
 
 function requireApiKey(settings: ApiSettings): string | null {
+  const locale = getLocale();
+  if (!settings.baseUrl.trim()) {
+    return t("api.missingBaseUrl", undefined, locale);
+  }
+  if (!settings.model.trim()) {
+    return t("api.missingModel", undefined, locale);
+  }
   if (settings.apiKey.trim() || isLikelyLocalEndpoint(settings.baseUrl)) {
     return null;
   }
-  return "Add a DeepSeek API Key in settings (platform.deepseek.com), or switch to a local model such as Ollama";
+  return t("api.missingKey", undefined, locale);
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -374,6 +405,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   projectError: null,
   agentActivity: [],
   agentChanges: [],
+  agentPendingPlan: null,
 
   init: () => {
     const store = loadSessionStore();
@@ -445,6 +477,47 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   clearAgentLog: () => set({ agentActivity: [], agentChanges: [] }),
+
+  approveAgentPlan: async () => {
+    const plan = get().agentPendingPlan;
+    const cont = pendingAgentContinuation;
+    if (!plan || !cont) return;
+
+    clearPendingAgentPlan(set);
+    set({ loadingMain: true, error: null });
+
+    try {
+      await cont();
+    } catch (e) {
+      if (!isAbortError(e)) {
+        set({
+          error: e instanceof Error ? e.message : "Agent execution failed",
+        });
+      }
+    } finally {
+      if (activeMainTurn) {
+        activeMainTurn = null;
+      }
+      if (mainAbortCtrl) {
+        mainAbortCtrl = null;
+      }
+      set({ loadingMain: false });
+    }
+  },
+
+  rejectAgentPlan: () => {
+    const plan = get().agentPendingPlan;
+    if (!plan) return;
+    clearPendingAgentPlan(set);
+    rollbackMainTurn(get, set, {
+      userId: plan.userId,
+      assistantId: plan.assistantId,
+    });
+    activeMainTurn = null;
+    mainAbortCtrl = null;
+    set({ loadingMain: false });
+  },
+
   setFocus: (focus) => set({ focus }),
   clearError: () => set({ error: null }),
 
@@ -460,6 +533,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     branchCtrl?.abort();
     archiveCtrl?.abort();
     compressCtrl?.abort();
+
+    if (get().agentPendingPlan) {
+      clearPendingAgentPlan(set);
+    }
 
     // Roll back the incomplete main turn immediately (don't wait for hung finally)
     if (turn && turn.ctrl === ctrl) {
@@ -894,6 +971,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   createSession: () => {
+    clearPendingAgentPlan(set);
+    pendingAgentContinuation = null;
     const { sessions, activeSessionId, thread } = get();
     let nextSessions = upsertActiveSession(sessions, activeSessionId, thread);
     const session = createEmptySession();
@@ -913,6 +992,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   switchSession: (sessionId) => {
+    clearPendingAgentPlan(set);
+    pendingAgentContinuation = null;
     const { sessions, activeSessionId, thread } = get();
     if (sessionId === activeSessionId) return;
 
@@ -1247,35 +1328,41 @@ export const useAppStore = create<AppState>((set, get) => ({
             : exploreIntent?.kind === "search"
               ? `Searching ${exploreIntent.query}…`
               : null;
-      if (createPath) {
-        apiMessages.push({
-          role: "system",
-          content: `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`,
-        });
-      } else if (officeIntent) {
-        apiMessages.push({
-          role: "system",
-          content:
-            officeIntent.tool === "write_xlsx"
-              ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
-              : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落数组（空白文档用 [] 或 [""]）。禁止只把 JSON 贴在 Markdown 里；禁止未调用工具就声称已创建。禁止用 write_file。`,
-        });
-      } else if (exploreIntent) {
-        apiMessages.push({
-          role: "system",
-          content:
-            exploreIntent.kind === "list"
-              ? `用户要求查看目录。你必须调用函数 list_dir：path 必须为 "${exploreIntent.path}"（相对项目根；根目录用 "."）。禁止凭猜测罗列文件。`
-              : exploreIntent.kind === "read"
-                ? `用户要求阅读文件。你必须调用函数 read_file：path 必须为 "${exploreIntent.path}"。禁止编造文件内容。`
-                : `用户要求搜索代码。你必须调用函数 search_files：query 必须为 "${exploreIntent.query}"。禁止凭记忆假装已搜索。`,
-        });
-      } else if (multiStepPlan.length >= 2) {
-        apiMessages.push({
-          role: "system",
-          content: multiStepSystemHint(multiStepPlan),
-        });
-      }
+      const locale = getLocale();
+      const requireApproval =
+        Boolean(projectRoot) && resolveAgentRequireApproval(settings);
+
+      const addExecutionHints = () => {
+        if (createPath) {
+          apiMessages.push({
+            role: "system",
+            content: `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`,
+          });
+        } else if (officeIntent) {
+          apiMessages.push({
+            role: "system",
+            content:
+              officeIntent.tool === "write_xlsx"
+                ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
+                : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落数组（空白文档用 [] 或 [""]）。禁止只把 JSON 贴在 Markdown 里；禁止未调用工具就声称已创建。禁止用 write_file。`,
+          });
+        } else if (exploreIntent) {
+          apiMessages.push({
+            role: "system",
+            content:
+              exploreIntent.kind === "list"
+                ? `用户要求查看目录。你必须调用函数 list_dir：path 必须为 "${exploreIntent.path}"（相对项目根；根目录用 "."）。禁止凭猜测罗列文件。`
+                : exploreIntent.kind === "read"
+                  ? `用户要求阅读文件。你必须调用函数 read_file：path 必须为 "${exploreIntent.path}"。禁止编造文件内容。`
+                  : `用户要求搜索代码。你必须调用函数 search_files：query 必须为 "${exploreIntent.query}"。禁止凭记忆假装已搜索。`,
+          });
+        } else if (multiStepPlan.length >= 2) {
+          apiMessages.push({
+            role: "system",
+            content: multiStepSystemHint(multiStepPlan),
+          });
+        }
+      };
 
       let visibleContent = "";
       let round = 0;
@@ -1293,6 +1380,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       let exploreFallbackUsed = false;
       let officeToolFailed = false;
       let toolBatchesExecuted = 0;
+
+      const executeTools = async (): Promise<string> => {
+        addExecutionHints();
 
       // Pre-flight list_dir so the model cannot hallucinate a directory listing
       const preflightList =
@@ -1848,6 +1938,78 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
 
+        return visibleContent;
+      };
+
+      if (requireApproval && !signal.aborted) {
+        apiMessages.push({
+          role: "system",
+          content: buildPlanningPhaseSystem(locale),
+        });
+        patchAssistantContent(
+          locale === "zh" ? "正在制定计划…" : "Drafting plan…",
+        );
+
+        let planRaw = "";
+        await streamChat(
+          settings,
+          apiMessages,
+          (delta) => {
+            planRaw += delta;
+            const cleaned = stripToolCalls(planRaw);
+            if (cleaned.length > 0) {
+              patchAssistantContent(cleaned);
+            }
+          },
+          { signal, temperature: 0.3 },
+        );
+
+        if (signal.aborted) {
+          return "started";
+        }
+
+        const { planText, steps } = parseAgentPlan(planRaw);
+        const displayPlan = planText || planRaw.trim();
+        patchAssistantContent(displayPlan);
+        apiMessages.push({ role: "assistant", content: displayPlan });
+
+        const approvedPlanText = displayPlan;
+        pendingAgentContinuation = async () => {
+          apiMessages.push({
+            role: "user",
+            content:
+              locale === "zh"
+                ? `用户已批准以下计划。请立即按计划执行，调用必要工具：\n\n${approvedPlanText}`
+                : `User approved the plan. Execute it now using tools:\n\n${approvedPlanText}`,
+          });
+          const result = await executeTools();
+          if (
+            !signal.aborted &&
+            isMem0Enabled(settings) &&
+            result.trim()
+          ) {
+            void rememberMainTurn(settings, trimmed, result, {
+              sessionId,
+            });
+          }
+        };
+
+        set({
+          loadingMain: false,
+          agentPendingPlan: {
+            id: createId(),
+            planText: displayPlan,
+            steps,
+            userPrompt: trimmed,
+            userId,
+            assistantId,
+          },
+        });
+        return "started";
+      }
+
+      visibleContent = await executeTools();
+
       if (
         !signal.aborted &&
         isMem0Enabled(settings) &&
@@ -1863,16 +2025,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } finally {
       // Stop may have already rolled back; this is a safety net if abort came from elsewhere
+      const waitingPlan = Boolean(get().agentPendingPlan);
       if (signal.aborted && activeMainTurn?.ctrl === ctrl) {
         rollbackMainTurn(get, set, { userId, assistantId });
       }
-      if (activeMainTurn?.ctrl === ctrl) {
+      if (activeMainTurn?.ctrl === ctrl && !waitingPlan) {
         activeMainTurn = null;
       }
       // Don't clobber a newer in-flight request
       if (mainAbortCtrl === ctrl) {
-        mainAbortCtrl = null;
-        set({ loadingMain: false });
+        if (!waitingPlan) {
+          mainAbortCtrl = null;
+          set({ loadingMain: false });
+        }
       }
     }
     return "started";

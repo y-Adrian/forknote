@@ -41,7 +41,7 @@ export type StreamChatOptions = {
     | "none"
     | "required"
     | { type: "function"; function: { name: string } };
-  /** DeepSeek / Ollama-style reasoning deltas (and think-tags peeled from content) */
+  /** Provider reasoning deltas (and think-tags peeled from content) */
   onReasoningDelta?: (text: string) => void;
 };
 
@@ -59,24 +59,13 @@ function attachThinkingRequestOptions(
   settings: ApiSettings,
 ): void {
   const model = settings.model.toLowerCase();
-  const base = settings.baseUrl.toLowerCase();
-  const isDeepSeek =
-    base.includes("deepseek") || model.includes("deepseek");
   const isLocal = isLikelyLocalEndpoint(settings.baseUrl);
   // Heuristic: only enable when the model is known to support thinking.
   // Plain instruct models (e.g. qwen2.5-coder) get nothing — do not invent CoT.
   const looksThinkingModel =
-    /reasoner|thinking|\br1\b|deepseek-r1|qwen3|qwq|gpt-oss|magistral|distill-r1/.test(
+    /reasoner|thinking|\br1\b|qwen3|qwq|gpt-oss|magistral|distill-r1/.test(
       model,
     );
-
-  if (isDeepSeek) {
-    // deepseek-reasoner / R1 already stream delta.reasoning_content with no flag.
-    // Newer DeepSeek V4-style chat models need an explicit enable.
-    if (/v4/.test(model)) {
-      body.thinking = { type: "enabled" };
-    }
-  }
 
   if (isLocal && looksThinkingModel) {
     // Ollama `/v1/chat/completions` maps reasoning_effort → native think.

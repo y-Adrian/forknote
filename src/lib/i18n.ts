@@ -127,6 +127,10 @@ const en = {
     "Use local proxy in development (recommended for local models)",
   "api.hint":
     "Start the local server first. For Ollama, run ollama list; Model must match a listed name (e.g. qwen2.5:7b).",
+  "api.missingBaseUrl": "Set Base URL in settings (or pick a preset).",
+  "api.missingModel": "Set Model in settings (must match your provider or local server).",
+  "api.missingKey":
+    "Add an API Key in settings for your configured endpoint, or switch to a local model such as Ollama.",
   "api.memoryPack.title": "Context memory pack",
   "api.memoryPack.lead":
     "Chat → LLM compress → SUMMARY.md + TASKS.md + DECISIONS.md → inject on next ask. Prefer writing into the bound project; otherwise keep a draft on the note.",
@@ -177,6 +181,16 @@ const en = {
   "projectSettings.agentMaxRounds": "Agent tool rounds (per message)",
   "projectSettings.agentMaxRoundsHint":
     "Max model↔tool loops when a project is bound (1–64). Default 20. Ends early when the task is done.",
+  "projectSettings.agentRequireApproval": "Require plan approval before tools",
+  "projectSettings.agentRequireApprovalHint":
+    "When a project is connected, the agent drafts a plan first. Tools run only after you approve.",
+
+  "agentPlan.aria": "Agent plan review",
+  "agentPlan.kicker": "Agent plan",
+  "agentPlan.lead": "Review the plan below. Approve to run tools on your project, or cancel to discard this turn.",
+  "agentPlan.approve": "Approve & run",
+  "agentPlan.cancel": "Cancel",
+  "agentPlan.running": "Running…",
 
   "about.title": "About",
   "about.tag":
@@ -358,6 +372,10 @@ const zh: Record<MessageKey, string> = {
   "api.useProxy": "开发环境使用本地代理（推荐用于本地模型）",
   "api.hint":
     "请先启动本地服务。Ollama 可运行 ollama list；模型名须与列表一致（如 qwen2.5:7b）。",
+  "api.missingBaseUrl": "请在设置中填写 Base URL（或选择预设）。",
+  "api.missingModel": "请在设置中填写模型名（须与服务商或本地服务一致）。",
+  "api.missingKey":
+    "请在设置中为当前端点填写 API Key，或改用 Ollama 等本地模型。",
   "api.memoryPack.title": "上下文记忆包",
   "api.memoryPack.lead":
     "聊天 → LLM 压缩 → SUMMARY.md + TASKS.md + DECISIONS.md → 下次提问注入。优先写入已绑定项目；否则保存在本笔记草稿中。",
@@ -406,6 +424,16 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentMaxRounds": "Agent 工具循环轮数（每条消息）",
   "projectSettings.agentMaxRoundsHint":
     "绑定项目后，单次发送最多允许的模型↔工具往返次数（1–64，默认 20）。任务完成会提前结束。",
+  "projectSettings.agentRequireApproval": "执行工具前需批准计划",
+  "projectSettings.agentRequireApprovalHint":
+    "连接项目后，Agent 会先输出计划；你点击「批准并执行」后才会读写文件。",
+
+  "agentPlan.aria": "Agent 计划审核",
+  "agentPlan.kicker": "执行计划",
+  "agentPlan.lead": "请审阅下方计划。批准后将对你的项目执行工具；取消将丢弃本轮对话。",
+  "agentPlan.approve": "批准并执行",
+  "agentPlan.cancel": "取消",
+  "agentPlan.running": "执行中…",
 
   "about.title": "关于",
   "about.tag":
