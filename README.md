@@ -17,9 +17,10 @@
 
 ```bash
 npm install
-cp .env.example .env.local   # 可选，也可只在页面 API Settings 里填
 npm run dev                  # 前端，通常 http://localhost:5173
 ```
+
+首次使用请在页面 **系统设置 → API** 选择预设（DeepSeek / Ollama 等）或填写 Base URL、API Key、模型名，然后 **保存**。
 
 若要用 **本地项目读写**（agent 工具），再开一个终端：
 
@@ -192,17 +193,18 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ---
 
-## 环境变量（`.env.local`）
+## API 与模型（系统设置 → API）
 
-从 `.env.example` 复制即可。均为可选；页面 **API Settings** 可覆盖。
+在应用内配置即可，**不需要** `.env` 文件：
 
-| 变量 | 说明 |
+| 项 | 说明 |
 |------|------|
-| `VITE_OPENAI_BASE_URL` | 如 `http://127.0.0.1:11434` 或 `https://api.deepseek.com` |
-| `VITE_OPENAI_API_KEY` | 可选；本地常留空 |
-| `VITE_OPENAI_MODEL` | 如 `llama3.2`、`deepseek-chat` |
-| `VITE_MEM0_API_KEY` | 可选；mem0 Platform key（默认关闭记忆） |
-| `VITE_MEM0_HOST` | 可选；默认 `https://api.mem0.ai` |
+| Base URL | 如 `https://api.deepseek.com` 或本机 `http://127.0.0.1:11434` |
+| API Key | 云端必填；本机 Ollama 通常留空 |
+| 模型 | 如 `deepseek-v4-flash`、`qwen2.5-coder:7b` |
+| 本地代理 | 开发时建议开启，请求经 `/openai` 转发到你填写的 Base URL |
+
+配置保存在浏览器 `localStorage`（`forknote-settings`），换浏览器或清缓存后需重新填写。
 
 生产构建（`npm run build`）部署到静态站时，需自行配置反向代理，或关闭代理并确保 API 允许跨域。
 

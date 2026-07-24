@@ -17,7 +17,7 @@ export function formatApiError(status: number, errText: string): string {
     return [
       "API 401: Authentication failed (DeepSeek governor).",
       "Check: (1) Create and copy an API Key at platform.deepseek.com;",
-      "(2) In settings, Base URL is https://api.deepseek.com and Model is deepseek-chat;",
+      "(2) In settings, Base URL is https://api.deepseek.com and Model is deepseek-v4-flash;",
       "(3) Key has no leading/trailing spaces and is not an OpenAI sk- key; (4) Save and retry.",
       detail ? `Server: ${detail}` : "",
     ]
