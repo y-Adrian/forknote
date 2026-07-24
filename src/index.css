@@ -3169,7 +3169,8 @@ mark.branch-highlight:hover {
 }
 
 .fn-session-api-modal.modal {
-  max-width: min(520px, 94vw);
+  width: min(600px, calc(100vw - 32px));
+  max-width: min(600px, calc(100vw - 32px));
   max-height: min(88vh, 720px);
 }
 
