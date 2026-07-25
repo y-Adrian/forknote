@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { handleComposerEnterKey } from "../lib/composerKeys";
-import { positionFloatingPanel } from "../lib/floatPosition";
 import { getLocale } from "../lib/i18n";
+import { useDraggableFloat } from "../lib/useDraggableFloat";
 import { useAppStore } from "../store/useAppStore";
 
 interface Props {
@@ -31,8 +31,8 @@ export function FloatingAskPanel({
   const locale = getLocale();
   const hint =
     locale === "zh"
-      ? "绑定项目后可用与主对话相同的工具 · Enter 发送 · Shift+Enter 换行"
-      : "Same tools as main when a project is bound · Enter to send · Shift+Enter for new line";
+      ? "绑定项目后可用与主对话相同的工具 · Enter 发送 · Shift+Enter 换行 · 拖标题移动"
+      : "Same tools as main when a project is bound · Enter to send · Shift+Enter for new line · Drag title to move";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -42,25 +42,14 @@ export function FloatingAskPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-
-    panel.style.zIndex = String(zIndex);
-    const place = () => positionFloatingPanel(panel, anchorRect, true, 0, zIndex);
-    place();
-
-    const ro = new ResizeObserver(place);
-    ro.observe(panel);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [anchorRect, question, loading, zIndex]);
+  const { onDragHandlePointerDown } = useDraggableFloat(panelRef, {
+    anchorRect,
+    preferBelow: true,
+    depth: 0,
+    zIndex,
+    layoutToken: `${question.length}:${loading ? 1 : 0}`,
+    resetKey: `${quotedText.slice(0, 40)}:${zIndex}`,
+  });
 
   return (
     <div
@@ -72,7 +61,13 @@ export function FloatingAskPanel({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <h3>{locale === "zh" ? "选中澄清" : "Clarify selection"}</h3>
+      <h3
+        className="float-panel-drag-handle"
+        onPointerDown={onDragHandlePointerDown}
+        title={locale === "zh" ? "拖动移动" : "Drag to move"}
+      >
+        {locale === "zh" ? "选中澄清" : "Clarify selection"}
+      </h3>
       <div className="quote-snippet">{quotedText}</div>
       <textarea
         rows={3}
