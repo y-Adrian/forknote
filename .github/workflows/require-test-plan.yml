@@ -1,0 +1,80 @@
+# Fail PRs targeting `leading` unless every Test plan checkbox is checked.
+# Authors: fill ## Test plan with concrete items, then mark each `- [x]` before merge.
+name: Require Test Plan
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    branches: [leading]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-test-plan:
+    name: Require test plan passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Test plan checkboxes are all checked
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          BODY=$(gh api "repos/${OWNER}/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""')
+
+          if ! printf '%s' "$BODY" | grep -Eiq '^[[:space:]]*##[[:space:]]+Test[[:space:]]+[Pp]lan[[:space:]]*$'; then
+            cat <<'EOF'
+          ::error::缺少 Test plan 区块。
+
+          合并到 leading 的 PR 必须包含 Markdown 标题「## Test plan」，
+          并列出至少一项已勾选的检查项（- [x] ...）。
+
+          编辑 PR 描述后即可重新触发本检查。
+          EOF
+            exit 1
+          fi
+
+          # Slice from ## Test plan until the next ## heading (or EOF).
+          SECTION=$(printf '%s' "$BODY" | awk '
+            /^[[:space:]]*##[[:space:]]+/ {
+              if (in_section) exit
+              if (tolower($0) ~ /^[[:space:]]*##[[:space:]]+test[[:space:]]+plan[[:space:]]*$/) {
+                in_section = 1
+                next
+              }
+            }
+            in_section { print }
+          ')
+
+          # Count checked / unchecked task list items in that section only.
+          UNCHECKED=$(printf '%s' "$SECTION" | grep -Eic '^[[:space:]]*([-*]|[[:digit:]]+[.)])[[:space:]]+\[[[:space:]]\]' || true)
+          CHECKED=$(printf '%s' "$SECTION" | grep -Eic '^[[:space:]]*([-*]|[[:digit:]]+[.)])[[:space:]]+\[[xX]\]' || true)
+
+          if [ "${CHECKED}" -eq 0 ]; then
+            cat <<'EOF'
+          ::error::Test plan 中没有已勾选的检查项。
+
+          请在「## Test plan」下写出具体验证步骤，并将每一项标记为 - [x]。
+          仅有空的 - [ ] 模板项不算通过。
+
+          全部勾选并保存 PR 描述后即可重新触发本检查。
+          EOF
+            exit 1
+          fi
+
+          if [ "${UNCHECKED}" -gt 0 ]; then
+            cat <<EOF
+          ::error::Test plan 仍有 ${UNCHECKED} 项未勾选（已勾选 ${CHECKED} 项）。
+
+          合并前必须勾选 Test plan 中的全部检查项（- [x]）。
+          勾选并保存 PR 描述后即可重新触发本检查。
+          EOF
+            exit 1
+          fi
+
+          echo "OK: Test plan has ${CHECKED} checked item(s) and 0 unchecked."
