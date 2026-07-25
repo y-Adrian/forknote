@@ -8,6 +8,7 @@ import {
   findBranchInThread,
 } from "../lib/thread";
 import { useAppStore } from "../store/useAppStore";
+import { AgentPlanReview } from "./AgentPlanReview";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -90,6 +91,11 @@ export function FloatingBranchDetail({
   const continueBranch = useAppStore((s) => s.continueBranch);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
+  const pendingPlanForThis = useAppStore((s) => {
+    const plan = s.agentPendingPlan;
+    if (!plan || plan.sessionId !== s.activeSessionId) return false;
+    return plan.branchId === branchId;
+  });
   const [followUp, setFollowUp] = useState("");
   const composingRef = useRef(false);
 
@@ -329,48 +335,57 @@ export function FloatingBranchDetail({
       </div>
 
       <footer className="float-panel-detail-footer">
-        <textarea
-          rows={2}
-          value={followUp}
-          onChange={(e) => setFollowUp(e.target.value)}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Follow-up stays in this window…"
-          disabled={branchLoading || !branch.assistantMessage.trim()}
-          aria-label="Follow-up"
-        />
-        <div className="float-panel-detail-footer-actions">
-          <span className="hint">
-            Same window · Enter to send · Shift+Enter for new line
-          </span>
-          {isLoadingThis ? (
-            <button
-              type="button"
-              className="btn danger"
-              onClick={() => stopGeneration()}
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn primary"
-              disabled={
-                branchLoading ||
-                !followUp.trim() ||
-                !branch.assistantMessage.trim()
-              }
-              onClick={() => void submitFollowUp()}
-            >
-              Send
-            </button>
-          )}
-        </div>
+        {pendingPlanForThis ? (
+          <AgentPlanReview
+            scope={{ kind: "branch", branchId }}
+            className="is-float"
+          />
+        ) : (
+          <>
+            <textarea
+              rows={2}
+              value={followUp}
+              onChange={(e) => setFollowUp(e.target.value)}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false;
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Follow-up stays in this window…"
+              disabled={branchLoading || !branch.assistantMessage.trim()}
+              aria-label="Follow-up"
+            />
+            <div className="float-panel-detail-footer-actions">
+              <span className="hint">
+                Same window · Enter to send · Shift+Enter for new line
+              </span>
+              {isLoadingThis ? (
+                <button
+                  type="button"
+                  className="btn danger"
+                  onClick={() => stopGeneration()}
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={
+                    branchLoading ||
+                    !followUp.trim() ||
+                    !branch.assistantMessage.trim()
+                  }
+                  onClick={() => void submitFollowUp()}
+                >
+                  Send
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </footer>
     </div>
   );

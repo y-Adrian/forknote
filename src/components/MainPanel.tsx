@@ -297,7 +297,7 @@ export function MainPanel({ onOpenProject }: Props) {
 
           <ProjectStatusBar onOpenProject={onOpenProject} />
 
-          <AgentPlanReview />
+          <AgentPlanReview scope={{ kind: "main" }} />
 
           <ChatComposer
             value={input}
@@ -526,7 +526,7 @@ export function MainPanel({ onOpenProject }: Props) {
               )}
             </div>
 
-            <AgentPlanReview />
+            <AgentPlanReview scope={{ kind: "main" }} />
 
             <ChatComposer
               value={input}

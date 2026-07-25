@@ -3741,6 +3741,16 @@ mark.branch-highlight:hover {
   gap: 8px;
 }
 
+.fn-agent-plan.is-float {
+  max-width: none;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.fn-agent-plan.is-float .fn-agent-plan-body {
+  max-height: 120px;
+}
+
 .project-modal.modal {
   width: min(480px, 100%);
 }
