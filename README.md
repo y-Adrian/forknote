@@ -61,7 +61,7 @@ curl -sS http://127.0.0.1:8787/health
 
 ### API
 
-1. 首次使用 **Base URL / Model 为空**，无内置默认提供商；点预设芯片（云端 / 国内 / 本机等分组，如 **OpenAI**、**DeepSeek**、**Ollama**），或手动填 **Base URL** / **Model** / **API Key**
+1. 首次使用 **Base URL / Model 为空**，无内置默认提供商；点提供商预设（云端 / 国内 / 本机等分组，如 **OpenAI**、**DeepSeek**、**Ollama**），或手动填 **Base URL** / **Model** / **API Key**
 2. **系统设置 → API** 是所有笔记的**默认**连接配置。新建笔记继承这些默认值（不写快照）；需要时可在输入框旁打开 **会话 API 设置**，按笔记覆盖 Base URL / Key / Model / 代理，并可「恢复默认」
 3. 本机服务一般 **API Key 留空**；云端填控制台密钥
 4. 开发时勾选 **Use local proxy in development**（推荐）：请求走 `/openai/...`，由 Vite 按当前 Base URL 转发，减轻 CORS
@@ -226,7 +226,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 配置保存在浏览器 `localStorage`（`forknote-settings`），换浏览器或清缓存后需重新填写。
 
-**模型名须与 Base URL 所属平台一致**（例如 DeepSeek 官方用 `deepseek-v4-flash`，SiliconFlow 用 `deepseek-ai/DeepSeek-V4-Flash`）。混用会导致 404。可点预设芯片自动填入匹配的 Base URL + 模型。
+**模型名须与 Base URL 所属平台一致**（例如 DeepSeek 官方用 `deepseek-v4-flash`，SiliconFlow 用 `deepseek-ai/DeepSeek-V4-Flash`）。混用会导致 404。可点提供商预设自动填入匹配的 Base URL + 模型。
 
 生产构建（`npm run build`）部署到静态站时，需自行配置反向代理，或关闭代理并确保 API 允许跨域。
 

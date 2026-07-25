@@ -70,7 +70,7 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Soft lift for chips / toolbar controls */
+/* Soft lift for presets / toolbar controls */
 @keyframes chipLift {
   from { opacity: 0.92; transform: translateY(2px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -221,7 +221,7 @@
   --ds-text-dim:        #4a5568;
   --ds-muted:           #8b95a8;
 
-  /* Soft lavender-blue (chips / send) — not neon purple */
+  /* Soft lavender-blue (presets / send) — not neon purple */
   --ds-brand:           #4d6bfe;
   --ds-brand-2:         #6b84ff;
   --ds-brand-grad:      #4d6bfe;
@@ -2861,7 +2861,7 @@ mark.branch-highlight:hover {
   margin-bottom: 0;
 }
 
-.preset-chip {
+.preset-btn {
   padding: 4px 9px !important;
   font-size: var(--fn-text-ui-sm) !important;
   line-height: 1.3;
