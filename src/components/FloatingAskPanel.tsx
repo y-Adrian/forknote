@@ -47,14 +47,14 @@ export function FloatingAskPanel({
     preferBelow: true,
     depth: 0,
     zIndex,
-    layoutToken: `${question.length}:${loading ? 1 : 0}`,
+    layoutToken: loading ? "1" : "0",
     resetKey: `${quotedText.slice(0, 40)}:${zIndex}`,
   });
 
   return (
     <div
       ref={panelRef}
-      className="float-panel float-panel-ask"
+      className="float-panel float-panel-ask float-panel-enter"
       role="dialog"
       aria-label="Clarify selection"
       style={{ zIndex }}
