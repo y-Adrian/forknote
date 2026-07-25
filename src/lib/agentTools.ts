@@ -303,6 +303,12 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
   },
 ];
 
+/**
+ * Max numbered steps shown/approved in one plan-review round.
+ * Larger plans are chunked: approve → run → plan the next chunk.
+ */
+export const MAX_PLAN_APPROVAL_STEPS = 3;
+
 /** Planning-only system addendum — no tools until the user approves. */
 export function buildPlanningPhaseSystem(locale: Locale): string {
   if (locale === "zh") {
@@ -313,6 +319,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 - 严格依据用户原话理解意图。
 - 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
 - 意图明确且需要改磁盘时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
+- 每轮计划最多 ${MAX_PLAN_APPROVAL_STEPS} 个编号步骤。若任务更长，只写本轮要做的前 ${MAX_PLAN_APPROVAL_STEPS} 步，并一句说明其余稍后规划；不要一次列出长清单。
 - 意图明确但无需工具时：直接回答，并写明「无需工具」。
 
 当需要计划时，使用以下结构：
@@ -329,6 +336,7 @@ Rules (must follow):
 - Ground everything in the user's words.
 - If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
 - If intent is clear and needs disk changes: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
+- At most ${MAX_PLAN_APPROVAL_STEPS} numbered steps per plan. If the task is longer, list only the next ${MAX_PLAN_APPROVAL_STEPS} steps for this approval round and note that the rest will be planned later — do not dump a long checklist.
 - If intent is clear but no tools are needed: answer directly and say no tools are required.
 
 When a plan is needed, use:
@@ -337,6 +345,72 @@ When a plan is needed, use:
 
 ## Expected operations (optional)
 - Only required tools; write "none" if no tools`;
+}
+
+export type LimitedApprovalPlan = {
+  planText: string;
+  steps: string[];
+  deferredSteps: string[];
+  totalSteps: number;
+  wasChunked: boolean;
+};
+
+/**
+ * Cap a parsed plan to {@link MAX_PLAN_APPROVAL_STEPS} for one approval round.
+ * Extra steps are deferred for a later plan after this chunk runs.
+ */
+export function limitPlanForApproval(
+  planText: string,
+  steps: string[],
+  locale: Locale,
+  maxSteps: number = MAX_PLAN_APPROVAL_STEPS,
+): LimitedApprovalPlan {
+  const totalSteps = steps.length;
+  if (totalSteps <= maxSteps) {
+    return {
+      planText,
+      steps,
+      deferredSteps: [],
+      totalSteps,
+      wasChunked: false,
+    };
+  }
+
+  const approved = steps.slice(0, maxSteps);
+  const deferredSteps = steps.slice(maxSteps);
+  const numbered = approved.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const note =
+    locale === "zh"
+      ? `（本轮仅前 ${maxSteps} 步，共 ${totalSteps} 步；其余将在本轮执行后再规划。）`
+      : `(This round: first ${maxSteps} of ${totalSteps} steps. Remaining work will be planned after these run.)`;
+
+  const hasPlanHeading = /^#{1,3}\s*(计划|Plan)\b/im.test(planText);
+  const heading =
+    locale === "zh" ? "## 计划" : "## Plan";
+  const planTextOut = hasPlanHeading
+    ? `${heading}\n${numbered}\n\n${note}`
+    : `${numbered}\n\n${note}`;
+
+  return {
+    planText: planTextOut,
+    steps: approved,
+    deferredSteps,
+    totalSteps,
+    wasChunked: true,
+  };
+}
+
+/** User message after a chunk finishes — ask for the next ≤N-step plan. */
+export function buildNextPlanChunkPrompt(
+  deferredSteps: string[],
+  locale: Locale,
+  maxSteps: number = MAX_PLAN_APPROVAL_STEPS,
+): string {
+  const list = deferredSteps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  if (locale === "zh") {
+    return `上一批已批准步骤已执行完毕。请仅为剩余工作制定下一批执行计划（最多 ${maxSteps} 个编号步骤）；此阶段仍禁止调用工具。若剩余不足 ${maxSteps} 步则全部列出。剩余待办：\n${list}`;
+  }
+  return `The approved steps finished. Draft only the next execution plan chunk (at most ${maxSteps} numbered steps). Still do not call tools. If fewer than ${maxSteps} remain, list them all. Remaining work:\n${list}`;
 }
 
 const TOOL_MENTION_RE =
