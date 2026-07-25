@@ -8,6 +8,7 @@ import {
   buildCodingToolsSystem,
   buildMinimalCreatePlanHint,
   buildMinimalOfficePlanHint,
+  buildNextPlanChunkPrompt,
   buildPlanningPhaseSystem,
   collectToolCalls,
   executeToolCall,
@@ -15,6 +16,7 @@ import {
   inferExploreIntent,
   inferMultiStepPlan,
   inferOfficeCreateIntent,
+  limitPlanForApproval,
   multiStepFollowUpHint,
   multiStepSystemHint,
   parseAgentPlan,
@@ -85,6 +87,8 @@ export type RunAgentTurnOptions = {
   onAwaitPlanApproval: (args: {
     planText: string;
     steps: string[];
+    /** Total steps before chunking (for UI “showing N of M”). */
+    totalStepCount?: number;
     continueExecution: () => Promise<void>;
   }) => void;
 };
@@ -863,36 +867,96 @@ export async function runAgentTurn(
         content: buildMinimalOfficePlanHint(officeIntent, locale),
       });
     }
-    patchAssistantContent(
-      locale === "zh" ? "正在制定计划…" : "Drafting plan…",
-    );
 
-    let planRaw = "";
-    await streamChat(
-      llm,
-      apiMessages,
-      (delta) => {
-        planRaw += delta;
-        const cleaned = stripToolCalls(planRaw);
-        if (cleaned.length > 0) {
-          patchAssistantContent(cleaned);
-        }
-      },
-      { signal, temperature: 0.3 },
-    );
+    type DraftedPlan = {
+      displayPlan: string;
+      steps: string[];
+      deferredSteps: string[];
+      totalSteps: number;
+      wasChunked: boolean;
+    };
 
-    if (signal.aborted) {
-      return "aborted";
+    const draftPlanFromModel = async (): Promise<DraftedPlan | null> => {
+      patchAssistantContent(
+        locale === "zh" ? "正在制定计划…" : "Drafting plan…",
+      );
+
+      let planRaw = "";
+      await streamChat(
+        llm,
+        apiMessages,
+        (delta) => {
+          planRaw += delta;
+          const cleaned = stripToolCalls(planRaw);
+          if (cleaned.length > 0) {
+            patchAssistantContent(cleaned);
+          }
+        },
+        { signal, temperature: 0.3 },
+      );
+
+      if (signal.aborted) return null;
+
+      const { planText, steps } = parseAgentPlan(planRaw);
+      const limited = limitPlanForApproval(
+        planText || planRaw.trim(),
+        steps,
+        locale,
+      );
+      const displayPlan = limited.planText || planRaw.trim();
+      patchAssistantContent(displayPlan);
+      apiMessages.push({ role: "assistant", content: displayPlan });
+      return {
+        displayPlan,
+        steps: limited.steps,
+        deferredSteps: limited.deferredSteps,
+        totalSteps: limited.totalSteps,
+        wasChunked: limited.wasChunked,
+      };
+    };
+
+    const approvalExecutePrompt = (approvedPlanText: string): string =>
+      locale === "zh"
+        ? `用户已批准以下计划（仅本轮步骤）。请立即按计划执行，只调用完成该计划所必需的工具；不要额外添加验证步骤（如未经要求的 list_dir），也不要擅自执行未列出的后续步骤。若计划写明无需工具，则只总结、不要调工具。\n\n${approvedPlanText}`
+        : `User approved the following plan (this round's steps only). Execute it now with only the tools required by the plan; do not add extra verification steps (e.g. unrequested list_dir), and do not run steps that were not listed. If the plan says no tools are needed, summarize only and do not call tools.\n\n${approvedPlanText}`;
+
+    const presentPlanForApproval = (drafted: DraftedPlan): void => {
+      const approvedPlanText = drafted.displayPlan;
+      const deferredSteps = drafted.deferredSteps;
+      onAwaitPlanApproval({
+        planText: drafted.displayPlan,
+        steps: drafted.steps,
+        totalStepCount: drafted.totalSteps,
+        continueExecution: async () => {
+          apiMessages.push({
+            role: "user",
+            content: approvalExecutePrompt(approvedPlanText),
+          });
+          await executeTools();
+
+          // Approve → run → plan next chunk when steps were deferred.
+          if (deferredSteps.length === 0 || signal.aborted) return;
+
+          apiMessages.push({
+            role: "user",
+            content: buildNextPlanChunkPrompt(deferredSteps, locale),
+          });
+          const next = await draftPlanFromModel();
+          if (!next || signal.aborted) return;
+          if (!planNeedsToolApproval(next.displayPlan, next.steps)) return;
+          presentPlanForApproval(next);
+        },
+      });
+    };
+
+    const first = await draftPlanFromModel();
+    if (!first) {
+      return signal.aborted ? "aborted" : "completed";
     }
-
-    const { planText, steps } = parseAgentPlan(planRaw);
-    const displayPlan = planText || planRaw.trim();
-    patchAssistantContent(displayPlan);
-    apiMessages.push({ role: "assistant", content: displayPlan });
 
     // Clear create/office intents must still run tools — never treat a
     // hallucinated "already created" plan as a finished turn.
-    if (!planNeedsToolApproval(displayPlan, steps)) {
+    if (!planNeedsToolApproval(first.displayPlan, first.steps)) {
       if (createPath || officeIntent) {
         visibleContent = await executeTools();
         return signal.aborted ? "aborted" : "completed";
@@ -900,21 +964,7 @@ export async function runAgentTurn(
       return "completed";
     }
 
-    const approvedPlanText = displayPlan;
-    onAwaitPlanApproval({
-      planText: displayPlan,
-      steps,
-      continueExecution: async () => {
-        apiMessages.push({
-          role: "user",
-          content:
-            locale === "zh"
-              ? `用户已批准以下计划。请立即按计划执行，只调用完成该计划所必需的工具；不要额外添加验证步骤（如未经要求的 list_dir）。若计划写明无需工具，则只总结、不要调工具。\n\n${approvedPlanText}`
-              : `User approved the plan. Execute it now with only the tools required by the plan; do not add extra verification steps (e.g. unrequested list_dir). If the plan says no tools are needed, summarize only and do not call tools.\n\n${approvedPlanText}`,
-        });
-        await executeTools();
-      },
-    });
+    presentPlanForApproval(first);
     return "waiting_plan";
   }
 

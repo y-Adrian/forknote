@@ -1625,7 +1625,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           persistSessions(repaired, sessionId);
           set({ sessions: repaired });
         },
-        onAwaitPlanApproval: ({ planText, steps, continueExecution }) => {
+        onAwaitPlanApproval: ({
+          planText,
+          steps,
+          totalStepCount,
+          continueExecution,
+        }) => {
           pendingAgentContinuations.set(sessionId, continueExecution);
           setSessionMainLoading(set, sessionId, false);
           set({
@@ -1634,6 +1639,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               sessionId,
               planText,
               steps,
+              totalStepCount,
               userPrompt: trimmed,
               userId,
               assistantId,
@@ -1849,7 +1855,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             persistSessions(repaired, sessionId);
             set({ sessions: repaired });
           },
-          onAwaitPlanApproval: ({ planText, steps, continueExecution }) => {
+          onAwaitPlanApproval: ({
+            planText,
+            steps,
+            totalStepCount,
+            continueExecution,
+          }) => {
             pendingAgentContinuations.set(sessionId, continueExecution);
             setSessionBranchLoading(set, sessionId, null);
             set({
@@ -1858,6 +1869,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 sessionId,
                 planText,
                 steps,
+                totalStepCount,
                 userPrompt: trimmed,
                 branchId,
               },
@@ -2053,7 +2065,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             persistSessions(repaired, sessionId);
             set({ sessions: repaired });
           },
-          onAwaitPlanApproval: ({ planText, steps, continueExecution }) => {
+          onAwaitPlanApproval: ({
+            planText,
+            steps,
+            totalStepCount,
+            continueExecution,
+          }) => {
             pendingAgentContinuations.set(sessionId, continueExecution);
             setSessionBranchLoading(set, sessionId, null);
             set({
@@ -2062,6 +2079,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 sessionId,
                 planText,
                 steps,
+                totalStepCount,
                 userPrompt: trimmed,
                 branchId,
               },

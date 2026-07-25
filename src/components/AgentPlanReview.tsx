@@ -43,6 +43,10 @@ export function AgentPlanReview({
 
   if (!plan) return null;
 
+  const shown = plan.steps.length;
+  const total = plan.totalStepCount ?? shown;
+  const isChunked = total > shown && shown > 0;
+
   return (
     <div
       className={`fn-agent-plan${className ? ` ${className}` : ""}`}
@@ -52,6 +56,11 @@ export function AgentPlanReview({
       <div className="fn-agent-plan-header">
         <span className="fn-agent-plan-kicker">{t("agentPlan.kicker")}</span>
         <p className="fn-agent-plan-lead">{t("agentPlan.lead")}</p>
+        {isChunked ? (
+          <p className="fn-agent-plan-chunk">
+            {t("agentPlan.chunkNote", { shown, total })}
+          </p>
+        ) : null}
       </div>
 
       {plan.steps.length > 0 ? (

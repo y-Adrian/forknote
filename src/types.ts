@@ -183,6 +183,11 @@ export interface AgentPendingPlan {
   userPrompt: string;
   planText: string;
   steps: string[];
+  /**
+   * Total steps before chunking. When greater than `steps.length`, the UI
+   * shows that only this round’s chunk is up for approval.
+   */
+  totalStepCount?: number;
   /** Main-thread turn ids (when plan came from askMain). */
   userId?: NodeId;
   assistantId?: NodeId;
