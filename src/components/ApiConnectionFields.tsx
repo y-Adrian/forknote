@@ -184,7 +184,7 @@ export function ApiConnectionFields({
                 <button
                   key={preset.label}
                   type="button"
-                  className="btn ghost sm preset-chip"
+                  className="btn ghost sm preset-btn"
                   title={preset.hint}
                   onClick={() => applyPreset(preset)}
                 >
