@@ -1,5 +1,6 @@
 # Fail PRs targeting `leading` unless every Test plan checkbox is checked.
-# Authors: fill ## Test plan with concrete items, then mark each `- [x]` before merge.
+# Authors: start with unchecked `- [ ]` items (template default), verify each step,
+# then mark `- [x]` before merge. Do not pre-check on open.
 name: Require Test Plan
 
 on:

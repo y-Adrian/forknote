@@ -13,6 +13,8 @@
 
 仓库已开启 GitHub **Automatically delete head branches**：PR 合并进 `leading` 后会自动删除远端 head 分枝，避免 `pr/*` 堆积。
 
+合并到 `leading` 的 PR 须：关联 Issue、恰好 1 个 commit、且 `## Test plan` 清单在验证前默认 `- [ ]`、合并前全部勾选为 `- [x]`。
+
 
 ---
 
