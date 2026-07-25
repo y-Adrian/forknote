@@ -1,12 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { NodeId } from "../types";
-import {
-  anchorRectBelowPanel,
-  positionFloatingPanel,
-} from "../lib/floatPosition";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { BranchReply, NodeId } from "../types";
+import { positionFloatingPanel } from "../lib/floatPosition";
 import { getHighlightRect } from "../lib/domHighlight";
 import {
-  branchConversationLeaf,
   findAssistantMessageForBranch,
   findBranchInThread,
 } from "../lib/thread";
@@ -21,6 +17,55 @@ interface Props {
   zIndex: number;
   isTopmost?: boolean;
   onClose: () => void;
+}
+
+function TurnBlock({
+  question,
+  answer,
+  reasoning,
+  thinkingSeconds,
+  isLoading,
+  showAnswerChrome,
+  children,
+}: {
+  question: string;
+  answer: string;
+  reasoning?: string;
+  thinkingSeconds?: number;
+  isLoading: boolean;
+  showAnswerChrome: boolean;
+  children?: ReactNode;
+}) {
+  const hasAnswer = Boolean(answer.trim());
+  const hasReasoning = Boolean(reasoning?.trim());
+
+  return (
+    <>
+      <div className="float-branch-row float-branch-row-inline">
+        <span className="float-branch-label">question</span>
+        <p className="float-branch-text float-branch-text-wrap">{question}</p>
+      </div>
+      <div className="float-branch-row float-branch-row-answer">
+        <span className="float-branch-label">
+          {showAnswerChrome ? "answer" : "follow-up"}
+        </span>
+        <div className="float-branch-answer-scroll">
+          {hasReasoning ? (
+            <ThinkingBlock
+              reasoning={reasoning!}
+              seconds={thinkingSeconds}
+              streaming={isLoading}
+            />
+          ) : null}
+          {isLoading && !hasAnswer ? (
+            <p className="ds-muted">Thinking…</p>
+          ) : hasAnswer ? (
+            children
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
 }
 
 export function FloatingBranchDetail({
@@ -41,6 +86,7 @@ export function FloatingBranchDetail({
       : null,
   );
   const askBranch = useAppStore((s) => s.askBranch);
+  const continueBranch = useAppStore((s) => s.continueBranch);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
   const [followUp, setFollowUp] = useState("");
@@ -54,9 +100,14 @@ export function FloatingBranchDetail({
       : undefined;
 
   const isLoadingThis = loadingBranchId === branchId;
-  const hasAnswer = Boolean(branch?.assistantMessage.trim());
   const branchLoading = loadingBranchId !== null;
-  const hasReasoning = Boolean(branch?.reasoning?.trim());
+  const replies = branch?.replies ?? [];
+  const lastReply: BranchReply | undefined =
+    replies.length > 0 ? replies[replies.length - 1] : undefined;
+  const loadingLatestReply =
+    isLoadingThis && Boolean(lastReply) && !lastReply!.assistantMessage.trim();
+  const loadingInitial =
+    isLoadingThis && !loadingLatestReply && !branch?.assistantMessage.trim();
 
   useEffect(() => {
     setFollowUp("");
@@ -87,6 +138,7 @@ export function FloatingBranchDetail({
     zIndex,
     branch?.assistantMessage,
     branch?.reasoning,
+    branch?.replies,
     branch?.children.length,
     loadingBranchId,
   ]);
@@ -95,7 +147,12 @@ export function FloatingBranchDetail({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [branch?.assistantMessage, branch?.reasoning, loadingBranchId]);
+  }, [
+    branch?.assistantMessage,
+    branch?.reasoning,
+    branch?.replies,
+    loadingBranchId,
+  ]);
 
   const openChildFloat = (childId: NodeId, rect: DOMRect) => {
     openBranchFloat(childId, rect, branchId);
@@ -104,18 +161,10 @@ export function FloatingBranchDetail({
   const submitFollowUp = async () => {
     const trimmed = followUp.trim();
     if (!trimmed || !branch || !parentMessage || loadingBranchId) return;
+    if (!branch.assistantMessage.trim()) return;
 
-    const attachTo = branchConversationLeaf(branch);
-    const newId = await askBranch(
-      attachTo.id,
-      parentMessage.content,
-      branch.anchor,
-      trimmed,
-    );
     setFollowUp("");
-    if (newId && panelRef.current) {
-      openChildFloat(newId, anchorRectBelowPanel(panelRef.current));
-    }
+    await continueBranch(branchId, trimmed);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -136,6 +185,8 @@ export function FloatingBranchDetail({
   if (!branch || !parentMessage) return null;
 
   const depthLabel = depth > 0 ? ` · L${depth + 1}` : "";
+  const settledReplies = loadingLatestReply ? replies.slice(0, -1) : replies;
+  const activeReply = loadingLatestReply ? lastReply : undefined;
 
   return (
     <div
@@ -167,51 +218,106 @@ export function FloatingBranchDetail({
         <div className="quote-snippet" title={branch.anchor.quotedText}>
           {branch.anchor.quotedText}
         </div>
-        <div className="float-branch-row float-branch-row-inline">
-          <span className="float-branch-label">question</span>
-          <p className="float-branch-text float-branch-text-wrap">
-            {branch.userQuestion}
-          </p>
-        </div>
-        <div className="float-branch-row float-branch-row-answer">
-          <span className="float-branch-label">answer</span>
-          <div ref={answerRef} className="float-branch-answer-scroll">
-            {hasReasoning ? (
-              <ThinkingBlock
-                reasoning={branch.reasoning!}
-                seconds={branch.thinkingSeconds}
-                streaming={isLoadingThis}
-              />
-            ) : null}
-            {isLoadingThis && !hasAnswer ? (
-              <p className="ds-muted">Thinking…</p>
-            ) : hasAnswer ? (
-              <SelectableMarkdown
-                content={branch.assistantMessage}
-                branches={isLoadingThis ? [] : branch.children}
-                loading={branchLoading}
-                disabled={branchLoading}
-                fixedToolbar
-                overlayZBase={zIndex}
-                compact
-                className="float-branch-selectable"
-                verdictTargetId={branch.id}
-                pointVerdicts={branch.pointVerdicts}
-                pointDoubts={branch.pointDoubts}
-                onAsk={(anchor, question) =>
-                  askBranch(
-                    branch.id,
-                    parentMessage.content,
-                    anchor,
-                    question,
-                  )
-                }
-                onBranchOpened={openChildFloat}
-                onHighlightClick={handleHighlightClick}
-              />
-            ) : null}
+
+        <TurnBlock
+          question={branch.userQuestion}
+          answer={branch.assistantMessage}
+          reasoning={branch.reasoning}
+          thinkingSeconds={branch.thinkingSeconds}
+          isLoading={loadingInitial}
+          showAnswerChrome
+        >
+          <div ref={answerRef}>
+            <SelectableMarkdown
+              content={branch.assistantMessage}
+              branches={
+                isLoadingThis && !settledReplies.length ? [] : branch.children
+              }
+              loading={branchLoading}
+              disabled={branchLoading}
+              fixedToolbar
+              overlayZBase={zIndex}
+              compact
+              className="float-branch-selectable"
+              verdictTargetId={branch.id}
+              pointVerdicts={branch.pointVerdicts}
+              pointDoubts={branch.pointDoubts}
+              onAsk={(anchor, question) =>
+                askBranch(
+                  branch.id,
+                  parentMessage.content,
+                  anchor,
+                  question,
+                )
+              }
+              onBranchOpened={openChildFloat}
+              onHighlightClick={handleHighlightClick}
+            />
           </div>
-        </div>
+        </TurnBlock>
+
+        {settledReplies.map((reply, index) => (
+          <TurnBlock
+            key={`${reply.createdAt}-${index}`}
+            question={reply.userQuestion}
+            answer={reply.assistantMessage}
+            reasoning={reply.reasoning}
+            thinkingSeconds={reply.thinkingSeconds}
+            isLoading={false}
+            showAnswerChrome={false}
+          >
+            <SelectableMarkdown
+              content={reply.assistantMessage}
+              branches={[]}
+              loading={branchLoading}
+              disabled={branchLoading}
+              fixedToolbar
+              overlayZBase={zIndex}
+              compact
+              className="float-branch-selectable"
+              onAsk={(anchor, question) =>
+                askBranch(
+                  branch.id,
+                  parentMessage.content,
+                  anchor,
+                  question,
+                )
+              }
+              onBranchOpened={openChildFloat}
+            />
+          </TurnBlock>
+        ))}
+
+        {activeReply ? (
+          <TurnBlock
+            question={activeReply.userQuestion}
+            answer={activeReply.assistantMessage}
+            reasoning={activeReply.reasoning}
+            thinkingSeconds={activeReply.thinkingSeconds}
+            isLoading={loadingLatestReply}
+            showAnswerChrome={false}
+          >
+            <SelectableMarkdown
+              content={activeReply.assistantMessage}
+              branches={[]}
+              loading={branchLoading}
+              disabled={branchLoading}
+              fixedToolbar
+              overlayZBase={zIndex}
+              compact
+              className="float-branch-selectable"
+              onAsk={(anchor, question) =>
+                askBranch(
+                  branch.id,
+                  parentMessage.content,
+                  anchor,
+                  question,
+                )
+              }
+              onBranchOpened={openChildFloat}
+            />
+          </TurnBlock>
+        ) : null}
       </div>
 
       <footer className="float-panel-detail-footer">
@@ -220,12 +326,14 @@ export function FloatingBranchDetail({
           value={followUp}
           onChange={(e) => setFollowUp(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Follow-up opens a nested fork…"
-          disabled={branchLoading}
+          placeholder="Follow-up stays in this window…"
+          disabled={branchLoading || !branch.assistantMessage.trim()}
           aria-label="Follow-up"
         />
         <div className="float-panel-detail-footer-actions">
-          <span className="hint">⌘/Ctrl + Enter to send</span>
+          <span className="hint">
+            Same window · Clarify this opens a new level · ⌘/Ctrl + Enter
+          </span>
           {isLoadingThis ? (
             <button
               type="button"
@@ -238,7 +346,11 @@ export function FloatingBranchDetail({
             <button
               type="button"
               className="btn primary"
-              disabled={branchLoading || !followUp.trim()}
+              disabled={
+                branchLoading ||
+                !followUp.trim() ||
+                !branch.assistantMessage.trim()
+              }
               onClick={() => void submitFollowUp()}
             >
               Send

@@ -15,6 +15,15 @@ export type PointVerdictMap = Record<number, PointVerdict>;
 /** 存疑分点的用户疑问文案；key = 分点编号 */
 export type PointDoubtMap = Record<number, string>;
 
+/** Follow-up turn on the same Fork (same float window), not a nested Clarify. */
+export interface BranchReply {
+  userQuestion: string;
+  assistantMessage: string;
+  createdAt: number;
+  reasoning?: string;
+  thinkingSeconds?: number;
+}
+
 export interface BranchNode {
   id: NodeId;
   parentId: NodeId;
@@ -29,6 +38,11 @@ export interface BranchNode {
   reasoning?: string;
   /** Seconds from request start until first visible answer token */
   thinkingSeconds?: number;
+  /**
+   * Same-window follow-ups after the initial clarify turn.
+   * Nested Clarify this still creates `children` + a new float.
+   */
+  replies?: BranchReply[];
 }
 
 export interface ChatMessage {

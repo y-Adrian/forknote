@@ -1,4 +1,9 @@
-import type { BranchNode, ChatMessage, ThreadRoot } from "../types";
+import type {
+  BranchNode,
+  BranchReply,
+  ChatMessage,
+  ThreadRoot,
+} from "../types";
 import { createId } from "./id";
 
 export function normalizeThread(raw: ThreadRoot): ThreadRoot {
@@ -98,6 +103,39 @@ export function patchBranchInThread(
   };
 }
 
+/** Patch the last same-window follow-up reply on a Fork. */
+export function patchBranchLastReplyInThread(
+  thread: ThreadRoot,
+  branchId: string,
+  patch: Partial<BranchReply>,
+): ThreadRoot {
+  const patchInNodes = (nodes: BranchNode[]): BranchNode[] =>
+    nodes.map((node) => {
+      if (node.id === branchId) {
+        const replies = node.replies ?? [];
+        if (replies.length === 0) return node;
+        const last = replies[replies.length - 1];
+        return {
+          ...node,
+          replies: [...replies.slice(0, -1), { ...last, ...patch }],
+        };
+      }
+      return { ...node, children: patchInNodes(node.children) };
+    });
+
+  return {
+    ...thread,
+    messages: thread.messages.map((m) => ({
+      ...m,
+      children: patchInNodes(m.children),
+    })),
+  };
+}
+
+/**
+ * @deprecated Nested follow-ups no longer walk children for chat continuation.
+ * Kept for any legacy callers; prefer same-window `replies`.
+ */
 export function branchConversationLeaf(node: BranchNode): BranchNode {
   if (node.children.length === 0) return node;
   return branchConversationLeaf(node.children[node.children.length - 1]);
