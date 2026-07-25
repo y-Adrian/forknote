@@ -37,6 +37,9 @@ export function BranchFloatLayer() {
           depth={entry.depth}
           zIndex={entry.zIndex}
           isTopmost={entry.zIndex === topZ}
+          skipEnterAnimation={entry.skipEnterAnimation}
+          seedLeft={entry.seedLeft}
+          seedTop={entry.seedTop}
           onClose={() => closeBranchFloat(entry.branchId)}
         />
       ))}

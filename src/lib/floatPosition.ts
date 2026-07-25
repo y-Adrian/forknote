@@ -30,6 +30,41 @@ export function anchorRectBelowPanel(
   return new DOMRect(r.left + DEPTH_STAGGER, r.bottom + gap, r.width, 0);
 }
 
+/** Update width / max-height / z-index without moving left/top (avoids blink on resize). */
+export function sizeFloatingPanel(
+  panel: HTMLElement,
+  depth = 0,
+  zIndex?: number,
+): void {
+  const column = getMessagesColumnRect();
+  const stagger = depth * DEPTH_STAGGER;
+  const width = Math.max(280, column.width - stagger);
+  const maxHeight = Math.min(
+    420 - depth * 20,
+    window.innerHeight * (0.55 - depth * 0.04),
+  );
+
+  panel.style.width = `${width}px`;
+  panel.style.maxHeight = `${Math.max(200, maxHeight)}px`;
+  panel.style.setProperty("--float-depth", String(depth));
+  panel.dataset.floatDepth = String(depth);
+  panel.style.zIndex = String(zIndex ?? 220 + depth * 14);
+}
+
+export function clampPanelPosition(
+  panel: HTMLElement,
+  left: number,
+  top: number,
+): { left: number; top: number } {
+  const w = panel.offsetWidth || 280;
+  const h = panel.offsetHeight || 200;
+  const nextLeft = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+  const nextTop = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+  panel.style.left = `${nextLeft}px`;
+  panel.style.top = `${nextTop}px`;
+  return { left: nextLeft, top: nextTop };
+}
+
 export function positionFloatingPanel(
   panel: HTMLElement,
   anchorRect: DOMRect | null,
@@ -37,27 +72,21 @@ export function positionFloatingPanel(
   depth = 0,
   zIndex?: number,
 ): void {
+  sizeFloatingPanel(panel, depth, zIndex);
+
   const column = getMessagesColumnRect();
   const stagger = depth * DEPTH_STAGGER;
-  const width = Math.max(280, column.width - stagger);
   const left = column.left + stagger;
-  const maxHeight = Math.min(
-    420 - depth * 20,
-    window.innerHeight * (0.55 - depth * 0.04),
-  );
-
-  panel.style.width = `${width}px`;
-  panel.style.left = `${left}px`;
-  panel.style.maxHeight = `${Math.max(200, maxHeight)}px`;
-  panel.style.setProperty("--float-depth", String(depth));
-  panel.dataset.floatDepth = String(depth);
 
   const panelHeight = panel.offsetHeight || 200;
   const gap = 10;
   let top: number;
 
   if (anchorRect) {
-    if (preferBelow && anchorRect.bottom + gap + panelHeight < window.innerHeight - 16) {
+    if (
+      preferBelow &&
+      anchorRect.bottom + gap + panelHeight < window.innerHeight - 16
+    ) {
       top = anchorRect.bottom + gap;
     } else {
       top = Math.max(16, anchorRect.top - gap - panelHeight);
@@ -66,6 +95,9 @@ export function positionFloatingPanel(
     top = Math.max(16, window.innerHeight - panelHeight - 120);
   }
 
-  panel.style.top = `${Math.max(16, Math.min(top, window.innerHeight - panelHeight - 16))}px`;
-  panel.style.zIndex = String(zIndex ?? 220 + depth * 14);
+  clampPanelPosition(
+    panel,
+    left,
+    Math.max(16, Math.min(top, window.innerHeight - panelHeight - 16)),
+  );
 }

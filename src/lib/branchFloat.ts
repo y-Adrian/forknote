@@ -14,6 +14,11 @@ export interface BranchFloatEntry {
   parentBranchId: NodeId | null;
   /** 打开顺序，越大越靠上 */
   zIndex: number;
+  /** Skip floatIn when replacing the Clarify ask panel (avoids Enter blink). */
+  skipEnterAnimation?: boolean;
+  /** Absolute viewport origin from the ask panel being replaced. */
+  seedLeft?: number;
+  seedTop?: number;
 }
 
 export const FLOAT_Z_BASE = 220;
@@ -46,6 +51,11 @@ export function pushBranchFloat(
   rect: DOMRect,
   parentBranchId: NodeId | null,
   zIndex: number,
+  opts?: {
+    skipEnterAnimation?: boolean;
+    seedLeft?: number;
+    seedTop?: number;
+  },
 ): BranchFloatEntry[] {
   const entry: BranchFloatEntry = {
     branchId,
@@ -53,6 +63,9 @@ export function pushBranchFloat(
     depth: 0,
     parentBranchId,
     zIndex,
+    skipEnterAnimation: opts?.skipEnterAnimation,
+    seedLeft: opts?.seedLeft,
+    seedTop: opts?.seedTop,
   };
 
   if (!parentBranchId) {

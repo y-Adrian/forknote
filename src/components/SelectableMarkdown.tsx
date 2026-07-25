@@ -35,7 +35,15 @@ interface Props {
   /** 所属批注浮窗的 z-index，用于追问框/工具栏叠层 */
   overlayZBase?: number;
   onHighlightClick?: (branchId: string) => void;
-  onBranchOpened?: (branchId: string, anchorRect: DOMRect) => void;
+  onBranchOpened?: (
+    branchId: string,
+    anchorRect: DOMRect,
+    opts?: {
+      skipEnterAnimation?: boolean;
+      seedLeft?: number;
+      seedTop?: number;
+    },
+  ) => void;
   compact?: boolean;
   className?: string;
   /** 传入后启用分点裁决 UI；值为消息 id 或分支 id */
@@ -195,16 +203,23 @@ export function SelectableMarkdown({
 
   const submit = async () => {
     if (!pendingAnchor || !question.trim()) return;
-    const rect = askAnchorRect;
+    const askEl = document.querySelector(
+      ".float-panel-ask",
+    ) as HTMLElement | null;
+    const panelRect = askEl?.getBoundingClientRect() ?? askAnchorRect;
     const anchor = pendingAnchor;
     const q = question;
-    closePopover();
+    // Keep ask panel up until the fork float is ready, then hand off without
+    // replaying floatIn (Enter used to close ask → open fork = one blink).
     const branchId = await onAsk(anchor, q);
-    if (branchId && rect) {
-      requestAnimationFrame(() => {
-        onBranchOpened?.(branchId, rect);
+    if (branchId && panelRect) {
+      onBranchOpened?.(branchId, panelRect, {
+        skipEnterAnimation: true,
+        seedLeft: panelRect.left,
+        seedTop: panelRect.top,
       });
     }
+    closePopover();
   };
 
   return (

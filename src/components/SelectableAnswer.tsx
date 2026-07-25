@@ -71,8 +71,8 @@ export function SelectableAnswer({
         onAsk={(anchor, question) =>
           onAskBranch(parentId, parentContent, anchor, question)
         }
-        onBranchOpened={(id, rect) => {
-          openBranchFloat(id, rect, null);
+        onBranchOpened={(id, rect, opts) => {
+          openBranchFloat(id, rect, null, opts);
           onToggleBranch(id);
         }}
         onHighlightClick={handleHighlightClick}

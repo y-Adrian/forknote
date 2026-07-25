@@ -18,6 +18,9 @@ interface Props {
   depth?: number;
   zIndex: number;
   isTopmost?: boolean;
+  skipEnterAnimation?: boolean;
+  seedLeft?: number;
+  seedTop?: number;
   onClose: () => void;
 }
 
@@ -76,6 +79,9 @@ export function FloatingBranchDetail({
   depth = 0,
   zIndex,
   isTopmost = true,
+  skipEnterAnimation = false,
+  seedLeft,
+  seedTop,
   onClose,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -137,6 +143,9 @@ export function FloatingBranchDetail({
     zIndex,
     layoutToken,
     resetKey: branchId,
+    skipEnterAnimation,
+    seedLeft,
+    seedTop,
   });
 
   useEffect(() => {
@@ -193,7 +202,7 @@ export function FloatingBranchDetail({
   return (
     <div
       ref={panelRef}
-      className={`float-panel float-panel-detail float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}`}
+      className={`float-panel float-panel-detail float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}${skipEnterAnimation ? " is-settled" : " float-panel-enter"}`}
       role="dialog"
       aria-label={`Fork${depthLabel}`}
       onMouseDown={(e) => e.stopPropagation()}

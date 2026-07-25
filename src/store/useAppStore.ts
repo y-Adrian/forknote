@@ -170,6 +170,11 @@ interface AppState {
     branchId: NodeId,
     rect: DOMRect,
     parentBranchId?: NodeId | null,
+    opts?: {
+      skipEnterAnimation?: boolean;
+      seedLeft?: number;
+      seedTop?: number;
+    },
   ) => void;
   closeBranchFloat: (branchId: NodeId) => void;
   closeAllBranchFloats: () => void;
@@ -1167,7 +1172,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ thread: nextThread, sessions: nextSessions });
   },
 
-  openBranchFloat: (branchId, rect, parentBranchId = null) => {
+  openBranchFloat: (branchId, rect, parentBranchId = null, opts) => {
     if (typeof document !== "undefined") {
       (document.activeElement as HTMLElement | null)?.blur?.();
     }
@@ -1180,6 +1185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           rect,
           parentBranchId,
           zIndex,
+          opts,
         ),
         floatOverlayDismissToken: state.floatOverlayDismissToken + 1,
       };
