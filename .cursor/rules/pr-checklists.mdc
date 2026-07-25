@@ -1,0 +1,13 @@
+---
+description: PR Test plan must start unchecked; never pre-check on open
+alwaysApply: true
+---
+
+# Pull request checklist rules
+
+When opening a PR against `leading`:
+
+- Under `## Test plan`, use **unchecked** boxes only: `- [ ]`.
+- **Do not** open the PR with `- [x]` already selected. CI fails on `opened` if any Test plan item is pre-checked.
+- After real verification, **edit** the PR body to `- [x]`.
+- Do **not** add a manual Review gate checkbox — review threads (and optional Approve) are enforced by CI automatically.
