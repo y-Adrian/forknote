@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { BranchReply, NodeId } from "../types";
+import { handleComposerEnterKey } from "../lib/composerKeys";
 import { positionFloatingPanel } from "../lib/floatPosition";
 import { getHighlightRect } from "../lib/domHighlight";
 import {
@@ -90,6 +91,7 @@ export function FloatingBranchDetail({
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
   const [followUp, setFollowUp] = useState("");
+  const composingRef = useRef(false);
 
   const branch =
     thread && branchId ? findBranchInThread(thread, branchId) : undefined;
@@ -168,10 +170,16 @@ export function FloatingBranchDetail({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      void submitFollowUp();
-    }
+    handleComposerEnterKey(e, {
+      composing: composingRef.current,
+      canSubmit:
+        !loadingBranchId &&
+        Boolean(followUp.trim()) &&
+        Boolean(branch?.assistantMessage.trim()),
+      onSubmit: () => {
+        void submitFollowUp();
+      },
+    });
   };
 
   const handleHighlightClick = (childId: string) => {
@@ -325,6 +333,12 @@ export function FloatingBranchDetail({
           rows={2}
           value={followUp}
           onChange={(e) => setFollowUp(e.target.value)}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Follow-up stays in this window…"
           disabled={branchLoading || !branch.assistantMessage.trim()}
@@ -332,7 +346,7 @@ export function FloatingBranchDetail({
         />
         <div className="float-panel-detail-footer-actions">
           <span className="hint">
-            Same window · Clarify this opens a new level · ⌘/Ctrl + Enter
+            Same window · Enter to send · Shift+Enter for new line
           </span>
           {isLoadingThis ? (
             <button

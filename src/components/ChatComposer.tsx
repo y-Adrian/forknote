@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { handleComposerEnterKey } from "../lib/composerKeys";
 import { useLocale } from "../lib/i18n";
 
 interface Props {
@@ -34,14 +35,11 @@ export function ChatComposer({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // IME: Enter confirms composition — must not send (also avoids leftover glyphs).
-    if (e.nativeEvent.isComposing || e.keyCode === 229 || composingRef.current) {
-      return;
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      trySubmit();
-    }
+    handleComposerEnterKey(e, {
+      composing: composingRef.current,
+      canSubmit: !loading && Boolean(value.trim()),
+      onSubmit: trySubmit,
+    });
   };
 
   return (

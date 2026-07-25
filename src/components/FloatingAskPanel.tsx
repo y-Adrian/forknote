@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { handleComposerEnterKey } from "../lib/composerKeys";
 import { positionFloatingPanel } from "../lib/floatPosition";
 import { getLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
@@ -25,12 +26,13 @@ export function FloatingAskPanel({
   onClose,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const composingRef = useRef(false);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const locale = getLocale();
   const hint =
     locale === "zh"
-      ? "绑定项目后可用与主对话相同的工具 · Enter 提交 · Shift+Enter 换行"
-      : "Same tools as main when a project is bound · Enter to submit · Shift+Enter for new line";
+      ? "绑定项目后可用与主对话相同的工具 · Enter 发送 · Shift+Enter 换行"
+      : "Same tools as main when a project is bound · Enter to send · Shift+Enter for new line";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -76,6 +78,12 @@ export function FloatingAskPanel({
         rows={3}
         value={question}
         onChange={(e) => onQuestionChange(e.target.value)}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+        }}
         placeholder={
           locale === "zh"
             ? "哪里不清楚？例如：这句话是什么意思？"
@@ -84,10 +92,11 @@ export function FloatingAskPanel({
         autoFocus
         disabled={loading}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            if (!loading) onSubmit();
-          }
+          handleComposerEnterKey(e, {
+            composing: composingRef.current,
+            canSubmit: !loading && Boolean(question.trim()),
+            onSubmit,
+          });
         }}
       />
       <p className="hint">{hint}</p>
