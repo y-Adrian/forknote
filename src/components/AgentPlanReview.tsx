@@ -1,24 +1,54 @@
+import type { NodeId } from "../types";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 
+type Scope =
+  /** Main-thread composer: only plans without a Fork branchId. */
+  | { kind: "main" }
+  /** Fork float: only the plan for this branch. */
+  | { kind: "branch"; branchId: NodeId };
+
+interface Props {
+  scope?: Scope;
+  /** Extra class for compact float layout. */
+  className?: string;
+}
+
 /** Plan review bar — approve or cancel before agent tools run. */
-export function AgentPlanReview() {
+export function AgentPlanReview({
+  scope = { kind: "main" },
+  className,
+}: Props) {
   const { t } = useLocale();
-  const plan = useAppStore((s) =>
-    s.agentPendingPlan && s.agentPendingPlan.sessionId === s.activeSessionId
-      ? s.agentPendingPlan
-      : null,
-  );
+  const plan = useAppStore((s) => {
+    const pending =
+      s.agentPendingPlan && s.agentPendingPlan.sessionId === s.activeSessionId
+        ? s.agentPendingPlan
+        : null;
+    if (!pending) return null;
+    if (scope.kind === "main") {
+      return pending.branchId ? null : pending;
+    }
+    return pending.branchId === scope.branchId ? pending : null;
+  });
   const approveAgentPlan = useAppStore((s) => s.approveAgentPlan);
   const rejectAgentPlan = useAppStore((s) => s.rejectAgentPlan);
-  const loadingMain = useAppStore(
-    (s) => Boolean(s.activeSessionId && s.loadingMainBySession[s.activeSessionId]),
-  );
+  const running = useAppStore((s) => {
+    if (!s.activeSessionId) return false;
+    if (scope.kind === "branch") {
+      return s.loadingBranchBySession[s.activeSessionId] === scope.branchId;
+    }
+    return Boolean(s.loadingMainBySession[s.activeSessionId]);
+  });
 
   if (!plan) return null;
 
   return (
-    <div className="fn-agent-plan" role="region" aria-label={t("agentPlan.aria")}>
+    <div
+      className={`fn-agent-plan${className ? ` ${className}` : ""}`}
+      role="region"
+      aria-label={t("agentPlan.aria")}
+    >
       <div className="fn-agent-plan-header">
         <span className="fn-agent-plan-kicker">{t("agentPlan.kicker")}</span>
         <p className="fn-agent-plan-lead">{t("agentPlan.lead")}</p>
@@ -38,15 +68,15 @@ export function AgentPlanReview() {
         <button
           type="button"
           className="btn primary"
-          disabled={loadingMain}
+          disabled={running}
           onClick={() => void approveAgentPlan()}
         >
-          {loadingMain ? t("agentPlan.running") : t("agentPlan.approve")}
+          {running ? t("agentPlan.running") : t("agentPlan.approve")}
         </button>
         <button
           type="button"
           className="btn ghost"
-          disabled={loadingMain}
+          disabled={running}
           onClick={() => rejectAgentPlan()}
         >
           {t("agentPlan.cancel")}
