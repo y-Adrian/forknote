@@ -12,6 +12,9 @@ Related Issue: #___
 <!--
   打开 PR 时必须全部为未勾选（- [ ]）。CI「Require checklists start unchecked」在 opened 时若发现 - [x] 会失败。
   完成验证后，再编辑本描述勾选为 - [x]。合并前「Require test plan passed」要求全部勾选。
+
+  只写人工产品 / UI 验证步骤。不要把 `npx tsc --noEmit`、`npm run build`、typecheck 或 Build
+  写成 Test plan 勾选项——类型检查与生产构建已由 CI「Build」工作流强制执行。
 -->
 - [ ] 
 - [ ] 

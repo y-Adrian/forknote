@@ -1,5 +1,5 @@
 ---
-description: PR Test plan must start unchecked; never pre-check on open
+description: PR Test plan must start unchecked; never pre-check on open; no CI Build/tsc items
 alwaysApply: true
 ---
 
@@ -11,3 +11,4 @@ When opening a PR against `leading`:
 - **Do not** open the PR with `- [x]` already selected. CI fails on `opened` if any Test plan item is pre-checked.
 - After real verification, **edit** the PR body to `- [x]`.
 - Do **not** add a manual Review gate checkbox — review threads (and optional Approve) are enforced by CI automatically.
+- Test plan is **manual product/UI verification only**. Do **not** list `npx tsc --noEmit`, `npm run build`, typecheck, or Build as Test plan checkboxes — those are already enforced by the CI **Build** workflow.
