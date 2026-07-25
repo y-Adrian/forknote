@@ -34,6 +34,28 @@ function findBranchPath(
   return null;
 }
 
+function formatBranchTurns(node: BranchNode, answerMax = ANCESTOR_ANSWER_MAX): string {
+  const lines = [
+    `问：${truncate(node.userQuestion, ANCESTOR_QUESTION_MAX)}`,
+    `答：${truncate(
+      annotateContentWithVerdicts(
+        node.assistantMessage,
+        node.pointVerdicts,
+        node.pointDoubts,
+      ),
+      answerMax,
+    )}`,
+  ];
+  for (const [i, reply] of (node.replies ?? []).entries()) {
+    if (!reply.userQuestion.trim() && !reply.assistantMessage.trim()) continue;
+    lines.push(
+      `追问 ${i + 1}：${truncate(reply.userQuestion, ANCESTOR_QUESTION_MAX)}`,
+      `答：${truncate(reply.assistantMessage, answerMax)}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function formatAncestorChain(ancestors: BranchNode[]): string {
   if (ancestors.length === 0) return "（无上级分支）";
 
@@ -43,15 +65,7 @@ function formatAncestorChain(ancestors: BranchNode[]): string {
       return [
         `【上级分支 ${n}】`,
         `选中：「${truncate(node.anchor.quotedText, 80)}」`,
-        `问：${truncate(node.userQuestion, ANCESTOR_QUESTION_MAX)}`,
-        `答：${truncate(
-          annotateContentWithVerdicts(
-            node.assistantMessage,
-            node.pointVerdicts,
-            node.pointDoubts,
-          ),
-          ANCESTOR_ANSWER_MAX,
-        )}`,
+        formatBranchTurns(node),
       ].join("\n");
     })
     .join("\n\n");
@@ -231,6 +245,77 @@ ${formatAncestorChain(ancestors)}
 「${anchorQuoted}」
 
 【当前子问题】
+${userQuestion}
+
+请作答。若需项目工具，请直接调用。`;
+
+  return [
+    { role: "system" as const, content: system },
+    { role: "user" as const, content: user },
+  ];
+}
+
+/**
+ * Same-window Fork follow-up: keep selection scope, include prior turns on this branch.
+ */
+export function buildClarifyContinueAddendumMessages(
+  thread: ThreadRoot,
+  branchId: string,
+  userQuestion: string,
+  locale: Locale = getLocale(),
+): ApiChatMessage[] {
+  const rootMsg = thread.messages.find(
+    (m) =>
+      m.role === "assistant" &&
+      findBranchPath(m.children, branchId) != null,
+  );
+  if (!rootMsg) {
+    throw new Error("Could not resolve fork context");
+  }
+  const path = findBranchPath(rootMsg.children, branchId);
+  if (!path || path.length === 0) {
+    throw new Error("Could not resolve fork context");
+  }
+  const branch = path[path.length - 1];
+  const ancestors = path.slice(0, -1);
+  const parentContent = rootMsg.content;
+
+  // Exclude the in-flight empty last reply (already appended for streaming)
+  const replies = branch.replies ?? [];
+  const settledReplies =
+    replies.length > 0 && !replies[replies.length - 1].assistantMessage.trim()
+      ? replies.slice(0, -1)
+      : replies;
+  const historyBranch: BranchNode = {
+    ...branch,
+    replies: settledReplies,
+  };
+
+  const system = withReplyLanguage(
+    `你是「选中澄清」助手（Forknote）。用户在同一 Fork 浮层内追问，继续写在当前分支，不要当作新开嵌套澄清。
+
+说明：
+- 优先承接本 Fork 已有问答；仍围绕选中片段，勿整段复述主回答。
+- 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度。
+- 纯概念澄清时保持简洁；项目任务则按任务需要完成。`,
+    locale,
+  );
+
+  const user = `【任务类型】选中澄清续聊（同一 Fork 窗口）
+
+【主回答（仅供定位）】
+${truncate(parentContent, 900)}
+
+【上级澄清摘要】
+${formatAncestorChain(ancestors)}
+
+【当前选中原文】
+「${branch.anchor.quotedText}」
+
+【本 Fork 已澄清】
+${formatBranchTurns(historyBranch, 500)}
+
+【当前追问】
 ${userQuestion}
 
 请作答。若需项目工具，请直接调用。`;

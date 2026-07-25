@@ -11,7 +11,10 @@ import {
   buildArchiveSource,
   lastNonEmptyMessageId,
 } from "../lib/archive";
-import { buildClarifyAddendumMessages } from "../lib/contextBuilder";
+import {
+  buildClarifyAddendumMessages,
+  buildClarifyContinueAddendumMessages,
+} from "../lib/contextBuilder";
 import { getLocale, t } from "../lib/i18n";
 import { createId } from "../lib/id";
 import {
@@ -51,6 +54,7 @@ import {
   findBranchInThread,
   normalizeThread,
   patchBranchInThread,
+  patchBranchLastReplyInThread,
   patchMessage,
 } from "../lib/thread";
 import {
@@ -64,6 +68,7 @@ import type {
   ApiSettings,
   ArchiveSnapshot,
   BranchNode,
+  BranchReply,
   ChatMessage,
   ChatSession,
   ContextMemoryPack,
@@ -189,6 +194,8 @@ interface AppState {
     anchor: Anchor,
     question: string,
   ) => Promise<NodeId | void>;
+  /** Same-window Fork follow-up (does not create a nested float). */
+  continueBranch: (branchId: NodeId, question: string) => Promise<void>;
 }
 
 function getActiveSession(state: AppState): ChatSession | undefined {
@@ -1889,6 +1896,208 @@ export const useAppStore = create<AppState>((set, get) => ({
     })();
 
     return branchId;
+  },
+
+  continueBranch: async (branchId, question) => {
+    const trimmed = question.trim();
+    if (!trimmed) return;
+
+    const { settings, thread, activeSessionId, sessions } = get();
+    if (!thread || !activeSessionId) return;
+    const sessionId = activeSessionId;
+
+    if (get().agentPendingPlan?.sessionId === sessionId) return;
+    if (get().loadingBranchBySession[sessionId]) return;
+
+    const existing = findBranchInThread(thread, branchId);
+    if (!existing) return;
+    // Need an initial answer before same-window follow-up
+    if (!existing.assistantMessage.trim()) return;
+
+    const llm = settingsForSession(settings, getActiveSession(get()));
+    const authError = requireApiKey(llm);
+    if (authError) {
+      set({ error: authError, settingsOpen: true, settingsTab: "api" });
+      return;
+    }
+
+    const newReply: BranchReply = {
+      userQuestion: trimmed,
+      assistantMessage: "",
+      createdAt: Date.now(),
+    };
+    const nextThread = patchBranchInThread(thread, branchId, {
+      replies: [...(existing.replies ?? []), newReply],
+    });
+
+    const nextSessions = upsertActiveSession(
+      sessions,
+      sessionId,
+      nextThread,
+    );
+    persistSessions(nextSessions, get().activeSessionId);
+    set({
+      sessions: nextSessions,
+      thread: nextThread,
+      error: null,
+      agentActivity: [],
+      agentChanges: [],
+    });
+    setSessionBranchLoading(set, sessionId, branchId);
+
+    const priorBranch = branchAbortBySession.get(sessionId);
+    priorBranch?.ctrl.abort();
+    const branchCtrl = new AbortController();
+    branchAbortBySession.set(sessionId, { ctrl: branchCtrl, branchId });
+    const branchSignal = branchCtrl.signal;
+
+    const requestStartedAt = Date.now();
+    let firstAnswerAt: number | null = null;
+    let apiReasoning = "";
+
+    void (async () => {
+      const isOwned = () => {
+        const owned = branchAbortBySession.get(sessionId);
+        return Boolean(
+          owned && owned.ctrl === branchCtrl && !branchSignal.aborted,
+        );
+      };
+
+      const patchReplyState = (patch: {
+        content?: string;
+        reasoning?: string;
+      }) => {
+        if (!isOwned()) return;
+        const current = getSessionThread(get, sessionId);
+        if (!current) return;
+        if (
+          patch.content !== undefined &&
+          patch.content.trim() &&
+          firstAnswerAt == null
+        ) {
+          const placeholder =
+            /^(Creating |Listing |Reading |Searching |Using project tools|Drafting plan|正在制定计划)/.test(
+              patch.content.trim(),
+            );
+          if (!placeholder) firstAnswerAt = Date.now();
+        }
+        const reasoningText =
+          patch.reasoning !== undefined
+            ? patch.reasoning.trim()
+            : apiReasoning.trim();
+        if (patch.reasoning !== undefined) {
+          apiReasoning = patch.reasoning;
+        }
+        const thinkingSeconds =
+          reasoningText && firstAnswerAt != null
+            ? Math.max(1, Math.round((firstAnswerAt - requestStartedAt) / 1000))
+            : undefined;
+        const updated = patchBranchLastReplyInThread(current, branchId, {
+          ...(patch.content !== undefined
+            ? { assistantMessage: patch.content }
+            : {}),
+          ...(patch.reasoning !== undefined
+            ? { reasoning: reasoningText || undefined }
+            : {}),
+          ...(thinkingSeconds != null ? { thinkingSeconds } : {}),
+        });
+        commitSessionThread(get, set, sessionId, updated);
+      };
+
+      try {
+        const { projectRoot, sidecarUrl } = get();
+        const locale = getLocale();
+        let extraMessages;
+        try {
+          // History for the addendum is built from the branch *before* the empty reply
+          // was conceptually "current" — use nextThread but the continue builder reads
+          // the full branch including prior turns; the new empty reply has no answer yet.
+          extraMessages = buildClarifyContinueAddendumMessages(
+            nextThread,
+            branchId,
+            trimmed,
+            locale,
+          );
+        } catch (e) {
+          set({
+            error:
+              e instanceof Error ? e.message : "Could not resolve fork context",
+          });
+          return;
+        }
+
+        const outcome = await runAgentTurn({
+          llm,
+          settings,
+          locale,
+          session: getActiveSession(get()),
+          userText: trimmed,
+          thread: nextThread,
+          projectRoot,
+          sidecarUrl,
+          signal: branchSignal,
+          extraMessages,
+          isOwned,
+          patchContent: patchReplyState,
+          onAgentActivity: (activity) => {
+            set((s) => ({ agentActivity: [...s.agentActivity, activity] }));
+          },
+          onAgentChange: (change) => {
+            set((s) => ({ agentChanges: [...s.agentChanges, change] }));
+          },
+          onRepairContextToLive: () => {
+            const repaired = patchActiveSessionMeta(get().sessions, sessionId, {
+              contextMode: "live",
+              activeArchiveId: null,
+            });
+            persistSessions(repaired, sessionId);
+            set({ sessions: repaired });
+          },
+          onAwaitPlanApproval: ({ planText, steps, continueExecution }) => {
+            pendingAgentContinuations.set(sessionId, continueExecution);
+            setSessionBranchLoading(set, sessionId, null);
+            set({
+              agentPendingPlan: {
+                id: createId(),
+                sessionId,
+                planText,
+                steps,
+                userPrompt: trimmed,
+                branchId,
+              },
+            });
+          },
+        });
+
+        if (outcome === "need_project") {
+          set({
+            error:
+              "Open a local project first (Open project), then ask to create files — e.g. connect /Users/debris/cursor/code-test.",
+          });
+          patchReplyState({
+            content:
+              "Open a local project first (Open project), then retry this clarify request.",
+          });
+        }
+      } catch (e) {
+        if (!isAbortError(e)) {
+          set({
+            error:
+              e instanceof Error ? e.message : "Fork follow-up request failed",
+          });
+        }
+      } finally {
+        const waitingPlan =
+          get().agentPendingPlan?.sessionId === sessionId &&
+          pendingAgentContinuations.has(sessionId) &&
+          get().agentPendingPlan?.branchId === branchId;
+        const owned = branchAbortBySession.get(sessionId);
+        if (owned?.ctrl === branchCtrl && !waitingPlan) {
+          branchAbortBySession.delete(sessionId);
+          setSessionBranchLoading(set, sessionId, null);
+        }
+      }
+    })();
   },
 
 }));
