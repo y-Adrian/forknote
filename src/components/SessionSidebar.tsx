@@ -15,14 +15,14 @@ import {
   truncateModelLabel,
 } from "../lib/sessionApi";
 import { groupSessionsByDate } from "../lib/sessionGroups";
-import { sessionToShareMarkdown } from "../lib/sessionShare";
 import {
   getSkipSessionDeleteConfirm,
   setSkipSessionDeleteConfirm,
 } from "../lib/storage";
 import { useTheme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
-import type { NodeId } from "../types";
+import type { ChatSession, NodeId } from "../types";
+import { ShareSessionDialog } from "./ShareSessionDialog";
 
 type MenuPos = { top: number; right: number };
 
@@ -203,13 +203,9 @@ export function SessionSidebar({
   } | null>(null);
   const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] =
     useState(false);
-  const [shareToast, setShareToast] = useState<{
-    message: string;
-    pos: MenuPos;
-  } | null>(null);
+  const [shareSession, setShareSession] = useState<ChatSession | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommit = useRef(false);
-  const shareToastTimer = useRef<number | null>(null);
 
   const groups = useMemo(
     () =>
@@ -238,25 +234,6 @@ export function SessionSidebar({
     setConfirmDelete(null);
     setSkipDeleteConfirmChecked(false);
   };
-
-  const showShareToast = (message: string, pos: MenuPos) => {
-    if (shareToastTimer.current != null) {
-      window.clearTimeout(shareToastTimer.current);
-    }
-    setShareToast({ message, pos });
-    shareToastTimer.current = window.setTimeout(() => {
-      setShareToast(null);
-      shareToastTimer.current = null;
-    }, 1600);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (shareToastTimer.current != null) {
-        window.clearTimeout(shareToastTimer.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (renamingId) {
@@ -427,17 +404,10 @@ export function SessionSidebar({
     closeMenu();
   };
 
-  const handleShare = async () => {
-    if (!menuSession || !menuPos) return;
-    const pos = menuPos;
-    const markdown = sessionToShareMarkdown(menuSession);
+  const handleShare = () => {
+    if (!menuSession) return;
+    setShareSession(menuSession);
     closeMenu();
-    try {
-      await navigator.clipboard.writeText(markdown);
-      showShareToast(t("sidebar.shareCopied"), pos);
-    } catch {
-      showShareToast(t("sidebar.shareFailed"), pos);
-    }
   };
 
   const toggleMenu = (e: MouseEvent<HTMLButtonElement>, id: NodeId) => {
@@ -638,10 +608,7 @@ export function SessionSidebar({
                   >
                     {menuPinned ? t("sidebar.unpin") : t("sidebar.pin")}
                   </MenuItem>
-                  <MenuItem
-                    icon={<IconShare />}
-                    onClick={() => void handleShare()}
-                  >
+                  <MenuItem icon={<IconShare />} onClick={handleShare}>
                     {t("sidebar.share")}
                   </MenuItem>
                   <MenuItem
@@ -698,18 +665,12 @@ export function SessionSidebar({
               )
             : null}
 
-          {shareToast
+          {shareSession
             ? createPortal(
-                <div
-                  className="fn-session-share-toast"
-                  role="status"
-                  style={{
-                    top: shareToast.pos.top,
-                    right: shareToast.pos.right,
-                  }}
-                >
-                  {shareToast.message}
-                </div>,
+                <ShareSessionDialog
+                  session={shareSession}
+                  onClose={() => setShareSession(null)}
+                />,
                 document.body,
               )
             : null}

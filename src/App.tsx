@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArchivePanel } from "./components/ArchivePanel";
 import { BranchFloatLayer } from "./components/BranchFloatLayer";
 import { MainPanel } from "./components/MainPanel";
 import { ProjectPanel } from "./components/ProjectPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { ShareViewer } from "./components/ShareViewer";
+import { parseShareHash } from "./lib/sessionShare";
 import { useAppStore } from "./store/useAppStore";
+
+function readShareToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return parseShareHash(window.location.hash);
+}
 
 export default function App() {
   const init = useAppStore((s) => s.init);
@@ -17,10 +24,27 @@ export default function App() {
   const setProjectOpen = useAppStore((s) => s.setProjectOpen);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(readShareToken);
 
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    const onHash = () => setShareToken(readShareToken());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const exitShare = useCallback(() => {
+    const { pathname, search } = window.location;
+    window.history.replaceState(null, "", `${pathname}${search}`);
+    setShareToken(null);
+  }, []);
+
+  if (shareToken) {
+    return <ShareViewer token={shareToken} onExit={exitShare} />;
+  }
 
   return (
     <div className="app ds-app">
