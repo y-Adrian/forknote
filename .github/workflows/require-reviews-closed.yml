@@ -1,0 +1,150 @@
+# Fail PRs targeting `leading` unless all changed files are attested as Viewed
+# and every review conversation (thread) is resolved (Issue #69).
+#
+# "Viewed" cannot be read for human reviewers via GITHUB_TOKEN (viewerViewedState is
+# per-token), so authors check the Review gate box after marking files Viewed in the UI.
+# Unresolved review threads are verified via the GraphQL API.
+name: Require Files Viewed And Reviews Closed
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    branches: [leading]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-reviews-closed:
+    name: Require files viewed and reviews closed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify files viewed attestation and review threads resolved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "${BASE_REF}" != "leading" ]; then
+            echo "Skipping: base branch is '${BASE_REF}', not leading."
+            exit 0
+          fi
+
+          if [ -z "${PR_NUMBER}" ] || [ "${PR_NUMBER}" = "null" ]; then
+            echo "::error::Missing pull request number in event payload."
+            exit 1
+          fi
+
+          BODY=$(gh api "repos/${OWNER}/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""')
+
+          if ! printf '%s' "$BODY" | grep -Eiq '^[[:space:]]*##[[:space:]]+Review[[:space:]]+[Gg]ate[[:space:]]*$'; then
+            cat <<'EOF'
+          ::error::缺少 Review gate 区块。
+
+          合并到 leading 的 PR 必须包含 Markdown 标题「## Review gate」，
+          并勾选「All changed files marked Viewed…」检查项（Issue #69）。
+
+          请在 Files changed 页将全部文件标为 Viewed，再勾选该检查项并保存 PR 描述。
+          EOF
+            exit 1
+          fi
+
+          SECTION=$(printf '%s' "$BODY" | awk '
+            /^[[:space:]]*##[[:space:]]+/ {
+              if (in_section) exit
+              if (tolower($0) ~ /^[[:space:]]*##[[:space:]]+review[[:space:]]+gate[[:space:]]*$/) {
+                in_section = 1
+                next
+              }
+            }
+            in_section { print }
+          ')
+
+          UNCHECKED=$(printf '%s' "$SECTION" | grep -Eic '^[[:space:]]*([-*]|[[:digit:]]+[.)])[[:space:]]+\[[[:space:]]\]' || true)
+          CHECKED=$(printf '%s' "$SECTION" | grep -Eic '^[[:space:]]*([-*]|[[:digit:]]+[.)])[[:space:]]+\[[xX]\]' || true)
+
+          if [ "${CHECKED}" -eq 0 ]; then
+            cat <<'EOF'
+          ::error::Review gate 中没有已勾选的检查项。
+
+          请在 Files changed 将所有改动文件标为 Viewed，然后在「## Review gate」下勾选 - [x]。
+          EOF
+            exit 1
+          fi
+
+          if [ "${UNCHECKED}" -gt 0 ]; then
+            cat <<EOF
+          ::error::Review gate 仍有 ${UNCHECKED} 项未勾选（已勾选 ${CHECKED} 项）。
+
+          合并前必须勾选 Review gate 中的全部检查项（- [x]）。
+          EOF
+            exit 1
+          fi
+
+          echo "OK: Review gate has ${CHECKED} checked item(s) and 0 unchecked."
+
+          # Paginate review threads; fail if any are unresolved.
+          AFTER=""
+          UNRESOLVED=0
+          TOTAL=0
+          while :; do
+            if [ -z "$AFTER" ]; then
+              RESP=$(gh api graphql -f query='
+                query($owner:String!, $repo:String!, $number:Int!) {
+                  repository(owner:$owner, name:$repo) {
+                    pullRequest(number:$number) {
+                      reviewThreads(first:100) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes { isResolved isOutdated }
+                      }
+                    }
+                  }
+                }' -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER")
+            else
+              RESP=$(gh api graphql -f query='
+                query($owner:String!, $repo:String!, $number:Int!, $after:String!) {
+                  repository(owner:$owner, name:$repo) {
+                    pullRequest(number:$number) {
+                      reviewThreads(first:100, after:$after) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes { isResolved isOutdated }
+                      }
+                    }
+                  }
+                }' -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER" -f after="$AFTER")
+            fi
+
+            PAGE_TOTAL=$(printf '%s' "$RESP" | jq '.data.repository.pullRequest.reviewThreads.nodes | length')
+            PAGE_UNRESOLVED=$(printf '%s' "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
+            TOTAL=$((TOTAL + PAGE_TOTAL))
+            UNRESOLVED=$((UNRESOLVED + PAGE_UNRESOLVED))
+
+            HAS_NEXT=$(printf '%s' "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+            if [ "$HAS_NEXT" != "true" ]; then
+              break
+            fi
+            AFTER=$(printf '%s' "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+          done
+
+          echo "Review threads: total=${TOTAL}, unresolved=${UNRESOLVED}"
+
+          if [ "${UNRESOLVED}" -gt 0 ]; then
+            cat <<EOF
+          ::error::仍有 ${UNRESOLVED} 条未关闭的评审意见（review conversation）。
+
+          合并到 leading 前必须 Resolve 全部评审对话（Issue #69）。
+          在 Files changed / Conversation 中关闭意见后，本检查会自动重跑。
+          EOF
+            exit 1
+          fi
+
+          echo "OK: all review threads resolved (or none exist)."
