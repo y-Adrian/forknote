@@ -100,7 +100,11 @@ export function MainPanel({ onOpenProject }: Props) {
   );
 
   const composerBusy =
-    loadingMain || loadingArchive || loadingCompress || Boolean(agentPendingPlan);
+    loadingMain ||
+    loadingArchive ||
+    loadingCompress ||
+    Boolean(agentPendingPlan) ||
+    Boolean(loadingBranchId);
 
   useEffect(() => {
     setInput("");

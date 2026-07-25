@@ -11,7 +11,6 @@ import {
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import { annotateContentWithVerdicts } from "./points";
-import { firstUserMessage } from "./thread";
 
 const ANCESTOR_ANSWER_MAX = 280;
 const ANCESTOR_QUESTION_MAX = 120;
@@ -190,13 +189,18 @@ export function resolveBranchAttachContext(
   return null;
 }
 
-export function buildBranchQuestionMessages(
+/**
+ * Selection-scoped Fork addendum appended after main conversation messages.
+ * Clarify may use the same tools and depth as main when the user asks for
+ * project work — no artificial “2–5 sentences / no tools” cap.
+ */
+export function buildClarifyAddendumMessages(
   thread: ThreadRoot,
   attachParentId: string,
   anchorQuoted: string,
   userQuestion: string,
   locale: Locale = getLocale(),
-) {
+): ApiChatMessage[] {
   const ctx = resolveBranchAttachContext(thread, attachParentId);
   if (!ctx) {
     throw new Error("Could not resolve fork context");
@@ -204,50 +208,20 @@ export function buildBranchQuestionMessages(
 
   const { assistantContent: parentContent, ancestors } = ctx;
 
-  const conversation = thread.messages
-    .filter((m) => m.content.trim())
-    .map((m) =>
-      m.role === "user"
-        ? `用户：${truncate(m.content, 400)}`
-        : `助手：${truncate(
-            annotateContentWithVerdicts(
-              m.content,
-              m.pointVerdicts,
-              m.pointDoubts,
-            ),
-            400,
-          )}`,
-    )
-    .join("\n\n");
-
   const system = withReplyLanguage(
-    `你是「选中澄清」助手（Forknote）。用户正在阅读一篇可能较长的回答，对其中一小段选中文字临时卡住了，需要立刻弄懂，然后回到主线继续读。
+    `你是「选中澄清」助手（Forknote）。用户对主回答中的选中片段提出了澄清问题；回答写入 Fork 分支，不是新开主线话题。
 
-目标：用最短篇幅把「选中内容」讲清楚，让用户能继续往下读，而不是开启新的知识树。
-
-硬性规则：
-1. 只解释当前选中片段与当前子问题；不要复述整段主回答，不要写教程式长文。
-2. 篇幅：默认 2～5 句，或至多【1】【2】【3】三个短分点（【N】必须在行首）。能一句说清就不要拆点。
-3. 少引入新概念。若必须出现陌生术语，每个术语只用一句白话解释，且全文新术语不超过 2 个。
-4. 禁止：延伸阅读、相关推荐、「你还可以了解…」、开放式下一问清单、大段背景史、对比多个方案除非用户明确要求。
-5. 结尾收束：解释完即停。不要邀请继续追问；若问题超出选中片段，一句点明「这超出当前选中范围」后给最小必要答案。
-6. 若存在上级分支摘要，只吸收已澄清结论，不要重复上级已说过的定义。
-7. 上下文里「已拒绝」的点勿再展开；「已采纳✅」视为已确认事实；「用户存疑」请重点回应括号内的疑问。
-8. 语气直接。`,
+说明：
+- 优先解释选中片段与当前子问题；可引用上级澄清结论，勿整段复述主回答。
+- 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度（list_dir、read_file、write_file 等），勿因「澄清」而拒绝工具或缩短任务。
+- 纯概念澄清时保持简洁；项目任务则按任务需要完成（含计划批准后的多轮工具调用）。
+- 上下文里「已拒绝」的点勿再展开；「已采纳✅」视为已确认；「用户存疑」请重点回应括号内疑问。`,
     locale,
   );
 
-  const depthHint =
-    ancestors.length >= 2
-      ? `\n（提示：这已是第 ${ancestors.length + 1} 层澄清，请比上一层更短，只补缺口，不要再开新概念。）`
-      : "";
+  const user = `【任务类型】选中澄清（Fork 分支）
 
-  const user = `【任务类型】选中澄清（读中打断，不是新开话题）
-
-【会话摘要】
-${conversation || `（首问）${firstUserMessage(thread)}`}
-
-【主回答（仅供定位，勿整段复述）】
+【主回答（仅供定位）】
 ${truncate(parentContent, 900)}
 
 【上级澄清摘要】
@@ -257,12 +231,29 @@ ${formatAncestorChain(ancestors)}
 「${anchorQuoted}」
 
 【当前子问题】
-${userQuestion}${depthHint}
+${userQuestion}
 
-请直接给出简明澄清。`;
+请作答。若需项目工具，请直接调用。`;
 
   return [
     { role: "system" as const, content: system },
     { role: "user" as const, content: user },
   ];
+}
+
+/** @deprecated Prefer buildClarifyAddendumMessages + buildConversationMessages */
+export function buildBranchQuestionMessages(
+  thread: ThreadRoot,
+  attachParentId: string,
+  anchorQuoted: string,
+  userQuestion: string,
+  locale: Locale = getLocale(),
+) {
+  return buildClarifyAddendumMessages(
+    thread,
+    attachParentId,
+    anchorQuoted,
+    userQuestion,
+    locale,
+  );
 }

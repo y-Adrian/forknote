@@ -12,6 +12,7 @@ import {
 } from "../lib/thread";
 import { useAppStore } from "../store/useAppStore";
 import { SelectableMarkdown } from "./SelectableMarkdown";
+import { ThinkingBlock } from "./ThinkingBlock";
 
 interface Props {
   branchId: NodeId;
@@ -40,6 +41,7 @@ export function FloatingBranchDetail({
       : null,
   );
   const askBranch = useAppStore((s) => s.askBranch);
+  const stopGeneration = useAppStore((s) => s.stopGeneration);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
   const [followUp, setFollowUp] = useState("");
 
@@ -54,6 +56,7 @@ export function FloatingBranchDetail({
   const isLoadingThis = loadingBranchId === branchId;
   const hasAnswer = Boolean(branch?.assistantMessage.trim());
   const branchLoading = loadingBranchId !== null;
+  const hasReasoning = Boolean(branch?.reasoning?.trim());
 
   useEffect(() => {
     setFollowUp("");
@@ -78,13 +81,21 @@ export function FloatingBranchDetail({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchorRect, depth, zIndex, branch?.assistantMessage, branch?.children.length, loadingBranchId]);
+  }, [
+    anchorRect,
+    depth,
+    zIndex,
+    branch?.assistantMessage,
+    branch?.reasoning,
+    branch?.children.length,
+    loadingBranchId,
+  ]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [branch?.assistantMessage, loadingBranchId]);
+  }, [branch?.assistantMessage, branch?.reasoning, loadingBranchId]);
 
   const openChildFloat = (childId: NodeId, rect: DOMRect) => {
     openBranchFloat(childId, rect, branchId);
@@ -165,6 +176,13 @@ export function FloatingBranchDetail({
         <div className="float-branch-row float-branch-row-answer">
           <span className="float-branch-label">answer</span>
           <div ref={answerRef} className="float-branch-answer-scroll">
+            {hasReasoning ? (
+              <ThinkingBlock
+                reasoning={branch.reasoning!}
+                seconds={branch.thinkingSeconds}
+                streaming={isLoadingThis}
+              />
+            ) : null}
             {isLoadingThis && !hasAnswer ? (
               <p className="ds-muted">Thinking…</p>
             ) : hasAnswer ? (
@@ -202,20 +220,30 @@ export function FloatingBranchDetail({
           value={followUp}
           onChange={(e) => setFollowUp(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Short follow-up opens a nested fork…"
+          placeholder="Follow-up opens a nested fork…"
           disabled={branchLoading}
           aria-label="Follow-up"
         />
         <div className="float-panel-detail-footer-actions">
-          <span className="hint">Keep it short · ⌘/Ctrl + Enter to send</span>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={branchLoading || !followUp.trim()}
-            onClick={() => void submitFollowUp()}
-          >
-            {branchLoading ? "Generating…" : "Send"}
-          </button>
+          <span className="hint">⌘/Ctrl + Enter to send</span>
+          {isLoadingThis ? (
+            <button
+              type="button"
+              className="btn danger"
+              onClick={() => stopGeneration()}
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={branchLoading || !followUp.trim()}
+              onClick={() => void submitFollowUp()}
+            >
+              Send
+            </button>
+          )}
         </div>
       </footer>
     </div>
