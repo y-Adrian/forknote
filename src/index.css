@@ -1850,6 +1850,23 @@ mark.branch-highlight:hover {
   border-bottom: 1px solid var(--ds-border);
 }
 
+.float-panel-drag-handle {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.float-panel-ask > h3.float-panel-drag-handle {
+  margin: 0 0 12px;
+  padding: 2px 0;
+}
+
+.float-panel.is-dragging,
+.float-panel.is-dragging .float-panel-drag-handle {
+  cursor: grabbing;
+  animation: none;
+}
+
 .float-panel-detail-header h3 {
   margin: 0;
 }

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { BranchReply, NodeId } from "../types";
 import { handleComposerEnterKey } from "../lib/composerKeys";
-import { positionFloatingPanel } from "../lib/floatPosition";
 import { getHighlightRect } from "../lib/domHighlight";
 import {
   findAssistantMessageForBranch,
   findBranchInThread,
 } from "../lib/thread";
+import { useDraggableFloat } from "../lib/useDraggableFloat";
 import { useAppStore } from "../store/useAppStore";
 import { AgentPlanReview } from "./AgentPlanReview";
 import { SelectableMarkdown } from "./SelectableMarkdown";
@@ -121,35 +121,23 @@ export function FloatingBranchDetail({
     setFollowUp("");
   }, [branchId]);
 
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
+  const layoutToken = [
+    branch?.assistantMessage?.length ?? 0,
+    branch?.reasoning?.length ?? 0,
+    branch?.replies?.length ?? 0,
+    branch?.children.length ?? 0,
+    loadingBranchId ?? "",
+    pendingPlanForThis ? "plan" : "",
+  ].join(":");
 
-    panel.style.zIndex = String(zIndex);
-    const place = () =>
-      positionFloatingPanel(panel, anchorRect, true, depth, zIndex);
-    place();
-
-    const ro = new ResizeObserver(place);
-    ro.observe(panel);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [
+  const { onDragHandlePointerDown } = useDraggableFloat(panelRef, {
     anchorRect,
+    preferBelow: true,
     depth,
     zIndex,
-    branch?.assistantMessage,
-    branch?.reasoning,
-    branch?.replies,
-    branch?.children.length,
-    loadingBranchId,
-  ]);
+    layoutToken,
+    resetKey: branchId,
+  });
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -211,7 +199,11 @@ export function FloatingBranchDetail({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <header className="float-panel-detail-header">
+      <header
+        className="float-panel-detail-header float-panel-drag-handle"
+        onPointerDown={onDragHandlePointerDown}
+        title="Drag to move"
+      >
         <div className="float-panel-detail-title">
           <h3>Fork{depthLabel}</h3>
           {depth > 0 && (
