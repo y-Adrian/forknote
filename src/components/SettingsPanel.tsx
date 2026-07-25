@@ -116,9 +116,10 @@ const THEME_OPTIONS: { value: ThemePreference; labelKey: "general.theme.light" |
   { value: "system", labelKey: "general.theme.system" },
 ];
 
-const LOCALE_OPTIONS: { value: Locale; labelKey: "general.lang.en" | "general.lang.zh" }[] = [
-  { value: "en", labelKey: "general.lang.en" },
-  { value: "zh", labelKey: "general.lang.zh" },
+/** Native language names (standard for locale pickers). */
+const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "zh", label: "中文" },
 ];
 
 function SettingsRow({
@@ -147,10 +148,7 @@ function GeneralPanel() {
   const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
 
   const pendingLabel = pendingLocale
-    ? t(
-        LOCALE_OPTIONS.find((o) => o.value === pendingLocale)?.labelKey ??
-          "general.lang.en",
-      )
+    ? (LOCALE_OPTIONS.find((o) => o.value === pendingLocale)?.label ?? "")
     : "";
 
   const confirmLanguageSwitch = () => {
@@ -186,25 +184,22 @@ function GeneralPanel() {
         title={t("general.language")}
         description={t("general.languageDesc")}
       >
-        <div
-          className="ss-segmented"
-          role="group"
+        <select
+          className="ss-select"
           aria-label={t("general.languageAria")}
+          value={pendingLocale ?? locale}
+          onChange={(e) => {
+            const next = e.target.value as Locale;
+            if (next === locale) return;
+            setPendingLocale(next);
+          }}
         >
           {LOCALE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`ss-segment${locale === opt.value ? " is-active" : ""}`}
-              onClick={() => {
-                if (opt.value === locale) return;
-                setPendingLocale(opt.value);
-              }}
-            >
-              {t(opt.labelKey)}
-            </button>
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
           ))}
-        </div>
+        </select>
       </SettingsRow>
 
       <SettingsRow title={t("general.clarify")} description={t("general.clarifyDesc")}>

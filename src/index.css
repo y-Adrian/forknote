@@ -2576,6 +2576,19 @@ mark.branch-highlight:hover {
   align-items: center;
 }
 
+.ss-select {
+  font: inherit;
+  font-size: var(--fn-text-ui-sm);
+  font-weight: 550;
+  color: var(--ds-text);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: 10px;
+  padding: 7px 28px 7px 12px;
+  cursor: pointer;
+  min-width: 8.5rem;
+}
+
 .ss-segmented {
   display: inline-flex;
   padding: 3px;
