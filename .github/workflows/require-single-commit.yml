@@ -1,0 +1,53 @@
+# Fail PRs targeting `leading` if they contain more than one commit.
+# Prefer one focused commit per PR (squash locally before opening/updating).
+name: Require Single Commit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [leading]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-single-commit:
+    name: Require single commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify PR has exactly one commit
+        env:
+          COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          echo "PR #${PR_NUMBER} commit count: ${COMMIT_COUNT}"
+
+          if [ "${COMMIT_COUNT}" -eq 1 ]; then
+            echo "OK: PR contains exactly one commit."
+            exit 0
+          fi
+
+          if [ "${COMMIT_COUNT}" -eq 0 ]; then
+            cat <<'EOF'
+          ::error::PR 没有可检查的 commit。
+          EOF
+            exit 1
+          fi
+
+          cat <<EOF
+          ::error::PR 包含 ${COMMIT_COUNT} 个 commit，只允许 1 个。
+
+          合并到 leading 的每个 PR 只能包含一个 commit（Issue #59）。
+
+          请在本地整理后再推送，例如：
+            git fetch my leading
+            git reset --soft my/leading
+            git commit -m "你的说明"
+            git push --force-with-lease
+
+          或使用交互式 rebase 把多个 commit 压成一个后再 force-with-lease 推送。
+          EOF
+          exit 1
