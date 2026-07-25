@@ -1577,7 +1577,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (patch.content !== undefined && patch.content.trim() && firstAnswerAt == null) {
         // Prefer real answer tokens over tool placeholders for Thought timing
         const placeholder =
-          /^(Creating |Listing |Reading |Searching |Using project tools|Drafting plan|正在制定计划)/.test(
+          /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划)/.test(
             patch.content.trim(),
           );
         if (!placeholder) firstAnswerAt = Date.now();
@@ -1786,7 +1786,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           firstAnswerAt == null
         ) {
           const placeholder =
-            /^(Creating |Listing |Reading |Searching |Using project tools|Drafting plan|正在制定计划)/.test(
+            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划)/.test(
               patch.content.trim(),
             );
           if (!placeholder) firstAnswerAt = Date.now();
@@ -1994,7 +1994,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           firstAnswerAt == null
         ) {
           const placeholder =
-            /^(Creating |Listing |Reading |Searching |Using project tools|Drafting plan|正在制定计划)/.test(
+            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划)/.test(
               patch.content.trim(),
             );
           if (!placeholder) firstAnswerAt = Date.now();
