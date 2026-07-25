@@ -1,0 +1,134 @@
+# Enforce real review-thread state on PRs to `leading`.
+#
+# - Optionally require ≥1 human Approve when repo variable
+#   REQUIRE_APPROVING_REVIEW=true (default false for solo maintainers).
+#
+# Limitation: GitHub’s per-user Files-changed “Viewed” marks are NOT readable
+# via GITHUB_TOKEN (viewerViewedState is only for the token’s user = Actions
+# bot). This workflow therefore does NOT claim to verify Viewed checkmarks.
+name: Require Reviews Resolved
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    branches: [leading]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-reviews-resolved:
+    name: Require reviews resolved
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify review threads resolved (and optional approving review)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          # pull_request vs pull_request_review payloads
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.pull_request_review.pull_request.number || github.event.issue.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || github.event.pull_request_review.pull_request.base.ref || 'leading' }}
+          # Default false so a solo maintainer is not blocked from self-merge.
+          # Set repository variable REQUIRE_APPROVING_REVIEW=true to require ≥1 human Approve.
+          REQUIRE_APPROVING_REVIEW: ${{ vars.REQUIRE_APPROVING_REVIEW || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PR_NUMBER}" ] || [ "${PR_NUMBER}" = "null" ]; then
+            echo "::error::Missing pull request number in event payload."
+            exit 1
+          fi
+
+          # --- Unresolved review threads ---
+          AFTER=""
+          UNRESOLVED=0
+          TOTAL=0
+          while :; do
+            if [ -z "$AFTER" ]; then
+              RESP=$(gh api graphql -f query='
+                query($owner:String!, $repo:String!, $number:Int!) {
+                  repository(owner:$owner, name:$repo) {
+                    pullRequest(number:$number) {
+                      reviewThreads(first:100) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes { isResolved }
+                      }
+                    }
+                  }
+                }' -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER")
+            else
+              RESP=$(gh api graphql -f query='
+                query($owner:String!, $repo:String!, $number:Int!, $after:String!) {
+                  repository(owner:$owner, name:$repo) {
+                    pullRequest(number:$number) {
+                      reviewThreads(first:100, after:$after) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes { isResolved }
+                      }
+                    }
+                  }
+                }' -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER" -f after="$AFTER")
+            fi
+
+            PAGE_TOTAL=$(printf '%s' "$RESP" | jq '.data.repository.pullRequest.reviewThreads.nodes | length')
+            PAGE_UNRESOLVED=$(printf '%s' "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
+            TOTAL=$((TOTAL + PAGE_TOTAL))
+            UNRESOLVED=$((UNRESOLVED + PAGE_UNRESOLVED))
+
+            HAS_NEXT=$(printf '%s' "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+            if [ "$HAS_NEXT" != "true" ]; then
+              break
+            fi
+            AFTER=$(printf '%s' "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+          done
+
+          echo "Review threads: total=${TOTAL}, unresolved=${UNRESOLVED}"
+
+          if [ "${UNRESOLVED}" -gt 0 ]; then
+            cat <<EOF
+          ::error::仍有 ${UNRESOLVED} 条未关闭的评审意见（review conversation）。
+
+          合并到 leading 前必须在 Conversation / Files changed 中 Resolve 全部评审对话。
+          EOF
+            exit 1
+          fi
+
+          echo "OK: all review threads resolved (or none exist)."
+
+          # --- Approving review (real review state, not a markdown checkbox) ---
+          if [ "${REQUIRE_APPROVING_REVIEW}" = "false" ]; then
+            echo "OK: REQUIRE_APPROVING_REVIEW=false — skipping approving-review requirement."
+            exit 0
+          fi
+
+          REVIEWS=$(gh api "repos/${OWNER}/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate)
+          APPROVALS=$(printf '%s' "$REVIEWS" | jq '
+            [.[]
+              | select(.state == "APPROVED")
+              | select(.user.login != null)
+              | select((.user.type // "User") != "Bot")
+              | select((.user.login | test("\\[bot\\]$|github-actions|dependabot|cursor") | not))
+            ] | length')
+
+          echo "Approving human reviews: ${APPROVALS}"
+
+          if [ "${APPROVALS}" -lt 1 ]; then
+            cat <<'EOF'
+          ::error::缺少来自真人的 Approving review。
+
+          合并到 leading 前至少需要 1 个非 Bot 的 Approve。
+          （Files changed 的 Viewed 勾选无法用 Actions token 校验，因此用 Approve 作为可验证的检视信号。）
+
+          若你是唯一维护者、无法给自己 Approve，请在仓库 Settings → Variables 将
+          REQUIRE_APPROVING_REVIEW=false，或增加第二位审查者 / ruleset bypass。
+          EOF
+            exit 1
+          fi
+
+          echo "OK: found ${APPROVALS} approving human review(s)."
