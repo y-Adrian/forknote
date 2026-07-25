@@ -373,6 +373,15 @@ export function planNeedsToolApproval(
   if (TOOL_MENTION_RE.test(text)) return true;
   if (steps.some((s) => TOOL_MENTION_RE.test(s))) return true;
 
+  // Explicit create/write of Office files must go through tools even if the
+  // model omits the tool name in the plan prose.
+  if (
+    /创建|写入|生成|导出|保存|create|write|generate|export|make/i.test(text) &&
+    /\.(xlsx|docx)\b|excel|spreadsheet|workbook|word\b|表格|工作簿/i.test(text)
+  ) {
+    return true;
+  }
+
   const questionLike =
     /[?？]/.test(text) ||
     (steps.length > 0 &&
@@ -467,6 +476,33 @@ export function buildMinimalCreatePlanHint(
   return `The user clearly asked to create "${createPath}". The plan should only need write_file (path="${createPath}"); do not add list_dir, read_file, or other verification steps.`;
 }
 
+/** Extra planning hint for Word/Excel creation intents. */
+export function buildMinimalOfficePlanHint(
+  intent: { tool: "write_docx" | "write_xlsx"; path: string },
+  locale: Locale,
+): string {
+  if (locale === "zh") {
+    return intent.tool === "write_xlsx"
+      ? `用户明确要求创建 Excel "${intent.path}"。计划中只需 write_xlsx（path="${intent.path}"，rows 为二维数组）；禁止用 write_file；不要添加 list_dir 等验证步骤；禁止在计划阶段声称文件已写入磁盘。`
+      : `用户明确要求创建 Word "${intent.path}"。计划中只需 write_docx（path="${intent.path}"，paragraphs 为段落数组）；禁止用 write_file；不要添加 list_dir 等验证步骤；禁止在计划阶段声称文件已写入磁盘。`;
+  }
+  return intent.tool === "write_xlsx"
+    ? `The user clearly asked to create Excel "${intent.path}". The plan should only need write_xlsx (path="${intent.path}", rows as a 2D array); do not use write_file; do not add list_dir verification; do not claim the file is already on disk.`
+    : `The user clearly asked to create Word "${intent.path}". The plan should only need write_docx (path="${intent.path}", paragraphs array); do not use write_file; do not add list_dir verification; do not claim the file is already on disk.`;
+}
+
+/** Compare project-relative paths (case-insensitive on the final segment). */
+export function pathsMatch(
+  a: string | undefined | null,
+  b: string | undefined | null,
+  projectRoot?: string | null,
+): boolean {
+  if (!a || !b) return false;
+  const na = normalizeRelPath(a, projectRoot).replace(/\\/g, "/").toLowerCase();
+  const nb = normalizeRelPath(b, projectRoot).replace(/\\/g, "/").toLowerCase();
+  return na === nb && na !== "." && na !== "";
+}
+
 export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
   const name = tc.function.name?.trim();
   if (!name || !TOOL_NAMES.has(name)) return null;
@@ -496,11 +532,39 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
         .replace(/\\"/g, '"')
         .replace(/\\\\/g, "\\");
     }
+    // Best-effort rows recovery when args JSON is truncated/malformed
+    const rowsKey = /"rows"\s*:\s*/.exec(tc.function.arguments);
+    if (rowsKey && rowsKey.index !== undefined) {
+      const from = rowsKey.index + rowsKey[0].length;
+      const slice = extractBalancedJsonArray(tc.function.arguments, from);
+      if (slice) {
+        try {
+          const parsed = JSON.parse(slice) as unknown;
+          if (Array.isArray(parsed)) args.rows = parsed;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    const paragraphsKey = /"paragraphs"\s*:\s*/.exec(tc.function.arguments);
+    if (paragraphsKey && paragraphsKey.index !== undefined) {
+      const from = paragraphsKey.index + paragraphsKey[0].length;
+      const slice = extractBalancedJsonArray(tc.function.arguments, from);
+      if (slice) {
+        try {
+          const parsed = JSON.parse(slice) as unknown;
+          if (Array.isArray(parsed)) args.paragraphs = parsed;
+        } catch {
+          // ignore
+        }
+      }
+    }
   }
 
   return {
     tool: name as AgentToolName,
-    path: typeof args.path === "string" ? args.path : undefined,
+    path:
+      typeof args.path === "string" ? normalizeRelPath(args.path) : undefined,
     content: typeof args.content === "string" ? args.content : undefined,
     query: typeof args.query === "string" ? args.query : undefined,
     title: typeof args.title === "string" ? args.title : undefined,
@@ -856,6 +920,40 @@ function extractBalancedJsonObject(s: string, start: number): string | null {
   return null;
 }
 
+/** Extract a balanced JSON array starting at/after `start` (first `[`). */
+function extractBalancedJsonArray(s: string, start: number): string | null {
+  let i = start;
+  while (i < s.length && /\s/.test(s[i]!)) i += 1;
+  if (s[i] !== "[") return null;
+  const arrayStart = i;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (ch === "\\") {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === "[") depth += 1;
+    else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) return s.slice(arrayStart, i + 1);
+    }
+  }
+  return null;
+}
+
 /** JSON blob with path/query/old_string but no tool name — models often paste these in Markdown. */
 function looksLikeToolArgsObject(obj: unknown): boolean {
   if (!obj || typeof obj !== "object" || looksLikeToolObject(obj)) return false;
@@ -1121,6 +1219,29 @@ export function synthesizeOfficeFromIntent(
     path: intent.path,
     rows: blank ? [[""]] : [["Column A"], [""]],
   };
+}
+
+/**
+ * Force office writes onto the inferred path and fill missing payload so a
+ * truncated/wrong-path tool call cannot be reported as "main.xlsx created"
+ * when only workbook.xlsx (or nothing) was written.
+ */
+export function alignOfficeToolCall(
+  call: AgentToolCall,
+  intent: { tool: "write_docx" | "write_xlsx"; path: string },
+  userText: string,
+): AgentToolCall {
+  if (call.tool !== intent.tool) return call;
+  const synth = synthesizeOfficeFromIntent(intent, userText);
+  const next: AgentToolCall = { ...call, path: intent.path };
+  if (intent.tool === "write_xlsx") {
+    if (!next.rows || next.rows.length === 0) {
+      next.rows = synth.rows;
+    }
+  } else if (!next.paragraphs) {
+    next.paragraphs = synth.paragraphs;
+  }
+  return next;
 }
 
 /**
@@ -1667,6 +1788,7 @@ export async function executeToolCall(
 export function toolResultMessage(
   call: AgentToolCall,
   resultText: string,
+  ok = !/^Error:/i.test(resultText),
 ): ChatMessage {
   const label =
     call.tool === "search_files"
@@ -1676,9 +1798,13 @@ export function toolResultMessage(
     resultText.length > 120_000
       ? `${resultText.slice(0, 120_000)}\n…(truncated)`
       : resultText;
+  const status = ok ? "成功" : "失败";
+  const followUp = ok
+    ? "若任务未完成请继续调用工具；若已完成请给出最终中文总结（不要再输出 tool_call）。禁止声称未成功写入的文件已创建。"
+    : "工具失败，文件可能未写入磁盘。禁止向用户声称创建成功；可修正参数后重试，或如实说明失败原因。";
   return {
     role: "user",
-    content: `【工具结果：${label}】\n${truncated}\n\n若任务未完成请继续调用工具；若已完成请给出最终中文总结（不要再输出 tool_call）。`,
+    content: `【工具结果（${status}）：${label}】\n${truncated}\n\n${followUp}`,
   };
 }
 
@@ -1686,17 +1812,22 @@ export function nativeToolResultMessage(
   toolCallId: string,
   name: string,
   resultText: string,
+  ok = !/^Error:/i.test(resultText),
 ): ChatMessage {
   const truncated =
     resultText.length > 120_000
       ? `${resultText.slice(0, 120_000)}\n…(truncated)`
       : resultText;
+  const statusLine = ok
+    ? "[tool status: ok]"
+    : "[tool status: FAILED — do not claim the file was created]";
+  const followUp = ok
+    ? "\n\n(If the task is not finished, call the next tool. If done, reply with a final summary in Chinese — no more tool calls. Only claim a file exists if this result confirms a successful write.)"
+    : "\n\n(Tool failed. Do NOT tell the user the file was created. Fix args and retry, or explain the failure.)";
   return {
     role: "tool",
     tool_call_id: toolCallId,
     name,
-    content:
-      truncated +
-      "\n\n(If the task is not finished, call the next tool. If done, reply with a final summary in Chinese — no more tool calls.)",
+    content: `${statusLine}\n${truncated}${followUp}`,
   };
 }

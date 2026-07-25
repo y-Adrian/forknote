@@ -4,8 +4,10 @@
  */
 import {
   agentCallFromOpenAI,
+  alignOfficeToolCall,
   buildCodingToolsSystem,
   buildMinimalCreatePlanHint,
+  buildMinimalOfficePlanHint,
   buildPlanningPhaseSystem,
   collectToolCalls,
   executeToolCall,
@@ -16,6 +18,7 @@ import {
   multiStepFollowUpHint,
   multiStepSystemHint,
   parseAgentPlan,
+  pathsMatch,
   planNeedsToolApproval,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
@@ -238,6 +241,7 @@ export async function runAgentTurn(
   let officeFallbackUsed = false;
   let exploreFallbackUsed = false;
   let officeToolFailed = false;
+  let officeTargetWritten = false;
   let toolBatchesExecuted = 0;
   let apiReasoning = "";
 
@@ -423,7 +427,7 @@ export async function runAgentTurn(
 
       if (streamResult.toolCalls.length > 0) {
         for (const tc of streamResult.toolCalls) {
-          const agent = agentCallFromOpenAI(tc);
+          let agent = agentCallFromOpenAI(tc);
           if (agent) {
             if (
               createPath &&
@@ -432,12 +436,8 @@ export async function runAgentTurn(
             ) {
               agent.path = createPath;
             }
-            if (
-              officeIntent &&
-              agent.tool === officeIntent.tool &&
-              (!agent.path || agent.path === "." || agent.path === "file")
-            ) {
-              agent.path = officeIntent.path;
+            if (officeIntent && agent.tool === officeIntent.tool) {
+              agent = alignOfficeToolCall(agent, officeIntent, trimmed);
             }
             if (
               exploreIntent?.kind === "list" &&
@@ -464,17 +464,14 @@ export async function runAgentTurn(
           }
         }
       } else if (projectRoot) {
-        for (const agent of collectToolCalls(
+        for (const raw of collectToolCalls(
           roundText,
           trimmed,
           apiReasoning,
         )) {
-          if (
-            officeIntent &&
-            agent.tool === officeIntent.tool &&
-            (!agent.path || agent.path === ".")
-          ) {
-            agent.path = officeIntent.path;
+          let agent = raw;
+          if (officeIntent && agent.tool === officeIntent.tool) {
+            agent = alignOfficeToolCall(agent, officeIntent, trimmed);
           }
           if (
             exploreIntent?.kind === "list" &&
@@ -690,16 +687,19 @@ export async function runAgentTurn(
         if (
           item.agent.tool === "write_file" &&
           executed.ok &&
-          (item.agent.path === createPath || !createPath)
+          (pathsMatch(item.agent.path, createPath, projectRoot) ||
+            (!createPath && Boolean(item.agent.path)))
         ) {
           wroteTarget = true;
         }
         if (
           officeIntent &&
           item.agent.tool === officeIntent.tool &&
-          executed.ok
+          executed.ok &&
+          pathsMatch(item.agent.path, officeIntent.path, projectRoot)
         ) {
           wroteTarget = true;
+          officeTargetWritten = true;
         }
         if (
           officeIntent &&
@@ -724,11 +724,12 @@ export async function runAgentTurn(
               item.native.id,
               item.native.function.name,
               executed.resultText,
+              executed.ok,
             ),
           );
         } else {
           apiMessages.push(
-            toolResultMessage(item.agent, executed.resultText),
+            toolResultMessage(item.agent, executed.resultText, executed.ok),
           );
         }
       }
@@ -751,6 +752,17 @@ export async function runAgentTurn(
           content: `文件 ${officeIntent.path} 已写入磁盘。请用一两句中文确认路径，不要再调用工具，也不要把工具 JSON 贴给用户。`,
         });
       } else if (
+        officeIntent &&
+        batchHadTools &&
+        !wroteTarget &&
+        pending.some((p) => p.agent.tool === officeIntent.tool)
+      ) {
+        // Wrong-path or failed office write — do not let the model claim success
+        apiMessages.push({
+          role: "user",
+          content: `目标文件 ${officeIntent.path} 尚未成功写入磁盘。禁止声称创建成功。请立即调用 ${officeIntent.tool}，path 必须精确为 "${officeIntent.path}"。`,
+        });
+      } else if (
         projectRoot &&
         toolBatchesExecuted > 0 &&
         batchHadTools &&
@@ -764,7 +776,7 @@ export async function runAgentTurn(
           content:
             "请根据上述工具结果判断：若用户任务已完成，请给出最终中文总结且不要再调用工具；仅当原请求仍有未完成的必要步骤时才继续调工具。禁止添加用户未要求的验证操作（如多余的 list_dir）。",
         });
-      } else if (officeIntent && officeToolFailed) {
+      } else if (officeIntent && officeToolFailed && !officeTargetWritten) {
         visibleContent =
           (visibleContent || cleanedRound) +
           `\n\n（创建 ${officeIntent.path} 失败：${officeIntent.tool} 未成功写入。请确认 npm run dev 已启动 sidecar，或重启 dev 后再试。）`;
@@ -774,10 +786,62 @@ export async function runAgentTurn(
 
       round += 1;
       if (round >= agentMaxRounds) {
-        const note = `\n\n(Reached the tool-round limit (${agentMaxRounds}). Continue from the results so far, or send another message.)`;
-        visibleContent = (visibleContent || cleanedRound) + note;
-        patchAssistantContent(visibleContent.trim());
+        if (officeIntent && !officeTargetWritten) {
+          const failNote = `\n\n（未能确认 ${officeIntent.path} 已写入磁盘。请重试，或检查 sidecar / 项目绑定。）`;
+          visibleContent = (visibleContent || cleanedRound) + failNote;
+          patchAssistantContent(visibleContent.trim());
+        } else {
+          const note = `\n\n(Reached the tool-round limit (${agentMaxRounds}). Continue from the results so far, or send another message.)`;
+          visibleContent = (visibleContent || cleanedRound) + note;
+          patchAssistantContent(visibleContent.trim());
+        }
       }
+    }
+
+    if (
+      officeIntent &&
+      projectRoot &&
+      !officeTargetWritten &&
+      toolBatchesExecuted === 0 &&
+      !signal.aborted
+    ) {
+      // Last-resort write so a skipped tool loop cannot end as fake success
+      const synth = synthesizeOfficeFromIntent(officeIntent, trimmed);
+      patchAssistantContent(`Creating ${officeIntent.path}…`);
+      const executed = await abortable(
+        executeToolCall(synth, sidecarUrl, signal, projectRoot),
+        signal,
+      );
+      onAgentActivity({
+        id: createId(),
+        at: Date.now(),
+        ...executed.activity,
+      });
+      if (executed.change) {
+        onAgentChange({ ...executed.change, at: Date.now() });
+      }
+      toolBatchesExecuted += 1;
+      if (executed.ok) {
+        officeTargetWritten = true;
+        visibleContent =
+          (visibleContent ? `${visibleContent}\n\n` : "") +
+          `已创建 ${officeIntent.path}。`;
+      } else {
+        visibleContent =
+          (visibleContent ? `${visibleContent}\n\n` : "") +
+          `创建 ${officeIntent.path} 失败：${executed.resultText}`;
+      }
+      patchAssistantContent(visibleContent.trim());
+    } else if (
+      officeIntent &&
+      !officeTargetWritten &&
+      toolBatchesExecuted > 0 &&
+      visibleContent &&
+      !/未能确认|失败：|未成功写入/.test(visibleContent)
+    ) {
+      visibleContent =
+        `${visibleContent}\n\n（未能确认 ${officeIntent.path} 已写入磁盘——请勿当作创建成功。）`.trim();
+      patchAssistantContent(visibleContent);
     }
 
     return visibleContent;
@@ -792,6 +856,11 @@ export async function runAgentTurn(
       apiMessages.push({
         role: "system",
         content: buildMinimalCreatePlanHint(createPath, locale),
+      });
+    } else if (officeIntent) {
+      apiMessages.push({
+        role: "system",
+        content: buildMinimalOfficePlanHint(officeIntent, locale),
       });
     }
     patchAssistantContent(
@@ -821,7 +890,13 @@ export async function runAgentTurn(
     patchAssistantContent(displayPlan);
     apiMessages.push({ role: "assistant", content: displayPlan });
 
+    // Clear create/office intents must still run tools — never treat a
+    // hallucinated "already created" plan as a finished turn.
     if (!planNeedsToolApproval(displayPlan, steps)) {
+      if (createPath || officeIntent) {
+        visibleContent = await executeTools();
+        return signal.aborted ? "aborted" : "completed";
+      }
       return "completed";
     }
 
