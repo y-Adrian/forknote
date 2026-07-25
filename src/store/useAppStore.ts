@@ -287,7 +287,7 @@ function restoreSessionProject(
   void sidecarOpenProject(projectRoot, sidecarUrl)
     .then(({ root }) => apply(root, null))
     .catch((e) =>
-      apply(null, e instanceof Error ? e.message : "Could not reach sidecar"),
+      apply(null, e instanceof Error ? e.message : t("project.error.sidecar", undefined, getLocale())),
     );
 }
 
@@ -576,7 +576,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openProject: async (absPath, quiet = false) => {
     const path = absPath.trim();
     if (!path) {
-      if (!quiet) set({ projectError: "Enter a project absolute path" });
+      if (!quiet) set({ projectError: t("project.error.needPath", undefined, getLocale()) });
       return;
     }
     // Bind to the session that initiated Connect — ignore UI if user switches mid-await.
@@ -618,7 +618,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             ? null
             : e instanceof Error
               ? e.message
-              : "Could not reach sidecar (run npm run sidecar first)",
+              : t("project.error.sidecarHint", undefined, getLocale()),
         });
       } else {
         set({ sessions: nextSessions });
@@ -663,7 +663,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       if (!isAbortError(e)) {
         set({
-          error: e instanceof Error ? e.message : "Agent execution failed",
+          error: e instanceof Error ? e.message : t("agent.error.execution", undefined, getLocale()),
         });
       }
     } finally {
@@ -900,14 +900,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const trimmed = content.trim();
       if (!trimmed) {
-        set({ error: "Archive came back empty — try again" });
+        set({ error: t("archive.error.empty", undefined, getLocale()) });
         return;
       }
 
       const snapshot: ArchiveSnapshot = {
         id: createId(),
         createdAt: Date.now(),
-        title: archiveTitleFromContent(trimmed, "Dev log draft"),
+        title: archiveTitleFromContent(trimmed, t("archive.defaultTitle", undefined, getLocale())),
         content: trimmed,
         throughMessageId,
       };
@@ -941,7 +941,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       if (!isAbortError(e)) {
         set({
-          error: e instanceof Error ? e.message : "Archive request failed",
+          error: e instanceof Error ? e.message : t("archive.error.request", undefined, getLocale()),
         });
       }
     } finally {
@@ -1029,7 +1029,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         !parsed.tasks.trim() &&
         !parsed.decisions.trim()
       ) {
-        set({ error: "Context compress came back empty — try again" });
+        set({ error: t("compress.error.empty", undefined, getLocale()) });
         return;
       }
 
@@ -1060,7 +1060,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!isAbortError(e)) {
         set({
           error:
-            e instanceof Error ? e.message : "Context compress request failed",
+            e instanceof Error ? e.message : t("compress.error.request", undefined, getLocale()),
         });
       }
     } finally {
@@ -1594,7 +1594,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (patch.content !== undefined && patch.content.trim() && firstAnswerAt == null) {
         // Prefer real answer tokens over tool placeholders for Thought timing
         const placeholder =
-          /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划)/.test(
+          /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在使用项目工具)/.test(
             patch.content.trim(),
           );
         if (!placeholder) firstAnswerAt = Date.now();
@@ -1675,7 +1675,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         setSessionMainLoading(set, sessionId, false);
         set({
           error:
-            "Open a local project first (Open project), then ask to create files — e.g. connect /Users/debris/cursor/code-test.",
+            t("agent.error.needProject", undefined, getLocale()),
         });
         rollbackMainTurn(get, set, { userId, assistantId, sessionId });
         const owned = mainTurnsBySession.get(sessionId);
@@ -1686,7 +1686,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (e) {
       if (!isAbortError(e)) {
-        set({ error: e instanceof Error ? e.message : "Answer request failed" });
+        set({ error: e instanceof Error ? e.message : t("chat.error.answer", undefined, getLocale()) });
       }
     } finally {
       // Stop may have already rolled back; this is a safety net if abort came from elsewhere
@@ -1803,7 +1803,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           firstAnswerAt == null
         ) {
           const placeholder =
-            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划)/.test(
+            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在使用项目工具)/.test(
               patch.content.trim(),
             );
           if (!placeholder) firstAnswerAt = Date.now();
@@ -1846,7 +1846,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         } catch (e) {
           set({
             error:
-              e instanceof Error ? e.message : "Could not resolve fork context",
+              e instanceof Error ? e.message : t("fork.error.context", undefined, getLocale()),
           });
           return;
         }
@@ -1903,18 +1903,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (outcome === "need_project") {
           set({
             error:
-              "Open a local project first (Open project), then ask to create files — e.g. connect /Users/debris/cursor/code-test.",
+              t("agent.error.needProject", undefined, getLocale()),
           });
           patchBranchState({
             content:
-              "Open a local project first (Open project), then retry this clarify request.",
+              t("clarify.error.needProject", undefined, getLocale()),
           });
         }
       } catch (e) {
         if (!isAbortError(e)) {
           set({
             error:
-              e instanceof Error ? e.message : "Fork answer request failed",
+              e instanceof Error ? e.message : t("fork.error.answer", undefined, getLocale()),
           });
         }
       } finally {
@@ -2011,7 +2011,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           firstAnswerAt == null
         ) {
           const placeholder =
-            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划)/.test(
+            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在使用项目工具)/.test(
               patch.content.trim(),
             );
           if (!placeholder) firstAnswerAt = Date.now();
@@ -2056,7 +2056,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         } catch (e) {
           set({
             error:
-              e instanceof Error ? e.message : "Could not resolve fork context",
+              e instanceof Error ? e.message : t("fork.error.context", undefined, getLocale()),
           });
           return;
         }
@@ -2113,18 +2113,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (outcome === "need_project") {
           set({
             error:
-              "Open a local project first (Open project), then ask to create files — e.g. connect /Users/debris/cursor/code-test.",
+              t("agent.error.needProject", undefined, getLocale()),
           });
           patchReplyState({
             content:
-              "Open a local project first (Open project), then retry this clarify request.",
+              t("clarify.error.needProject", undefined, getLocale()),
           });
         }
       } catch (e) {
         if (!isAbortError(e)) {
           set({
             error:
-              e instanceof Error ? e.message : "Fork follow-up request failed",
+              e instanceof Error ? e.message : t("fork.error.followUp", undefined, getLocale()),
           });
         }
       } finally {

@@ -1,4 +1,5 @@
 import type { BranchNode, FocusTarget, ThreadRoot } from "../types";
+import { useLocale } from "../lib/i18n";
 
 interface Props {
   thread: ThreadRoot;
@@ -50,6 +51,7 @@ function BranchTreeItems({
 }
 
 export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
+  const { t } = useLocale();
   const rootActive = focus.type === "root";
   const assistantWithBranches = thread.messages.filter(
     (m) => m.role === "assistant" && m.children.length > 0,
@@ -61,7 +63,7 @@ export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
 
   return (
     <div className={`ds-tree-nav${compact ? " compact" : ""}`}>
-      {!compact && <h3 className="ds-tree-heading">Outline</h3>}
+      {!compact && <h3 className="ds-tree-heading">{t("tree.outline")}</h3>}
       <ul className="ds-tree-root">
         <li>
           <button
@@ -69,7 +71,7 @@ export function TreeSidebar({ thread, focus, onFocus, compact }: Props) {
             className={`ds-tree-item${rootActive ? " active" : ""}`}
             onClick={() => onFocus({ type: "root" })}
           >
-            <span className="ds-tree-q">Main conversation</span>
+            <span className="ds-tree-q">{t("tree.mainConversation")}</span>
           </button>
           {assistantWithBranches.map((msg) => (
             <li key={msg.id}>

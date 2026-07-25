@@ -1,3 +1,5 @@
+import { useLocale } from "../lib/i18n";
+
 interface Props {
   top: number;
   left: number;
@@ -13,6 +15,8 @@ export function SelectionToolbar({
   fixed = false,
   zIndex,
 }: Props) {
+  const { t } = useLocale();
+
   return (
     <div
       className={`selection-toolbar fn-selection-toolbar${fixed ? " is-fixed" : ""}`}
@@ -39,7 +43,7 @@ export function SelectionToolbar({
             strokeLinejoin="round"
           />
         </svg>
-        Clarify this
+        {t("clarify.toolbar")}
       </button>
     </div>
   );

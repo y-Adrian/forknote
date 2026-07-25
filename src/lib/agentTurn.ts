@@ -41,7 +41,7 @@ import {
 import { buildConversationMessages } from "./contextBuilder";
 import { buildAgentMemoryAddendum } from "./contextMemory";
 import { resolveConversationContext } from "./conversationContext";
-import type { Locale } from "./i18n";
+import { t, type Locale } from "./i18n";
 import { createId } from "./id";
 import {
   isToolsUnsupportedError,
@@ -194,11 +194,11 @@ export async function runAgentTurn(
       : null;
   const explorePlaceholder =
     exploreIntent?.kind === "list"
-      ? `Listing ${exploreIntent.path}…`
+      ? t("agent.status.listing", { path: exploreIntent.path }, locale)
       : exploreIntent?.kind === "read"
-        ? `Reading ${exploreIntent.path}…`
+        ? t("agent.status.reading", { path: exploreIntent.path }, locale)
         : exploreIntent?.kind === "search"
-          ? `Searching ${exploreIntent.query}…`
+          ? t("agent.status.searching", { query: exploreIntent.query }, locale)
           : null;
   const requireApproval =
     Boolean(projectRoot) && resolveAgentRequireApproval(settings);
@@ -294,9 +294,9 @@ export async function runAgentTurn(
           exploreIntent?.kind === "list"
             ? synthesizeExploreToolCall(exploreIntent)
             : { tool: "list_dir", path: multiStepPlan[0]?.path ?? "." };
-        patchAssistantContent("Listing project root…");
+        patchAssistantContent(t("agent.status.listRoot", undefined, locale));
         const pre = await abortable(
-          executeToolCall(listCall, sidecarUrl, signal, projectRoot),
+          executeToolCall(listCall, sidecarUrl, signal, projectRoot, locale),
           signal,
         );
         if (!signal.aborted) {
@@ -325,9 +325,9 @@ export async function runAgentTurn(
       if (multiStepPlan.length >= 2 && projectRoot && !signal.aborted) {
         for (const step of multiStepPlan) {
           if (step.tool !== "read_file" || !step.path) continue;
-          patchAssistantContent(`Reading ${step.path}…`);
+          patchAssistantContent(t("agent.status.reading", { path: step.path }, locale));
           const readExec = await abortable(
-            executeToolCall(step, sidecarUrl, signal, projectRoot),
+            executeToolCall(step, sidecarUrl, signal, projectRoot, locale),
             signal,
           );
           if (signal.aborted) break;
@@ -380,10 +380,10 @@ export async function runAgentTurn(
             } else if (!visibleContent && projectRoot) {
               patchAssistantContent(
                 createPath
-                  ? `Creating ${createPath}…`
+                  ? t("agent.status.creating", { path: createPath }, locale)
                   : officeIntent
-                    ? `Creating ${officeIntent.path}…`
-                    : explorePlaceholder || "Using project tools…",
+                    ? t("agent.status.creating", { path: officeIntent.path }, locale)
+                    : explorePlaceholder || t("agent.status.tools", undefined, locale),
               );
             }
           },
@@ -598,7 +598,7 @@ export async function runAgentTurn(
           });
           visibleContent = cleanedRound;
           patchAssistantContent(
-            visibleContent || `Creating ${createPath}…`,
+            visibleContent || t("agent.status.creating", { path: createPath }, locale),
           );
           round += 1;
           forcedWrite = useNativeTools;
@@ -623,7 +623,7 @@ export async function runAgentTurn(
           });
           visibleContent = cleanedRound;
           patchAssistantContent(
-            visibleContent || `Creating ${officeIntent.path}…`,
+            visibleContent || t("agent.status.creating", { path: officeIntent.path }, locale),
           );
           round += 1;
           continue;
@@ -644,7 +644,7 @@ export async function runAgentTurn(
           });
           visibleContent = cleanedRound;
           patchAssistantContent(
-            visibleContent || explorePlaceholder || "Using project tools…",
+            visibleContent || explorePlaceholder || t("agent.status.tools", undefined, locale),
           );
           round += 1;
           continue;
@@ -661,7 +661,7 @@ export async function runAgentTurn(
               "请立刻调用工具执行（list_dir / read_file / write_file / search_replace / write_docx 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
           });
           visibleContent = cleanedRound;
-          patchAssistantContent(visibleContent || "Using project tools…");
+          patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
           round += 1;
           continue;
         }
@@ -686,7 +686,7 @@ export async function runAgentTurn(
                 : "No tools ran for the approved plan yet. Emit tool_calls (or <tool_call>) for the approved steps now; do not only summarize, and do not move on to the next plan chunk.",
           });
           visibleContent = cleanedRound;
-          patchAssistantContent(visibleContent || "Using project tools…");
+          patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
           // Drop forced tool_choice after the first miss so the model can pick
           // any required tool on later rounds.
           if (round >= 1) forcedPlanTool = null;
@@ -733,10 +733,10 @@ export async function runAgentTurn(
         patchAssistantContent(
           visibleContent ||
             (createPath
-              ? `Creating ${createPath}…`
+              ? t("agent.status.creating", { path: createPath }, locale)
               : officeIntent
-                ? `Creating ${officeIntent.path}…`
-                : explorePlaceholder || "Using project tools…"),
+                ? t("agent.status.creating", { path: officeIntent.path }, locale)
+                : explorePlaceholder || t("agent.status.tools", undefined, locale)),
         );
       }
 
@@ -746,7 +746,7 @@ export async function runAgentTurn(
       for (const item of pending) {
         if (signal.aborted) break;
         const executed = await abortable(
-          executeToolCall(item.agent, sidecarUrl, signal, projectRoot),
+          executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale),
           signal,
         );
         if (signal.aborted) break;
@@ -881,9 +881,9 @@ export async function runAgentTurn(
     ) {
       // Last-resort write so a skipped tool loop cannot end as fake success
       const synth = synthesizeOfficeFromIntent(officeIntent, trimmed);
-      patchAssistantContent(`Creating ${officeIntent.path}…`);
+      patchAssistantContent(t("agent.status.creating", { path: officeIntent.path }, locale));
       const executed = await abortable(
-        executeToolCall(synth, sidecarUrl, signal, projectRoot),
+        executeToolCall(synth, sidecarUrl, signal, projectRoot, locale),
         signal,
       );
       onAgentActivity({
@@ -947,7 +947,7 @@ export async function runAgentTurn(
     };
 
     const draftPlanFromModel = async (): Promise<DraftedPlan | null> => {
-      patchAssistantContent(locale === "zh" ? "思考中…" : "Thinking…");
+      patchAssistantContent(t("chat.thinking", undefined, locale));
 
       let planRaw = "";
       await streamChat(

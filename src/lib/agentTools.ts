@@ -1,4 +1,4 @@
-import type { Locale } from "./i18n";
+import { getLocale, t, type Locale } from "./i18n";
 import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
 import {
   applyPatch,
@@ -1626,6 +1626,7 @@ export async function executeToolCall(
   sidecarUrl: string,
   signal?: AbortSignal,
   projectRoot?: string | null,
+  locale: Locale = getLocale(),
 ): Promise<{
   ok: boolean;
   resultText: string;
@@ -1646,7 +1647,7 @@ export async function executeToolCall(
         return {
           ok: true,
           resultText: lines.join("\n") || "(empty)",
-          activity: { kind: "list", message: `Listed ${path}` },
+          activity: { kind: "list", message: t("agent.activity.listed", { path }, locale) },
         };
       }
       case "read_file": {
@@ -1655,7 +1656,7 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "read_file missing path" },
+            activity: { kind: "error", message: t("agent.activity.readMissingPath", undefined, locale) },
           };
         }
         const { content, size } = await readFile(path, sidecarUrl, signal);
@@ -1664,7 +1665,7 @@ export async function executeToolCall(
           resultText: content,
           activity: {
             kind: "read",
-            message: `Reading ${path} (${size} bytes)`,
+            message: t("agent.activity.reading", { path, size }, locale),
           },
         };
       }
@@ -1674,14 +1675,14 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "mkdir missing path" },
+            activity: { kind: "error", message: t("agent.activity.mkdirMissingPath", undefined, locale) },
           };
         }
         await sidecarMkdir(path, sidecarUrl, signal);
         return {
           ok: true,
           resultText: `Created directory ${path}`,
-          activity: { kind: "mkdir", message: `mkdir ${path}` },
+          activity: { kind: "mkdir", message: t("agent.activity.mkdir", { path }, locale) },
         };
       }
       case "write_file": {
@@ -1690,14 +1691,14 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "write_file missing path" },
+            activity: { kind: "error", message: t("agent.activity.writeMissingPath", undefined, locale) },
           };
         }
         if (typeof call.content !== "string") {
           return {
             ok: false,
             resultText: "Error: content is required",
-            activity: { kind: "error", message: "write_file missing content" },
+            activity: { kind: "error", message: t("agent.activity.writeMissingContent", undefined, locale) },
           };
         }
         if (/\.(docx|xlsx)$/i.test(path)) {
@@ -1706,7 +1707,7 @@ export async function executeToolCall(
             resultText: `Error: use ${path.toLowerCase().endsWith(".docx") ? "write_docx" : "write_xlsx"} for Office files, not write_file`,
             activity: {
               kind: "error",
-              message: "write_file cannot create Office binaries",
+              message: t("agent.activity.writeOfficeBinary", undefined, locale),
             },
           };
         }
@@ -1714,7 +1715,7 @@ export async function executeToolCall(
         return {
           ok: true,
           resultText: `Wrote ${path} (${size} bytes)`,
-          activity: { kind: "write", message: `Wrote ${path}` },
+          activity: { kind: "write", message: t("agent.activity.wrote", { path }, locale) },
           change: { path, size },
         };
       }
@@ -1724,7 +1725,7 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "search_replace missing path" },
+            activity: { kind: "error", message: t("agent.activity.replaceMissingPath", undefined, locale) },
           };
         }
         if (typeof call.old_string !== "string" || call.old_string.length === 0) {
@@ -1733,7 +1734,7 @@ export async function executeToolCall(
             resultText: "Error: old_string is required",
             activity: {
               kind: "error",
-              message: "search_replace missing old_string",
+              message: t("agent.activity.replaceMissingOld", undefined, locale),
             },
           };
         }
@@ -1743,7 +1744,7 @@ export async function executeToolCall(
             resultText: "Error: new_string is required",
             activity: {
               kind: "error",
-              message: "search_replace missing new_string",
+              message: t("agent.activity.replaceMissingNew", undefined, locale),
             },
           };
         }
@@ -1762,7 +1763,7 @@ export async function executeToolCall(
           resultText: `Updated ${writtenPath} (${replacements} replacement(s), ${size} bytes)`,
           activity: {
             kind: "write",
-            message: `Patched ${writtenPath} ×${replacements}`,
+            message: t("agent.activity.patched", { path: writtenPath, n: replacements }, locale),
           },
           change: { path: writtenPath, size },
         };
@@ -1773,14 +1774,14 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "apply_patch missing path" },
+            activity: { kind: "error", message: t("agent.activity.patchMissingPath", undefined, locale) },
           };
         }
         if (!call.edits || call.edits.length === 0) {
           return {
             ok: false,
             resultText: "Error: edits must be a non-empty array",
-            activity: { kind: "error", message: "apply_patch missing edits" },
+            activity: { kind: "error", message: t("agent.activity.patchMissingEdits", undefined, locale) },
           };
         }
         const { size, path: writtenPath, edits, replacements } = await applyPatch(
@@ -1794,7 +1795,7 @@ export async function executeToolCall(
           resultText: `Patched ${writtenPath} (${edits} edit(s), ${replacements} replacement(s), ${size} bytes)`,
           activity: {
             kind: "write",
-            message: `Patched ${writtenPath} (${edits} edits)`,
+            message: t("agent.activity.patchedEdits", { path: writtenPath, edits }, locale),
           },
           change: { path: writtenPath, size },
         };
@@ -1805,7 +1806,7 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "write_docx missing path" },
+            activity: { kind: "error", message: t("agent.activity.docxMissingPath", undefined, locale) },
           };
         }
         const { title, paragraphs } = normalizeDocxPayload(
@@ -1821,7 +1822,7 @@ export async function executeToolCall(
         return {
           ok: true,
           resultText: `Wrote Word document ${writtenPath} (${size} bytes)`,
-          activity: { kind: "write", message: `Wrote ${writtenPath}` },
+          activity: { kind: "write", message: t("agent.activity.wrote", { path: writtenPath }, locale) },
           change: { path: writtenPath, size },
         };
       }
@@ -1831,14 +1832,14 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: path is required",
-            activity: { kind: "error", message: "write_xlsx missing path" },
+            activity: { kind: "error", message: t("agent.activity.xlsxMissingPath", undefined, locale) },
           };
         }
         if (!call.rows || call.rows.length === 0) {
           return {
             ok: false,
             resultText: "Error: rows must be a non-empty 2D array",
-            activity: { kind: "error", message: "write_xlsx missing rows" },
+            activity: { kind: "error", message: t("agent.activity.xlsxMissingRows", undefined, locale) },
           };
         }
         const { size, path: writtenPath, rows } = await writeXlsx(
@@ -1853,7 +1854,7 @@ export async function executeToolCall(
         return {
           ok: true,
           resultText: `Wrote Excel workbook ${writtenPath} (${rows} rows, ${size} bytes)`,
-          activity: { kind: "write", message: `Wrote ${writtenPath}` },
+          activity: { kind: "write", message: t("agent.activity.wrote", { path: writtenPath }, locale) },
           change: { path: writtenPath, size },
         };
       }
@@ -1863,7 +1864,7 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText: "Error: query is required",
-            activity: { kind: "error", message: "search_files missing query" },
+            activity: { kind: "error", message: t("agent.activity.searchMissingQuery", undefined, locale) },
           };
         }
         const { hits, truncated } = await searchFiles(
@@ -1878,7 +1879,7 @@ export async function executeToolCall(
             formatHits(hits) + (truncated ? "\n…(truncated)" : ""),
           activity: {
             kind: "search",
-            message: `Search “${query}” → ${hits.length} hit(s)`,
+            message: t("agent.activity.search", { query, n: hits.length }, locale),
           },
         };
       }
@@ -1886,7 +1887,7 @@ export async function executeToolCall(
         return {
           ok: false,
           resultText: `Unknown tool: ${(call as AgentToolCall).tool}`,
-          activity: { kind: "error", message: "Unknown tool" },
+          activity: { kind: "error", message: t("agent.activity.unknownTool", undefined, locale) },
         };
     }
   } catch (e) {
@@ -1898,7 +1899,7 @@ export async function executeToolCall(
     ) {
       throw e;
     }
-    const msg = e instanceof Error ? e.message : "Tool failed";
+    const msg = e instanceof Error ? e.message : t("agent.activity.toolFailed", undefined, locale);
     return {
       ok: false,
       resultText: `Error: ${msg}`,

@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { createPortal } from "react-dom";
 import { anchorToDomRect } from "../lib/branchFloat";
+import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 import { FloatingBranchDetail } from "./FloatingBranchDetail";
 
 export function BranchFloatLayer() {
+  const { t } = useLocale();
   const stack = useAppStore((s) => s.branchFloatStack);
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const closeBranchFloat = useAppStore((s) => s.closeBranchFloat);
@@ -26,7 +28,7 @@ export function BranchFloatLayer() {
       <button
         type="button"
         className={`float-dismiss-layer${stack.length > 1 ? " is-behind-stack" : ""}`}
-        aria-label="Close all fork panels"
+        aria-label={t("fork.closeAllAria")}
         onClick={closeAllBranchFloats}
       />
       {sortedStack.map((entry) => (

@@ -2844,6 +2844,21 @@ mark.branch-highlight:hover {
   margin-top: 20px;
 }
 
+.fn-lang-confirm-backdrop {
+  z-index: 140;
+}
+
+.fn-lang-confirm-modal.modal {
+  width: min(400px, 100%);
+}
+
+.fn-lang-confirm-body {
+  margin: 10px 0 0;
+  color: var(--ds-text-secondary);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
 .quote-preview {
   margin: 0 0 14px;
   padding: 12px 14px;
