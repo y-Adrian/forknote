@@ -3274,6 +3274,10 @@ mark.branch-highlight:hover {
   font-size: var(--fn-text-ui-xs);
   color: var(--ds-muted);
   min-width: 0;
+  /* Avoid mid-phrase wraps (e.g. 发/送) when the meta row is squeezed. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fn-composer-hint kbd {
