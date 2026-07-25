@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useLocale, type Locale } from "../lib/i18n";
+import { createPortal } from "react-dom";
+import { applyLocale, useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
   DEFAULT_AGENT_MAX_ROUNDS,
@@ -142,7 +143,24 @@ function SettingsRow({
 
 function GeneralPanel() {
   const { preference, setThemePreference } = useTheme();
-  const { locale, setLocale, t } = useLocale();
+  const { locale, t } = useLocale();
+  const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
+
+  const pendingLabel = pendingLocale
+    ? t(
+        LOCALE_OPTIONS.find((o) => o.value === pendingLocale)?.labelKey ??
+          "general.lang.en",
+      )
+    : "";
+
+  const confirmLanguageSwitch = () => {
+    if (!pendingLocale || pendingLocale === locale) {
+      setPendingLocale(null);
+      return;
+    }
+    applyLocale(pendingLocale);
+    window.location.reload();
+  };
 
   return (
     <div className="ss-panel">
@@ -178,7 +196,10 @@ function GeneralPanel() {
               key={opt.value}
               type="button"
               className={`ss-segment${locale === opt.value ? " is-active" : ""}`}
-              onClick={() => setLocale(opt.value)}
+              onClick={() => {
+                if (opt.value === locale) return;
+                setPendingLocale(opt.value);
+              }}
             >
               {t(opt.labelKey)}
             </button>
@@ -194,6 +215,45 @@ function GeneralPanel() {
         <strong>{t("general.noAccount")}</strong>
         <p>{t("general.noAccountBody")}</p>
       </div>
+
+      {pendingLocale
+        ? createPortal(
+            <div
+              className="modal-backdrop fn-lang-confirm-backdrop"
+              onClick={() => setPendingLocale(null)}
+            >
+              <div
+                className="modal fn-lang-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t("general.langConfirmAria")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3>{t("general.langConfirmTitle")}</h3>
+                <p className="fn-lang-confirm-body">
+                  {t("general.langConfirmBody", { lang: pendingLabel })}
+                </p>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => setPendingLocale(null)}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={confirmLanguageSwitch}
+                  >
+                    {t("common.ok")}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

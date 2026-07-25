@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import type { BranchReply, NodeId } from "../types";
 import { handleComposerEnterKey } from "../lib/composerKeys";
 import { getHighlightRect } from "../lib/domHighlight";
+import { useLocale } from "../lib/i18n";
 import {
   findAssistantMessageForBranch,
   findBranchInThread,
@@ -41,18 +42,19 @@ function TurnBlock({
   showAnswerChrome: boolean;
   children?: ReactNode;
 }) {
+  const { t } = useLocale();
   const hasAnswer = Boolean(answer.trim());
   const hasReasoning = Boolean(reasoning?.trim());
 
   return (
     <>
       <div className="float-branch-row float-branch-row-inline">
-        <span className="float-branch-label">question</span>
+        <span className="float-branch-label">{t("fork.labelQuestion")}</span>
         <p className="float-branch-text float-branch-text-wrap">{question}</p>
       </div>
       <div className="float-branch-row float-branch-row-answer">
         <span className="float-branch-label">
-          {showAnswerChrome ? "answer" : "follow-up"}
+          {showAnswerChrome ? t("fork.labelAnswer") : t("fork.labelFollowUp")}
         </span>
         <div className="float-branch-answer-scroll">
           {hasReasoning ? (
@@ -63,7 +65,7 @@ function TurnBlock({
             />
           ) : null}
           {isLoading && !hasAnswer ? (
-            <p className="ds-muted">Thinking…</p>
+            <p className="ds-muted">{t("chat.thinking")}</p>
           ) : hasAnswer ? (
             children
           ) : null}
@@ -104,6 +106,7 @@ export function FloatingBranchDetail({
   });
   const [followUp, setFollowUp] = useState("");
   const composingRef = useRef(false);
+  const { t } = useLocale();
 
   const branch =
     thread && branchId ? findBranchInThread(thread, branchId) : undefined;
@@ -196,6 +199,7 @@ export function FloatingBranchDetail({
   if (!branch || !parentMessage) return null;
 
   const depthLabel = depth > 0 ? ` · L${depth + 1}` : "";
+  const forkTitle = `${t("fork.title")}${depthLabel}`;
   const settledReplies = loadingLatestReply ? replies.slice(0, -1) : replies;
   const activeReply = loadingLatestReply ? lastReply : undefined;
 
@@ -204,26 +208,26 @@ export function FloatingBranchDetail({
       ref={panelRef}
       className={`float-panel float-panel-detail float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}${skipEnterAnimation ? " is-settled" : " float-panel-enter"}`}
       role="dialog"
-      aria-label={`Fork${depthLabel}`}
+      aria-label={forkTitle}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
       <header
         className="float-panel-detail-header float-panel-drag-handle"
         onPointerDown={onDragHandlePointerDown}
-        title="Drag to move"
+        title={t("common.dragToMove")}
       >
         <div className="float-panel-detail-title">
-          <h3>Fork{depthLabel}</h3>
+          <h3>{forkTitle}</h3>
           {depth > 0 && (
-            <span className="float-panel-depth-badge">Nested</span>
+            <span className="float-panel-depth-badge">{t("fork.nested")}</span>
           )}
         </div>
         <button
           type="button"
           className="ds-icon-btn"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("common.close")}
         >
           ×
         </button>
@@ -354,21 +358,19 @@ export function FloatingBranchDetail({
                 composingRef.current = false;
               }}
               onKeyDown={handleKeyDown}
-              placeholder="Follow-up stays in this window…"
+              placeholder={t("fork.followUpPlaceholder")}
               disabled={branchLoading || !branch.assistantMessage.trim()}
-              aria-label="Follow-up"
+              aria-label={t("fork.followUpAria")}
             />
             <div className="float-panel-detail-footer-actions">
-              <span className="hint">
-                Same window · Enter to send · Shift+Enter for new line
-              </span>
+              <span className="hint">{t("fork.followUpHint")}</span>
               {isLoadingThis ? (
                 <button
                   type="button"
                   className="btn danger"
                   onClick={() => stopGeneration()}
                 >
-                  Stop
+                  {t("common.stop")}
                 </button>
               ) : (
                 <button
@@ -381,7 +383,7 @@ export function FloatingBranchDetail({
                   }
                   onClick={() => void submitFollowUp()}
                 >
-                  Send
+                  {t("common.send")}
                 </button>
               )}
             </div>

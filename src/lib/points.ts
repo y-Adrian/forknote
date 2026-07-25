@@ -1,4 +1,4 @@
-import type { PointDoubtMap, PointVerdict, PointVerdictMap } from "../types";
+import type { PointDoubtMap, PointVerdictMap } from "../types";
 
 /**
  * 分点回答协议：
@@ -68,12 +68,6 @@ export function parseAnswerPoints(content: string): ParsedAnswer {
 export function hasPoints(content: string): boolean {
   return parseAnswerPoints(content).points.length >= 2;
 }
-
-export const VERDICT_LABELS: Record<PointVerdict, string> = {
-  accept: "Accept",
-  unsure: "Doubt",
-  reject: "Reject",
-};
 
 /**
  * 构建带裁决标注的回答文本，用于发给模型的上下文：

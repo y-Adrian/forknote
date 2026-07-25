@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { BranchNode, ThreadRoot } from "../types";
+import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 
 // ── Types ──────────────────────────────────────────────────
@@ -82,6 +83,7 @@ function branchCurve(px: number, py: number, cx: number, cy: number): string {
 
 // ── Component ──────────────────────────────────────────────
 export function BranchRail({ thread, scrollRef }: Props) {
+  const { t } = useLocale();
   const [msgs,      setMsgs]      = useState<RailMsg[]>([]);
   const [totalH,    setTotalH]    = useState(600);
   const [scrollTop, setScrollTop] = useState(0);
@@ -128,7 +130,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
   if (msgs.length === 0) return null;
 
   return (
-    <div className="ds-branch-rail" aria-label="Fork structure">
+    <div className="ds-branch-rail" aria-label={t("fork.railAria")}>
       <svg
         ref={svgRef}
         width={RAIL_W}

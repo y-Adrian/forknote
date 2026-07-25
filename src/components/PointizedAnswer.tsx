@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { parseAnswerPoints, VERDICT_LABELS } from "../lib/points";
+import { useLocale } from "../lib/i18n";
+import { parseAnswerPoints } from "../lib/points";
 import type {
   PointDoubtMap,
   PointVerdict,
@@ -15,10 +16,14 @@ interface Props {
   onDoubt: (pointIndex: number, doubt: string) => void;
 }
 
-const VERDICT_OPTIONS: Array<{ value: PointVerdict; icon: string }> = [
-  { value: "accept", icon: "✓" },
-  { value: "unsure", icon: "?" },
-  { value: "reject", icon: "✗" },
+const VERDICT_OPTIONS: Array<{
+  value: PointVerdict;
+  icon: string;
+  titleKey: "verdict.accept" | "verdict.doubt" | "verdict.reject";
+}> = [
+  { value: "accept", icon: "✓", titleKey: "verdict.accept" },
+  { value: "unsure", icon: "?", titleKey: "verdict.doubt" },
+  { value: "reject", icon: "✗", titleKey: "verdict.reject" },
 ];
 
 function PointDoubtEditor({
@@ -30,6 +35,7 @@ function PointDoubtEditor({
   initialDoubt: string;
   onDoubt: (pointIndex: number, doubt: string) => void;
 }) {
+  const { t } = useLocale();
   const [draft, setDraft] = useState(initialDoubt);
 
   useEffect(() => {
@@ -46,13 +52,13 @@ function PointDoubtEditor({
   return (
     <div className="point-doubt">
       <label className="point-doubt-label" htmlFor={`point-doubt-${pointIndex}`}>
-        Doubt note
+        {t("verdict.doubtNote")}
       </label>
       <textarea
         id={`point-doubt-${pointIndex}`}
         className="point-doubt-input"
         rows={2}
-        placeholder="What are you unsure about…"
+        placeholder={t("verdict.doubtPlaceholder")}
         value={draft}
         autoFocus={!initialDoubt.trim()}
         onChange={(e) => setDraft(e.target.value)}
@@ -76,7 +82,7 @@ function PointDoubtEditor({
             commit();
           }}
         >
-          Save
+          {t("common.save")}
         </button>
       </div>
     </div>
@@ -95,6 +101,7 @@ export function PointizedAnswer({
   onVerdict,
   onDoubt,
 }: Props) {
+  const { t } = useLocale();
   const parsed = parseAnswerPoints(content);
 
   if (parsed.points.length < 2) {
@@ -121,14 +128,14 @@ export function PointizedAnswer({
               <div
                 className="point-verdict-group"
                 role="group"
-                aria-label={`Point ${point.index} verdict`}
+                aria-label={t("verdict.pointAria", { n: point.index })}
               >
                 {VERDICT_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
                     type="button"
                     className={`point-verdict-btn v-${opt.value}${verdict === opt.value ? " active" : ""}`}
-                    title={VERDICT_LABELS[opt.value]}
+                    title={t(opt.titleKey)}
                     aria-pressed={verdict === opt.value}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {

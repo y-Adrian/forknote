@@ -139,8 +139,9 @@ const markdownComponents: Components = {
 };
 
 export function MarkdownBody({ content }: Props) {
+  const { t } = useLocale();
   if (!content) {
-    return <p className="muted">Generating…</p>;
+    return <p className="muted">{t("chat.generating")}</p>;
   }
 
   return (

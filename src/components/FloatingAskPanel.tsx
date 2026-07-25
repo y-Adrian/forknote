@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { handleComposerEnterKey } from "../lib/composerKeys";
-import { getLocale } from "../lib/i18n";
+import { useLocale } from "../lib/i18n";
 import { useDraggableFloat } from "../lib/useDraggableFloat";
 import { useAppStore } from "../store/useAppStore";
 
@@ -28,11 +28,7 @@ export function FloatingAskPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
-  const locale = getLocale();
-  const hint =
-    locale === "zh"
-      ? "绑定项目后可用与主对话相同的工具 · Enter 发送 · Shift+Enter 换行 · 拖标题移动"
-      : "Same tools as main when a project is bound · Enter to send · Shift+Enter for new line · Drag title to move";
+  const { t } = useLocale();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,7 +52,7 @@ export function FloatingAskPanel({
       ref={panelRef}
       className="float-panel float-panel-ask float-panel-enter"
       role="dialog"
-      aria-label="Clarify selection"
+      aria-label={t("clarify.aria")}
       style={{ zIndex }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -64,9 +60,9 @@ export function FloatingAskPanel({
       <h3
         className="float-panel-drag-handle"
         onPointerDown={onDragHandlePointerDown}
-        title={locale === "zh" ? "拖动移动" : "Drag to move"}
+        title={t("common.dragToMove")}
       >
-        {locale === "zh" ? "选中澄清" : "Clarify selection"}
+        {t("clarify.title")}
       </h3>
       <div className="quote-snippet">{quotedText}</div>
       <textarea
@@ -79,11 +75,7 @@ export function FloatingAskPanel({
         onCompositionEnd={() => {
           composingRef.current = false;
         }}
-        placeholder={
-          locale === "zh"
-            ? "哪里不清楚？例如：这句话是什么意思？"
-            : "What’s unclear here? e.g. What does this sentence mean?"
-        }
+        placeholder={t("clarify.placeholder")}
         autoFocus
         disabled={loading}
         onKeyDown={(e) => {
@@ -94,10 +86,10 @@ export function FloatingAskPanel({
           });
         }}
       />
-      <p className="hint">{hint}</p>
+      <p className="hint">{t("clarify.hint")}</p>
       <div className="modal-actions">
         <button type="button" className="btn ghost" onClick={onClose}>
-          {locale === "zh" ? "取消" : "Cancel"}
+          {t("common.cancel")}
         </button>
         {loading ? (
           <button
@@ -109,7 +101,7 @@ export function FloatingAskPanel({
               stopGeneration();
             }}
           >
-            Stop
+            {t("common.stop")}
           </button>
         ) : (
           <button
@@ -122,7 +114,7 @@ export function FloatingAskPanel({
               onSubmit();
             }}
           >
-            {locale === "zh" ? "提交" : "Submit"}
+            {t("common.submit")}
           </button>
         )}
       </div>

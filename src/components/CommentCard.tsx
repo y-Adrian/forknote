@@ -1,4 +1,5 @@
 import type { Anchor, BranchNode, NodeId } from "../types";
+import { useLocale } from "../lib/i18n";
 import { SelectableAnswer } from "./SelectableAnswer";
 
 interface Props {
@@ -31,6 +32,7 @@ export function CommentCard({
   onFocus,
   isCollapsed,
 }: Props) {
+  const { t } = useLocale();
   const isFocused = focusBranchId === node.id;
   const isLoading = loadingBranchId === node.id;
   const hasAnswer = Boolean(node.assistantMessage?.trim());
@@ -53,19 +55,23 @@ export function CommentCard({
         onClick={() => onFocus(node.id)}
       >
         <div className="comment-meta">
-          <span className="comment-badge">Comment {indexLabel}</span>
+          <span className="comment-badge">
+            {t("comments.badge", { n: indexLabel })}
+          </span>
           <button
             type="button"
             className="comment-toggle"
             aria-expanded={showBody}
-            aria-label={showBody ? "Collapse answer" : "Expand answer"}
+            aria-label={
+              showBody ? t("comments.collapseAnswer") : t("comments.expandAnswer")
+            }
             onClick={(e) => {
               e.stopPropagation();
               if (!isLoading) onToggleExpand(node.id);
             }}
           >
             <span className="comment-chevron" aria-hidden />
-            {showBody ? "Collapse" : "Expand"}
+            {showBody ? t("common.collapse") : t("common.expand")}
           </button>
         </div>
 
@@ -95,7 +101,7 @@ export function CommentCard({
             />
           ) : (
             <div className="answer-body answer-body-compact">
-              <p className="muted">{isLoading ? "Generating…" : ""}</p>
+              <p className="muted">{isLoading ? t("chat.generating") : ""}</p>
             </div>
           )}
 
@@ -124,8 +130,8 @@ export function CommentCard({
       {!showBody && node.children.length > 0 && (
         <p className="comment-nested-hint muted">
           {node.children.length === 1
-            ? "1 nested reply — expand to view"
-            : `${node.children.length} nested replies — expand to view`}
+            ? t("comments.nestedOne")
+            : t("comments.nestedMany", { count: node.children.length })}
         </p>
       )}
     </article>

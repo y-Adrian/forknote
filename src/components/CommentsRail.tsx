@@ -4,6 +4,7 @@ import {
   collectBranchIds,
   countBranchesInThread,
 } from "../lib/branches";
+import { useLocale } from "../lib/i18n";
 import { CommentCard } from "./CommentCard";
 
 interface Props {
@@ -42,6 +43,7 @@ export function CommentsRail({
   onFocus,
   embedded = false,
 }: Props) {
+  const { t } = useLocale();
   const branches = useMemo(() => topLevelBranches(thread), [thread]);
   const total = useMemo(() => countBranchesInThread(thread), [thread]);
   const [collapsedIds, setCollapsedIds] = useState<Set<NodeId>>(() => new Set());
@@ -68,7 +70,7 @@ export function CommentsRail({
       {!embedded && (
         <div className="comments-rail-header">
           <div className="comments-rail-title">
-            <h2>Comments</h2>
+            <h2>{t("comments.title")}</h2>
             <span className="comments-count">{total}</span>
           </div>
         </div>
@@ -77,18 +79,16 @@ export function CommentsRail({
       {embedded && total > 0 && (
         <div className="ds-comments-toolbar">
           <button type="button" className="btn ghost sm" onClick={expandAll}>
-            Expand all
+            {t("common.expandAll")}
           </button>
           <button type="button" className="btn ghost sm" onClick={collapseAll}>
-            Collapse all
+            {t("common.collapseAll")}
           </button>
         </div>
       )}
 
       {branches.length === 0 ? (
-        <p className="comments-empty hint">
-          Drag-select text in an answer, then click “Clarify this”.
-        </p>
+        <p className="comments-empty hint">{t("comments.empty")}</p>
       ) : (
         <div className="comments-list">
           {branches.map((node, i) => (
