@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { positionFloatingPanel } from "../lib/floatPosition";
+import { getLocale } from "../lib/i18n";
+import { useAppStore } from "../store/useAppStore";
 
 interface Props {
   quotedText: string;
@@ -23,6 +25,12 @@ export function FloatingAskPanel({
   onClose,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const stopGeneration = useAppStore((s) => s.stopGeneration);
+  const locale = getLocale();
+  const hint =
+    locale === "zh"
+      ? "绑定项目后可用与主对话相同的工具 · Enter 提交 · Shift+Enter 换行"
+      : "Same tools as main when a project is bound · Enter to submit · Shift+Enter for new line";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -62,38 +70,57 @@ export function FloatingAskPanel({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <h3>Clarify selection</h3>
+      <h3>{locale === "zh" ? "选中澄清" : "Clarify selection"}</h3>
       <div className="quote-snippet">{quotedText}</div>
       <textarea
         rows={3}
         value={question}
         onChange={(e) => onQuestionChange(e.target.value)}
-        placeholder="What’s unclear here? e.g. What does this sentence mean?"
+        placeholder={
+          locale === "zh"
+            ? "哪里不清楚？例如：这句话是什么意思？"
+            : "What’s unclear here? e.g. What does this sentence mean?"
+        }
         autoFocus
+        disabled={loading}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            onSubmit();
+            if (!loading) onSubmit();
           }
         }}
       />
-      <p className="hint">Keep it short, few new concepts · Enter to submit · Shift+Enter for new line</p>
+      <p className="hint">{hint}</p>
       <div className="modal-actions">
         <button type="button" className="btn ghost" onClick={onClose}>
-          Cancel
+          {locale === "zh" ? "取消" : "Cancel"}
         </button>
-        <button
-          type="button"
-          className="btn primary"
-          disabled={loading || !question.trim()}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSubmit();
-          }}
-        >
-          {loading ? "Generating…" : "Submit"}
-        </button>
+        {loading ? (
+          <button
+            type="button"
+            className="btn danger"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              stopGeneration();
+            }}
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn primary"
+            disabled={!question.trim()}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSubmit();
+            }}
+          >
+            {locale === "zh" ? "提交" : "Submit"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -25,6 +25,10 @@ export interface BranchNode {
   createdAt: number;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
+  /** Chain-of-thought / reasoning channel, not shown as the answer body */
+  reasoning?: string;
+  /** Seconds from request start until first visible answer token */
+  thinkingSeconds?: number;
 }
 
 export interface ChatMessage {
@@ -165,8 +169,11 @@ export interface AgentPendingPlan {
   userPrompt: string;
   planText: string;
   steps: string[];
-  userId: NodeId;
-  assistantId: NodeId;
+  /** Main-thread turn ids (when plan came from askMain). */
+  userId?: NodeId;
+  assistantId?: NodeId;
+  /** Fork branch id (when plan came from askBranch). */
+  branchId?: NodeId;
 }
 
 export interface SelectionInfo {
