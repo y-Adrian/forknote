@@ -1,6 +1,7 @@
 import type { ChatSession, SessionStore, ThreadRoot } from "../types";
 import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
+import { t } from "./i18n";
 import { loadProjectPrefs } from "./project";
 import { migrateSessionApiFields } from "./sessionApi";
 import { migrateGlobalProjectBinding } from "./sessionProject";
@@ -11,9 +12,41 @@ const LEGACY_STORE_KEY = "branch-chat-sessions-v1";
 /** Pre-session-store single-thread blob (legacy storage key). */
 const LEGACY_THREAD_KEY = "branch-chat-thread";
 
+/**
+ * English storage sentinel for empty / default session titles.
+ * Display via {@link displaySessionTitle} so locale can show 未命名 / Untitled.
+ */
+export const DEFAULT_SESSION_TITLE = "Untitled";
+
+/** True when title is empty or the default sentinel (any known locale string). */
+export function isDefaultSessionTitle(title: string): boolean {
+  const trimmed = title.trim();
+  if (!trimmed || trimmed === DEFAULT_SESSION_TITLE) return true;
+  return (
+    trimmed === t("main.untitled", undefined, "en") ||
+    trimmed === t("main.untitled", undefined, "zh")
+  );
+}
+
+/** Locale-aware label for sidebar / UI; keeps storage on the English sentinel. */
+export function displaySessionTitle(title: string): string {
+  return isDefaultSessionTitle(title) ? t("main.untitled") : title;
+}
+
+/**
+ * Normalize rename / user input back to the storage sentinel when it matches
+ * a localized default, so language switches keep working.
+ */
+export function normalizeStoredSessionTitle(title: string): string {
+  const trimmed = title.trim().replace(/\s+/g, " ");
+  if (!trimmed) return "";
+  if (isDefaultSessionTitle(trimmed)) return DEFAULT_SESSION_TITLE;
+  return trimmed;
+}
+
 export function sessionTitleFromThread(thread: ThreadRoot | null): string {
   const q = firstUserMessage(thread)?.trim().replace(/\s+/g, " ");
-  if (!q) return "Untitled";
+  if (!q) return DEFAULT_SESSION_TITLE;
   return q.length > 40 ? `${q.slice(0, 40)}…` : q;
 }
 
@@ -21,7 +54,7 @@ export function createEmptySession(): ChatSession {
   const now = Date.now();
   return {
     id: createId(),
-    title: "Untitled",
+    title: DEFAULT_SESSION_TITLE,
     titleLocked: false,
     thread: null,
     projectRoot: null,

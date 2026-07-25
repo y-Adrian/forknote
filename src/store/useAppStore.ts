@@ -38,7 +38,9 @@ import {
 } from "../lib/sidecar";
 import {
   createEmptySession,
+  DEFAULT_SESSION_TITLE,
   loadSessionStore,
+  normalizeStoredSessionTitle,
   saveSessionStore,
   sessionTitleFromThread,
 } from "../lib/storage";
@@ -1428,18 +1430,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   renameSession: (sessionId, title) => {
-    const trimmed = title.trim().replace(/\s+/g, " ");
+    const trimmed = normalizeStoredSessionTitle(title);
     if (!trimmed) return false;
 
-    const display =
-      trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+    const isDefault = trimmed === DEFAULT_SESSION_TITLE;
+    const display = isDefault
+      ? DEFAULT_SESSION_TITLE
+      : trimmed.length > 60
+        ? `${trimmed.slice(0, 60)}…`
+        : trimmed;
     const { sessions, activeSessionId } = get();
     const nextSessions = sessions.map((s) =>
       s.id === sessionId
         ? {
             ...s,
             title: display,
-            titleLocked: true,
+            titleLocked: !isDefault,
             updatedAt: Date.now(),
           }
         : s,
