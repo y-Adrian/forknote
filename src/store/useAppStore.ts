@@ -188,6 +188,8 @@ interface AppState {
   replaceSessionStore: (store: SessionStore) => void;
   /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
   renameSession: (sessionId: NodeId, title: string) => boolean;
+  /** Pin / unpin a note; pinned notes sort above unpinned in the sidebar. */
+  togglePinSession: (sessionId: NodeId) => void;
   /** Set the model for the active session (snapshotted; empty clears to inherit settings). */
   setSessionApi: (api: SessionApiOverride | null) => void;
   clearSessionApi: () => void;
@@ -1445,6 +1447,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSessions(nextSessions, activeSessionId);
     set({ sessions: nextSessions });
     return true;
+  },
+
+  togglePinSession: (sessionId) => {
+    const { sessions, activeSessionId } = get();
+    const nextSessions = sessions.map((s) => {
+      if (s.id !== sessionId) return s;
+      const pinned =
+        typeof s.pinnedAt === "number" && s.pinnedAt > 0;
+      return {
+        ...s,
+        pinnedAt: pinned ? null : Date.now(),
+      };
+    });
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
   },
 
   setSessionApi: (api) => {

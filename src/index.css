@@ -3442,12 +3442,14 @@ mark.branch-highlight:hover {
   top: 50%;
   transform: translateY(-50%);
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--dur-fast) ease;
 }
 
 .ds-session-row:hover .fn-session-actions,
 .ds-session-row.is-menu-open .fn-session-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .fn-session-action {
@@ -3469,11 +3471,9 @@ mark.branch-highlight:hover {
 }
 
 .fn-session-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 20;
-  min-width: 112px;
+  position: fixed;
+  z-index: 1200;
+  min-width: 148px;
   padding: 6px;
   border-radius: 16px;
   border: 1px solid var(--ds-border);
@@ -3494,6 +3494,10 @@ mark.branch-highlight:hover {
   font: inherit;
   font-size: var(--fn-text-ui-sm);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .fn-session-menu button:hover {
@@ -3502,6 +3506,107 @@ mark.branch-highlight:hover {
 
 .fn-session-menu button.is-danger {
   color: var(--ds-error);
+}
+
+.fn-session-menu-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--ds-muted);
+}
+
+.fn-session-menu button.is-danger .fn-session-menu-icon {
+  color: inherit;
+}
+
+.fn-session-menu-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.fn-session-share-toast {
+  position: fixed;
+  z-index: 1300;
+  max-width: 240px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface-elevated);
+  box-shadow: var(--ds-shadow-lg);
+  color: var(--ds-text);
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.fn-session-delete-confirm {
+  position: fixed;
+  z-index: 1200;
+  min-width: 200px;
+  max-width: 260px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface-elevated);
+  box-shadow: var(--ds-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fn-session-delete-confirm p {
+  margin: 0;
+  color: var(--ds-text);
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.45;
+}
+
+.fn-session-delete-confirm-skip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ds-muted);
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.35;
+  cursor: pointer;
+  user-select: none;
+}
+
+.fn-session-delete-confirm-skip input {
+  margin: 0;
+  accent-color: var(--ds-accent);
+  cursor: pointer;
+}
+
+.fn-session-delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.fn-session-delete-confirm-actions button {
+  border: none;
+  background: transparent;
+  color: var(--ds-text);
+  padding: 6px 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: var(--fn-text-ui-sm);
+  cursor: pointer;
+}
+
+.fn-session-delete-confirm-actions button:hover {
+  background: var(--ds-surface-hover);
+}
+
+.fn-session-delete-confirm-actions button.is-danger {
+  color: var(--ds-error);
+}
+
+.fn-session-delete-confirm-actions button.is-danger:hover {
+  background: color-mix(in srgb, var(--ds-error) 12%, transparent);
 }
 
 .fn-session-rename-input {

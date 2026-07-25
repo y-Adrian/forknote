@@ -76,6 +76,11 @@ export interface ChatSession {
   title: string;
   /** 用户手动重命名后为 true，后续消息不再自动覆盖标题 */
   titleLocked?: boolean;
+  /**
+   * When set, session is pinned and sorts above unpinned notes.
+   * Timestamp of when it was pinned (ms); clear / omit to unpin.
+   */
+  pinnedAt?: number | null;
   thread: ThreadRoot | null;
   createdAt: number;
   updatedAt: number;

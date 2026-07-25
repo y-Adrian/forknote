@@ -5,9 +5,30 @@ export interface SessionGroup {
   sessions: ChatSession[];
 }
 
+function isPinned(session: ChatSession): boolean {
+  return typeof session.pinnedAt === "number" && session.pinnedAt > 0;
+}
+
+/** Pinned first (by pinnedAt desc), then unpinned (by updatedAt desc). Stable within each set. */
+export function sortSessionsForSidebar(sessions: ChatSession[]): ChatSession[] {
+  const pinned: ChatSession[] = [];
+  const unpinned: ChatSession[] = [];
+  for (const session of sessions) {
+    if (isPinned(session)) pinned.push(session);
+    else unpinned.push(session);
+  }
+  pinned.sort((a, b) => {
+    const pinDiff = (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0);
+    if (pinDiff !== 0) return pinDiff;
+    return b.updatedAt - a.updatedAt;
+  });
+  unpinned.sort((a, b) => b.updatedAt - a.updatedAt);
+  return [...pinned, ...unpinned];
+}
+
 export function groupSessionsByDate(
   sessions: ChatSession[],
-  labels?: { today: string; previous7: string },
+  labels?: { today: string; previous7: string; pinned?: string },
 ): SessionGroup[] {
   const now = new Date();
   const startOfToday = new Date(
@@ -17,13 +38,18 @@ export function groupSessionsByDate(
   ).getTime();
   const sevenDaysAgo = startOfToday - 7 * 24 * 60 * 60 * 1000;
 
+  const pinned: ChatSession[] = [];
   const today: ChatSession[] = [];
   const week: ChatSession[] = [];
   const older = new Map<string, ChatSession[]>();
 
-  const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+  const sorted = sortSessionsForSidebar(sessions);
 
   for (const session of sorted) {
+    if (isPinned(session)) {
+      pinned.push(session);
+      continue;
+    }
     if (session.updatedAt >= startOfToday) {
       today.push(session);
     } else if (session.updatedAt >= sevenDaysAgo) {
@@ -39,8 +65,10 @@ export function groupSessionsByDate(
 
   const todayLabel = labels?.today ?? "Today";
   const weekLabel = labels?.previous7 ?? "Previous 7 days";
+  const pinnedLabel = labels?.pinned ?? "Pinned";
 
   const groups: SessionGroup[] = [];
+  if (pinned.length) groups.push({ label: pinnedLabel, sessions: pinned });
   if (today.length) groups.push({ label: todayLabel, sessions: today });
   if (week.length) groups.push({ label: weekLabel, sessions: week });
   for (const [label, list] of [...older.entries()].sort((a, b) =>
