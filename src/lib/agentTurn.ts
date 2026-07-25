@@ -947,9 +947,7 @@ export async function runAgentTurn(
     };
 
     const draftPlanFromModel = async (): Promise<DraftedPlan | null> => {
-      patchAssistantContent(
-        locale === "zh" ? "正在制定计划…" : "Drafting plan…",
-      );
+      patchAssistantContent(locale === "zh" ? "思考中…" : "Thinking…");
 
       let planRaw = "";
       await streamChat(
