@@ -413,8 +413,56 @@ export function buildNextPlanChunkPrompt(
   return `The approved steps finished. Draft only the next execution plan chunk (at most ${maxSteps} numbered steps). Still do not call tools. If fewer than ${maxSteps} remain, list them all. Remaining work:\n${list}`;
 }
 
+/**
+ * Counteracts the planning-phase “do not call tools” system message after the
+ * user clicks Approve & run. Small local models (Ollama) otherwise keep
+ * summarizing instead of emitting tool_calls.
+ */
+export function buildExecutionPhaseSystem(locale: Locale): string {
+  if (locale === "zh") {
+    return `【执行阶段】计划已获用户批准。规划阶段结束：你现在必须通过函数调用（tool_calls）执行已批准步骤。禁止只描述将要做什么、禁止假装已写入文件、禁止把工具 JSON 当作普通 Markdown 贴给用户（若无法发原生 tool_calls，可用 <tool_call>…</tool_call>）。`;
+  }
+  return `[Execution phase] The user approved the plan. Planning is over: you MUST execute the approved steps via function/tool calls now. Do not only describe work, do not claim files were written without calling tools, and do not paste tool JSON as ordinary Markdown (if native tool_calls are unavailable, use <tool_call>…</tool_call>).`;
+}
+
 const TOOL_MENTION_RE =
   /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files)\b/i;
+
+const MUTATING_TOOL_RE =
+  /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b/i;
+
+const MUTATING_TOOLS = new Set<AgentToolName>([
+  "write_file",
+  "search_replace",
+  "apply_patch",
+  "write_docx",
+  "write_xlsx",
+  "mkdir",
+]);
+
+/** First tool name mentioned in an approved plan, for tool_choice hints. */
+export function inferPreferredToolFromPlan(
+  planText: string,
+  steps: string[],
+): AgentToolName | null {
+  const blob = `${planText}\n${steps.join("\n")}`;
+  const m = blob.match(TOOL_MENTION_RE);
+  if (!m?.[1]) return null;
+  const name = m[1].toLowerCase();
+  return TOOL_NAMES.has(name) ? (name as AgentToolName) : null;
+}
+
+/** True when the approved plan expects disk mutations (not only read/list). */
+export function planMentionsMutatingTools(
+  planText: string,
+  steps: string[],
+): boolean {
+  return MUTATING_TOOL_RE.test(`${planText}\n${steps.join("\n")}`);
+}
+
+export function isMutatingAgentTool(tool: AgentToolName): boolean {
+  return MUTATING_TOOLS.has(tool);
+}
 
 /**
  * True when the planning reply should show Approve & run.

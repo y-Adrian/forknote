@@ -6,6 +6,7 @@ import {
   agentCallFromOpenAI,
   alignOfficeToolCall,
   buildCodingToolsSystem,
+  buildExecutionPhaseSystem,
   buildMinimalCreatePlanHint,
   buildMinimalOfficePlanHint,
   buildNextPlanChunkPrompt,
@@ -16,11 +17,14 @@ import {
   inferExploreIntent,
   inferMultiStepPlan,
   inferOfficeCreateIntent,
+  inferPreferredToolFromPlan,
+  isMutatingAgentTool,
   limitPlanForApproval,
   multiStepFollowUpHint,
   multiStepSystemHint,
   parseAgentPlan,
   pathsMatch,
+  planMentionsMutatingTools,
   planNeedsToolApproval,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
@@ -32,6 +36,7 @@ import {
   type AgentActivity,
   type AgentFileChange,
   type AgentToolCall,
+  type AgentToolName,
 } from "./agentTools";
 import { buildConversationMessages } from "./contextBuilder";
 import { buildAgentMemoryAddendum } from "./contextMemory";
@@ -242,11 +247,19 @@ export async function runAgentTurn(
         : exploreIntent?.kind === "search"
           ? "search_files"
           : null;
+  /** After Approve & run: prefer the first tool named in the approved plan. */
+  let forcedPlanTool: AgentToolName | null = null;
   let officeFallbackUsed = false;
   let exploreFallbackUsed = false;
   let officeToolFailed = false;
   let officeTargetWritten = false;
   let toolBatchesExecuted = 0;
+  /** Deterministic list/read prefetch runs once per turn, not every approve. */
+  let deterministicPrefetchDone = false;
+  /** Model-loop tool batches from the latest executeTools call (excl. prefetch). */
+  let lastModelToolBatches = 0;
+  /** Successful mutating tool calls from the latest executeTools call. */
+  let lastMutatingToolSuccesses = 0;
   let apiReasoning = "";
 
   const patchAssistantContent = (content: string) => {
@@ -259,72 +272,87 @@ export async function runAgentTurn(
     patchContent(patch);
   };
 
-  const executeTools = async (): Promise<string> => {
+  const executeTools = async (opts?: {
+    /** Keep nudging until at least one tool batch runs (post-approve). */
+    requireToolBatch?: boolean;
+  }): Promise<string> => {
+    const requireToolBatch = Boolean(opts?.requireToolBatch);
+    // Each approve/execute phase gets a fresh round budget.
+    round = 0;
+    lastModelToolBatches = 0;
+    lastMutatingToolSuccesses = 0;
     addExecutionHints();
 
-    const preflightList =
-      projectRoot &&
-      !signal.aborted &&
-      (exploreIntent?.kind === "list" ||
-        multiStepPlan[0]?.tool === "list_dir");
-    if (preflightList) {
-      const listCall: AgentToolCall =
-        exploreIntent?.kind === "list"
-          ? synthesizeExploreToolCall(exploreIntent)
-          : { tool: "list_dir", path: multiStepPlan[0]?.path ?? "." };
-      patchAssistantContent("Listing project root…");
-      const pre = await abortable(
-        executeToolCall(listCall, sidecarUrl, signal, projectRoot),
-        signal,
-      );
-      if (!signal.aborted) {
-        onAgentActivity({
-          id: createId(),
-          at: Date.now(),
-          ...pre.activity,
-        });
-        toolBatchesExecuted = 1;
-        exploreFallbackUsed = true;
-        forcedExploreTool = null;
-        apiMessages.push({
-          role: "user",
-          content: pre.ok
-            ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此继续后续步骤（如 read_file package.json、修改 README）；未完成则继续调工具，完成后再中文总结。`
-            : `【list_dir 失败】${pre.resultText}\n\n请向用户说明 sidecar/项目绑定问题，不要编造目录内容。`,
-        });
-        if (!pre.ok) {
-          patchAssistantContent(
-            `Could not list directory: ${pre.resultText}`,
-          );
-        }
-      }
-    }
-
-    if (multiStepPlan.length >= 2 && projectRoot && !signal.aborted) {
-      for (const step of multiStepPlan) {
-        if (step.tool !== "read_file" || !step.path) continue;
-        patchAssistantContent(`Reading ${step.path}…`);
-        const readExec = await abortable(
-          executeToolCall(step, sidecarUrl, signal, projectRoot),
+    if (!deterministicPrefetchDone) {
+      const preflightList =
+        projectRoot &&
+        !signal.aborted &&
+        (exploreIntent?.kind === "list" ||
+          multiStepPlan[0]?.tool === "list_dir");
+      if (preflightList) {
+        const listCall: AgentToolCall =
+          exploreIntent?.kind === "list"
+            ? synthesizeExploreToolCall(exploreIntent)
+            : { tool: "list_dir", path: multiStepPlan[0]?.path ?? "." };
+        patchAssistantContent("Listing project root…");
+        const pre = await abortable(
+          executeToolCall(listCall, sidecarUrl, signal, projectRoot),
           signal,
         );
-        if (signal.aborted) break;
-        onAgentActivity({
-          id: createId(),
-          at: Date.now(),
-          ...readExec.activity,
-        });
-        toolBatchesExecuted += 1;
-        apiMessages.push({
-          role: "user",
-          content: `【工具结果：read_file path="${step.path}"】\n${readExec.resultText}`,
-        });
+        if (!signal.aborted) {
+          onAgentActivity({
+            id: createId(),
+            at: Date.now(),
+            ...pre.activity,
+          });
+          toolBatchesExecuted = 1;
+          exploreFallbackUsed = true;
+          forcedExploreTool = null;
+          apiMessages.push({
+            role: "user",
+            content: pre.ok
+              ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此继续后续步骤（如 read_file package.json、修改 README）；未完成则继续调工具，完成后再中文总结。`
+              : `【list_dir 失败】${pre.resultText}\n\n请向用户说明 sidecar/项目绑定问题，不要编造目录内容。`,
+          });
+          if (!pre.ok) {
+            patchAssistantContent(
+              `Could not list directory: ${pre.resultText}`,
+            );
+          }
+        }
       }
-      const followUp = multiStepFollowUpHint(trimmed);
-      if (followUp) {
-        apiMessages.push({ role: "user", content: followUp });
+
+      if (multiStepPlan.length >= 2 && projectRoot && !signal.aborted) {
+        for (const step of multiStepPlan) {
+          if (step.tool !== "read_file" || !step.path) continue;
+          patchAssistantContent(`Reading ${step.path}…`);
+          const readExec = await abortable(
+            executeToolCall(step, sidecarUrl, signal, projectRoot),
+            signal,
+          );
+          if (signal.aborted) break;
+          onAgentActivity({
+            id: createId(),
+            at: Date.now(),
+            ...readExec.activity,
+          });
+          toolBatchesExecuted += 1;
+          apiMessages.push({
+            role: "user",
+            content: `【工具结果：read_file path="${step.path}"】\n${readExec.resultText}`,
+          });
+        }
+        const followUp = multiStepFollowUpHint(trimmed);
+        if (followUp) {
+          apiMessages.push({ role: "user", content: followUp });
+        }
       }
+      deterministicPrefetchDone = true;
     }
+
+    // Baseline after deterministic preflight so post-approve nudges require a
+    // model-driven tool batch (prefetch alone must not unlock the next chunk).
+    const batchesAtStart = toolBatchesExecuted;
 
     const forcedOfficeTool = officeIntent?.tool ?? null;
 
@@ -376,9 +404,14 @@ export async function runAgentTurn(
                         type: "function",
                         function: { name: forcedExploreTool },
                       }
-                    : useNativeTools
-                      ? "auto"
-                      : undefined,
+                    : useNativeTools && forcedPlanTool && round === 0
+                      ? {
+                          type: "function",
+                          function: { name: forcedPlanTool },
+                        }
+                      : useNativeTools
+                        ? "auto"
+                        : undefined,
             onReasoningDelta: (piece) => {
               apiReasoning += piece;
               if (apiReasoning.trim()) {
@@ -467,7 +500,11 @@ export async function runAgentTurn(
             pending.push({ agent, native: tc });
           }
         }
-      } else if (projectRoot) {
+      }
+
+      // Ollama / small models often paste tool JSON in content while also
+      // emitting empty or unparseable native tool_calls — always fall back.
+      if (pending.length === 0 && projectRoot) {
         for (const raw of collectToolCalls(
           roundText,
           trimmed,
@@ -613,7 +650,7 @@ export async function runAgentTurn(
           continue;
         }
 
-        if (projectRoot && toolBatchesExecuted === 0 && round < 2) {
+        if (projectRoot && toolBatchesExecuted === batchesAtStart && round < 2) {
           apiMessages.push({
             role: "assistant",
             content: cleanedRound || roundText || "",
@@ -625,6 +662,34 @@ export async function runAgentTurn(
           });
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent || "Using project tools…");
+          round += 1;
+          continue;
+        }
+
+        // Post-approve: keep nudging past the short retry window until a tool
+        // batch runs or we hit the round cap (Ollama often needs more pushes).
+        if (
+          requireToolBatch &&
+          projectRoot &&
+          toolBatchesExecuted === batchesAtStart &&
+          round < agentMaxRounds - 1
+        ) {
+          apiMessages.push({
+            role: "assistant",
+            content: cleanedRound || roundText || "",
+          });
+          apiMessages.push({
+            role: "user",
+            content:
+              locale === "zh"
+                ? "批准的计划尚未执行任何工具。请立刻发出 tool_calls（或 <tool_call>）完成已批准步骤；不要只总结、不要进入下一批计划。"
+                : "No tools ran for the approved plan yet. Emit tool_calls (or <tool_call>) for the approved steps now; do not only summarize, and do not move on to the next plan chunk.",
+          });
+          visibleContent = cleanedRound;
+          patchAssistantContent(visibleContent || "Using project tools…");
+          // Drop forced tool_choice after the first miss so the model can pick
+          // any required tool on later rounds.
+          if (round >= 1) forcedPlanTool = null;
           round += 1;
           continue;
         }
@@ -687,6 +752,9 @@ export async function runAgentTurn(
         if (signal.aborted) break;
         if (executed.ok) {
           batchHadSuccess = true;
+          if (isMutatingAgentTool(item.agent.tool)) {
+            lastMutatingToolSuccesses += 1;
+          }
         }
         if (
           item.agent.tool === "write_file" &&
@@ -740,6 +808,8 @@ export async function runAgentTurn(
 
       if (batchHadTools) {
         toolBatchesExecuted += 1;
+        lastModelToolBatches += 1;
+        forcedPlanTool = null;
       }
 
       if (signal.aborted) break;
@@ -917,25 +987,58 @@ export async function runAgentTurn(
 
     const approvalExecutePrompt = (approvedPlanText: string): string =>
       locale === "zh"
-        ? `用户已批准以下计划（仅本轮步骤）。请立即按计划执行，只调用完成该计划所必需的工具；不要额外添加验证步骤（如未经要求的 list_dir），也不要擅自执行未列出的后续步骤。若计划写明无需工具，则只总结、不要调工具。\n\n${approvedPlanText}`
-        : `User approved the following plan (this round's steps only). Execute it now with only the tools required by the plan; do not add extra verification steps (e.g. unrequested list_dir), and do not run steps that were not listed. If the plan says no tools are needed, summarize only and do not call tools.\n\n${approvedPlanText}`;
+        ? `用户已批准以下计划（仅本轮步骤）。请立即用工具执行这些步骤：发出原生 tool_calls，或使用 <tool_call>…</tool_call>；禁止只描述、禁止假装已完成、禁止执行未列出的后续步骤。若某步需要写文件，必须调用 write_file / write_docx / write_xlsx 等。\n\n${approvedPlanText}`
+        : `User approved the following plan (this round's steps only). Execute those steps now with tools: emit native tool_calls or <tool_call>…</tool_call>. Do not only describe work, do not pretend it is done, and do not run steps that were not listed. If a step needs a file write, you must call write_file / write_docx / write_xlsx etc.\n\n${approvedPlanText}`;
 
     const presentPlanForApproval = (drafted: DraftedPlan): void => {
       const approvedPlanText = drafted.displayPlan;
       const deferredSteps = drafted.deferredSteps;
+      const preferredTool = inferPreferredToolFromPlan(
+        drafted.displayPlan,
+        drafted.steps,
+      );
       onAwaitPlanApproval({
         planText: drafted.displayPlan,
         steps: drafted.steps,
         totalStepCount: drafted.totalSteps,
         continueExecution: async () => {
           apiMessages.push({
+            role: "system",
+            content: buildExecutionPhaseSystem(locale),
+          });
+          apiMessages.push({
             role: "user",
             content: approvalExecutePrompt(approvedPlanText),
           });
-          await executeTools();
+          forcedPlanTool = preferredTool;
+          const needsMutation = planMentionsMutatingTools(
+            approvedPlanText,
+            drafted.steps,
+          );
+          await executeTools({ requireToolBatch: true });
+          forcedPlanTool = null;
 
           // Approve → run → plan next chunk when steps were deferred.
           if (deferredSteps.length === 0 || signal.aborted) return;
+
+          // Do not claim the chunk finished / draft the next plan if the model
+          // never ran tools (or never mutated disk when the plan required it).
+          // Prefetch list/read alone must not unlock the next chunk — that was
+          // the E2E failure mode with Ollama after chunking.
+          const chunkIncomplete = needsMutation
+            ? lastMutatingToolSuccesses === 0
+            : lastModelToolBatches === 0;
+          if (chunkIncomplete) {
+            const note =
+              locale === "zh"
+                ? `${visibleContent ? `${visibleContent}\n\n` : ""}（本轮批准的步骤尚未成功调用工具，已暂停后续分批计划。请再次「批准并执行」，或改用对 function calling 更稳的模型如 DeepSeek。）`
+                : `${visibleContent ? `${visibleContent}\n\n` : ""}(No tools ran for this approved chunk, so the next plan round was not started. Click Approve & run again, or switch to a model with stronger function calling such as DeepSeek.)`;
+            visibleContent = note.trim();
+            patchAssistantContent(visibleContent);
+            // Keep the same chunk available for another Approve & run.
+            presentPlanForApproval(drafted);
+            return;
+          }
 
           apiMessages.push({
             role: "user",
