@@ -5,7 +5,9 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { ForkNoteLogo } from "./BranchLogo";
 import { useLocale } from "../lib/i18n";
 import {
@@ -13,14 +15,115 @@ import {
   truncateModelLabel,
 } from "../lib/sessionApi";
 import { groupSessionsByDate } from "../lib/sessionGroups";
+import { sessionToShareMarkdown } from "../lib/sessionShare";
+import {
+  getSkipSessionDeleteConfirm,
+  setSkipSessionDeleteConfirm,
+} from "../lib/storage";
 import { useTheme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
+
+type MenuPos = { top: number; right: number };
 
 interface Props {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onOpenSettings: () => void;
+}
+
+function IconRename() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0 0-2.12L16.62 5.5a1.5 1.5 0 0 0-2.12 0L4 16v4z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.5 6.5l4 4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconPin({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M15 4.5l4.5 4.5-3.2.8a2 2 0 0 0-1.1 1.1L14.4 14 10 9.6l2.1-.8a2 2 0 0 0 1.1-1.1L15 4.5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        fill={filled ? "currentColor" : "none"}
+      />
+      <path
+        d="M10 9.6L5 19l9.4-5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconShare() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M8.4 13.2l7.2 4.1M15.6 6.7l-7.2 4.1"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconTrash() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M8 7l1 12a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l1-12"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MenuItem({
+  danger,
+  onClick,
+  icon,
+  children,
+}: {
+  danger?: boolean;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className={danger ? "is-danger" : undefined}
+      onClick={onClick}
+    >
+      <span className="fn-session-menu-icon">{icon}</span>
+      <span className="fn-session-menu-label">{children}</span>
+    </button>
+  );
 }
 
 function ThemeToggleButton({
@@ -87,22 +190,73 @@ export function SessionSidebar({
   const switchSession = useAppStore((s) => s.switchSession);
   const deleteSession = useAppStore((s) => s.deleteSession);
   const renameSession = useAppStore((s) => s.renameSession);
+  const togglePinSession = useAppStore((s) => s.togglePinSession);
   const { theme, toggleTheme } = useTheme();
 
   const [renamingId, setRenamingId] = useState<NodeId | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [menuId, setMenuId] = useState<NodeId | null>(null);
+  const [menuPos, setMenuPos] = useState<MenuPos | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    id: NodeId;
+    pos: MenuPos;
+  } | null>(null);
+  const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] =
+    useState(false);
+  const [shareToast, setShareToast] = useState<{
+    message: string;
+    pos: MenuPos;
+  } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommit = useRef(false);
+  const shareToastTimer = useRef<number | null>(null);
 
   const groups = useMemo(
     () =>
       groupSessionsByDate(sessions, {
         today: t("sidebar.today"),
         previous7: t("sidebar.previous7"),
+        pinned: t("sidebar.pinned"),
       }),
     [sessions, t],
   );
+
+  const menuSession = useMemo(
+    () => (menuId ? sessions.find((s) => s.id === menuId) : undefined),
+    [menuId, sessions],
+  );
+
+  const menuPinned =
+    typeof menuSession?.pinnedAt === "number" && menuSession.pinnedAt > 0;
+
+  const closeMenu = () => {
+    setMenuId(null);
+    setMenuPos(null);
+  };
+
+  const closeConfirmDelete = () => {
+    setConfirmDelete(null);
+    setSkipDeleteConfirmChecked(false);
+  };
+
+  const showShareToast = (message: string, pos: MenuPos) => {
+    if (shareToastTimer.current != null) {
+      window.clearTimeout(shareToastTimer.current);
+    }
+    setShareToast({ message, pos });
+    shareToastTimer.current = window.setTimeout(() => {
+      setShareToast(null);
+      shareToastTimer.current = null;
+    }, 1600);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (shareToastTimer.current != null) {
+        window.clearTimeout(shareToastTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (renamingId) {
@@ -113,13 +267,97 @@ export function SessionSidebar({
 
   useEffect(() => {
     if (!menuId) return;
-    const close = () => setMenuId(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+
+    const onPointerDown = (e: Event) => {
+      const target = e.target;
+      if (!(target instanceof Element)) {
+        closeMenu();
+        return;
+      }
+      if (
+        target.closest(".fn-session-menu") ||
+        target.closest(".fn-session-action")
+      ) {
+        return;
+      }
+      closeMenu();
+    };
+
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+
+    // Defer so the opening click does not immediately dismiss the menu.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", onPointerDown);
+    }, 0);
+
+    const onScrollOrResize = () => closeMenu();
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onScrollOrResize);
+    document.addEventListener("scroll", onScrollOrResize, true);
+
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onScrollOrResize);
+      document.removeEventListener("scroll", onScrollOrResize, true);
+    };
   }, [menuId]);
 
+  useEffect(() => {
+    if (!confirmDelete) return;
+
+    const onPointerDown = (e: Event) => {
+      const target = e.target;
+      if (!(target instanceof Element)) {
+        closeConfirmDelete();
+        return;
+      }
+      if (target.closest(".fn-session-delete-confirm")) return;
+      closeConfirmDelete();
+    };
+
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") closeConfirmDelete();
+    };
+
+    // Defer so the Delete click that opens this float does not dismiss it.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", onPointerDown);
+    }, 0);
+
+    const onScrollOrResize = () => closeConfirmDelete();
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onScrollOrResize);
+    document.addEventListener("scroll", onScrollOrResize, true);
+
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onScrollOrResize);
+      document.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [confirmDelete]);
+
+  useEffect(() => {
+    if (menuId && !menuSession) closeMenu();
+  }, [menuId, menuSession]);
+
+  useEffect(() => {
+    if (
+      confirmDelete &&
+      !sessions.some((s) => s.id === confirmDelete.id)
+    ) {
+      closeConfirmDelete();
+    }
+  }, [confirmDelete, sessions]);
+
   const startRename = (id: NodeId, current: string) => {
-    setMenuId(null);
+    closeMenu();
+    closeConfirmDelete();
     setRenamingId(id);
     setDraftTitle(current);
   };
@@ -155,13 +393,66 @@ export function SessionSidebar({
     }
   };
 
+  const performDelete = (id: NodeId) => {
+    if (renamingId === id) cancelRename();
+    deleteSession(id);
+  };
+
   const handleDelete = (e: MouseEvent, id: NodeId) => {
     e.stopPropagation();
-    setMenuId(null);
-    if (confirm(t("sidebar.deleteConfirm"))) {
-      if (renamingId === id) cancelRename();
-      deleteSession(id);
+    const pos = menuPos;
+    closeMenu();
+    if (getSkipSessionDeleteConfirm()) {
+      performDelete(id);
+      return;
     }
+    if (!pos) return;
+    setSkipDeleteConfirmChecked(false);
+    setConfirmDelete({ id, pos });
+  };
+
+  const commitDelete = () => {
+    if (!confirmDelete) return;
+    const id = confirmDelete.id;
+    if (skipDeleteConfirmChecked) {
+      setSkipSessionDeleteConfirm(true);
+    }
+    performDelete(id);
+    closeConfirmDelete();
+  };
+
+  const handlePin = () => {
+    if (!menuSession) return;
+    togglePinSession(menuSession.id);
+    closeMenu();
+  };
+
+  const handleShare = async () => {
+    if (!menuSession || !menuPos) return;
+    const pos = menuPos;
+    const markdown = sessionToShareMarkdown(menuSession);
+    closeMenu();
+    try {
+      await navigator.clipboard.writeText(markdown);
+      showShareToast(t("sidebar.shareCopied"), pos);
+    } catch {
+      showShareToast(t("sidebar.shareFailed"), pos);
+    }
+  };
+
+  const toggleMenu = (e: MouseEvent<HTMLButtonElement>, id: NodeId) => {
+    e.stopPropagation();
+    closeConfirmDelete();
+    if (menuId === id) {
+      closeMenu();
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+    setMenuId(id);
   };
 
   const themeToggleProps = {
@@ -310,39 +601,12 @@ export function SessionSidebar({
                               className="fn-session-action"
                               aria-label={t("sidebar.moreAria")}
                               aria-expanded={menuOpen}
+                              aria-haspopup="menu"
                               title={t("sidebar.more")}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMenuId(menuOpen ? null : session.id);
-                              }}
+                              onClick={(e) => toggleMenu(e, session.id)}
                             >
                               ···
                             </button>
-                            {menuOpen && (
-                              <div
-                                className="fn-session-menu"
-                                role="menu"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() =>
-                                    startRename(session.id, session.title)
-                                  }
-                                >
-                                  {t("sidebar.rename")}
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="is-danger"
-                                  onClick={(e) => handleDelete(e, session.id)}
-                                >
-                                  {t("sidebar.delete")}
-                                </button>
-                              </div>
-                            )}
                           </div>
                         )}
                       </li>
@@ -352,6 +616,103 @@ export function SessionSidebar({
               </div>
             ))}
           </div>
+
+          {menuSession && menuPos
+            ? createPortal(
+                <div
+                  className="fn-session-menu"
+                  role="menu"
+                  style={{ top: menuPos.top, right: menuPos.right }}
+                >
+                  <MenuItem
+                    icon={<IconRename />}
+                    onClick={() =>
+                      startRename(menuSession.id, menuSession.title)
+                    }
+                  >
+                    {t("sidebar.rename")}
+                  </MenuItem>
+                  <MenuItem
+                    icon={<IconPin filled={menuPinned} />}
+                    onClick={handlePin}
+                  >
+                    {menuPinned ? t("sidebar.unpin") : t("sidebar.pin")}
+                  </MenuItem>
+                  <MenuItem
+                    icon={<IconShare />}
+                    onClick={() => void handleShare()}
+                  >
+                    {t("sidebar.share")}
+                  </MenuItem>
+                  <MenuItem
+                    danger
+                    icon={<IconTrash />}
+                    onClick={(e) => handleDelete(e, menuSession.id)}
+                  >
+                    {t("sidebar.delete")}
+                  </MenuItem>
+                </div>,
+                document.body,
+              )
+            : null}
+
+          {confirmDelete
+            ? createPortal(
+                <div
+                  className="fn-session-delete-confirm"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="fn-session-delete-title"
+                  style={{
+                    top: confirmDelete.pos.top,
+                    right: confirmDelete.pos.right,
+                  }}
+                >
+                  <p id="fn-session-delete-title">
+                    {t("sidebar.deleteConfirm")}
+                  </p>
+                  <label className="fn-session-delete-confirm-skip">
+                    <input
+                      type="checkbox"
+                      checked={skipDeleteConfirmChecked}
+                      onChange={(e) =>
+                        setSkipDeleteConfirmChecked(e.target.checked)
+                      }
+                    />
+                    {t("sidebar.deleteDontAskAgain")}
+                  </label>
+                  <div className="fn-session-delete-confirm-actions">
+                    <button type="button" onClick={closeConfirmDelete}>
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      className="is-danger"
+                      onClick={commitDelete}
+                    >
+                      {t("common.ok")}
+                    </button>
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
+
+          {shareToast
+            ? createPortal(
+                <div
+                  className="fn-session-share-toast"
+                  role="status"
+                  style={{
+                    top: shareToast.pos.top,
+                    right: shareToast.pos.right,
+                  }}
+                >
+                  {shareToast.message}
+                </div>,
+                document.body,
+              )
+            : null}
 
           <div className="ds-sidebar-footer">
             <div className="ds-footer-bar">

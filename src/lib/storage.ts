@@ -120,6 +120,10 @@ export function saveSessionStore(store: SessionStore): void {
   localStorage.removeItem(LEGACY_STORE_KEY);
 }
 
+/** Skip session-delete confirmation after user opts in. */
+export const SKIP_SESSION_DELETE_CONFIRM_KEY =
+  "forknote-skip-session-delete-confirm";
+
 /** Keys ForkNote writes to localStorage (for Data settings UI). */
 export const LOCAL_STORAGE_KEYS = {
   sessions: STORE_KEY,
@@ -127,7 +131,28 @@ export const LOCAL_STORAGE_KEYS = {
   project: "forknote-project",
   theme: "forknote-theme",
   locale: "forknote-locale",
+  skipSessionDeleteConfirm: SKIP_SESSION_DELETE_CONFIRM_KEY,
 } as const;
+
+export function getSkipSessionDeleteConfirm(): boolean {
+  try {
+    return localStorage.getItem(SKIP_SESSION_DELETE_CONFIRM_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setSkipSessionDeleteConfirm(skip: boolean): void {
+  try {
+    if (skip) {
+      localStorage.setItem(SKIP_SESSION_DELETE_CONFIRM_KEY, "1");
+    } else {
+      localStorage.removeItem(SKIP_SESSION_DELETE_CONFIRM_KEY);
+    }
+  } catch {
+    // ignore quota / private mode
+  }
+}
 
 export function exportSessionStoreJson(): string {
   const store = loadSessionStore();
