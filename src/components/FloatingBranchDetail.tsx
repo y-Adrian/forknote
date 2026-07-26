@@ -11,9 +11,9 @@ import { useDraggableFloat } from "../lib/useDraggableFloat";
 import { useAppStore } from "../store/useAppStore";
 import { AgentPlanReview } from "./AgentPlanReview";
 import {
-  InlineTerminalApproval,
-  usePendingTerminalPlan,
-} from "./InlineTerminalApproval";
+  InlineToolApproval,
+  usePendingInlineApproval,
+} from "./InlineToolApproval";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -108,7 +108,7 @@ export function FloatingBranchDetail({
     if (!plan || plan.sessionId !== s.activeSessionId) return false;
     return plan.branchId === branchId;
   });
-  const { pending: pendingTerminal } = usePendingTerminalPlan({
+  const { pending: pendingInline } = usePendingInlineApproval({
     kind: "branch",
     branchId,
   });
@@ -145,7 +145,7 @@ export function FloatingBranchDetail({
     branch?.children.length ?? 0,
     loadingBranchId ?? "",
     pendingPlanForThis ? "plan" : "",
-    pendingTerminal ? "term" : "",
+    pendingInline ? "inline" : "",
   ].join(":");
 
   const { onDragHandlePointerDown } = useDraggableFloat(panelRef, {
@@ -347,8 +347,8 @@ export function FloatingBranchDetail({
           </TurnBlock>
         ) : null}
 
-        {pendingTerminal ? (
-          <InlineTerminalApproval
+        {pendingInline ? (
+          <InlineToolApproval
             scope={{ kind: "branch", branchId }}
             className="is-float"
           />
@@ -356,7 +356,7 @@ export function FloatingBranchDetail({
       </div>
 
       <footer className="float-panel-detail-footer">
-        {pendingPlanForThis && !pendingTerminal ? (
+        {pendingPlanForThis && !pendingInline ? (
           <AgentPlanReview
             scope={{ kind: "branch", branchId }}
             className="is-float"
@@ -378,7 +378,7 @@ export function FloatingBranchDetail({
               disabled={
                 branchLoading ||
                 !branch.assistantMessage.trim() ||
-                pendingTerminal
+                pendingInline
               }
               aria-label={t("fork.followUpAria")}
             />
@@ -398,7 +398,7 @@ export function FloatingBranchDetail({
                   className="btn primary"
                   disabled={
                     branchLoading ||
-                    pendingTerminal ||
+                    pendingInline ||
                     !followUp.trim() ||
                     !branch.assistantMessage.trim()
                   }

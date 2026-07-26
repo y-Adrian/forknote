@@ -21,7 +21,7 @@ import {
   inferOfficeCreateIntent,
   inferPreferredToolFromPlan,
   isMutatingAgentTool,
-  isPrimarilyTerminalPlan,
+  usesInlineToolApproval,
   limitPlanForApproval,
   looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
@@ -1333,13 +1333,13 @@ export async function runAgentTurn(
           : shellIntent?.command?.trim()
             ? [shellIntent.command.trim()]
             : undefined;
-      const terminalPlan = isPrimarilyTerminalPlan(
+      const inlinePlan = usesInlineToolApproval(
         drafted.displayPlan,
         drafted.steps,
         planCommands,
       );
-      // Terminal: short lead in the bubble; exact command lives in InlineTerminalApproval.
-      if (terminalPlan && planCommands && planCommands.length > 0) {
+      // Inline Allow/Stop: short lead in the bubble; action lives in InlineToolApproval.
+      if (inlinePlan) {
         patchAssistantContent(
           locale === "zh" ? "需要批准后才能运行：" : "Needs approval to run:",
         );
@@ -1388,11 +1388,11 @@ export async function runAgentTurn(
           if (chunkIncomplete) {
             const note =
               locale === "zh"
-                ? `${visibleContent ? `${visibleContent}\n\n` : ""}（本轮批准的步骤尚未成功调用工具，已暂停后续分批计划。请再次「批准并执行」，或改用对 function calling 更稳的模型如 DeepSeek。）`
-                : `${visibleContent ? `${visibleContent}\n\n` : ""}(No tools ran for this approved chunk, so the next plan round was not started. Click Approve & run again, or switch to a model with stronger function calling such as DeepSeek.)`;
+                ? `${visibleContent ? `${visibleContent}\n\n` : ""}（本轮批准的步骤尚未成功调用工具，已暂停后续分批计划。请再次点「允许」，或改用对 function calling 更稳的模型如 DeepSeek。）`
+                : `${visibleContent ? `${visibleContent}\n\n` : ""}(No tools ran for this approved chunk, so the next plan round was not started. Click Allow again, or switch to a model with stronger function calling such as DeepSeek.)`;
             visibleContent = note.trim();
             patchAssistantContent(visibleContent);
-            // Keep the same chunk available for another Approve & run.
+            // Keep the same chunk available for another Allow.
             presentPlanForApproval(drafted);
             return;
           }

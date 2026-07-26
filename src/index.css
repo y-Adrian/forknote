@@ -4243,7 +4243,8 @@ mark.branch-highlight:hover {
   background: color-mix(in srgb, var(--ds-accent-soft) 65%, var(--ds-surface));
 }
 
-/* Inline shell approval in the conversation (Cursor-like) */
+/* Inline tool approval in the conversation (Cursor-like Allow / Stop) */
+.fn-tool-approve,
 .fn-shell-approve {
   width: 100%;
   max-width: var(--ds-content-max-width);
@@ -4251,11 +4252,13 @@ mark.branch-highlight:hover {
   min-width: 0;
 }
 
+.fn-tool-approve.is-float,
 .fn-shell-approve.is-float {
   max-width: none;
   margin: 10px 0 4px;
 }
 
+.fn-tool-approve-warn,
 .fn-shell-approve-warn {
   margin: 0 0 8px;
   padding: 8px 10px;
@@ -4267,6 +4270,7 @@ mark.branch-highlight:hover {
   border-radius: 6px;
 }
 
+.fn-tool-approve-cwd,
 .fn-shell-approve-cwd {
   display: flex;
   align-items: baseline;
@@ -4277,6 +4281,7 @@ mark.branch-highlight:hover {
   color: var(--ds-muted);
 }
 
+.fn-tool-approve-cwd-label,
 .fn-shell-approve-cwd-label {
   flex-shrink: 0;
   font-weight: 600;
@@ -4284,6 +4289,7 @@ mark.branch-highlight:hover {
   text-transform: uppercase;
 }
 
+.fn-tool-approve-cwd code,
 .fn-shell-approve-cwd code {
   min-width: 0;
   overflow: hidden;
@@ -4296,6 +4302,7 @@ mark.branch-highlight:hover {
   padding: 0;
 }
 
+.fn-tool-approve-row,
 .fn-shell-approve-row {
   display: flex;
   align-items: stretch;
@@ -4303,6 +4310,7 @@ mark.branch-highlight:hover {
   min-width: 0;
 }
 
+.fn-tool-approve-block,
 .fn-shell-approve-block {
   flex: 1;
   min-width: 0;
@@ -4312,6 +4320,7 @@ mark.branch-highlight:hover {
   overflow: hidden;
 }
 
+.fn-tool-approve-toolbar,
 .fn-shell-approve-toolbar {
   display: flex;
   align-items: center;
@@ -4320,6 +4329,7 @@ mark.branch-highlight:hover {
   background: color-mix(in srgb, var(--ds-code-bg) 88%, var(--ds-border));
 }
 
+.fn-tool-approve-lang,
 .fn-shell-approve-lang {
   font-size: var(--fn-text-ui-xs);
   font-weight: 600;
@@ -4328,6 +4338,7 @@ mark.branch-highlight:hover {
   color: var(--ds-muted);
 }
 
+.fn-tool-approve-pre,
 .fn-shell-approve-pre {
   margin: 0;
   padding: 10px 12px;
@@ -4341,6 +4352,7 @@ mark.branch-highlight:hover {
   max-height: 160px;
 }
 
+.fn-tool-approve-pre code,
 .fn-shell-approve-pre code {
   font: inherit;
   background: none;
@@ -4348,6 +4360,7 @@ mark.branch-highlight:hover {
   color: inherit;
 }
 
+.fn-tool-approve-pending,
 .fn-shell-approve-pending {
   margin: 0;
   padding: 10px 12px;
@@ -4356,6 +4369,7 @@ mark.branch-highlight:hover {
   color: var(--ds-muted);
 }
 
+.fn-tool-approve-actions,
 .fn-shell-approve-actions {
   display: flex;
   flex-direction: column;
@@ -4365,6 +4379,8 @@ mark.branch-highlight:hover {
   align-self: stretch;
 }
 
+.fn-tool-approve-allow,
+.fn-tool-approve-stop,
 .fn-shell-approve-allow,
 .fn-shell-approve-reject {
   min-width: 4.5rem;
@@ -4372,15 +4388,18 @@ mark.branch-highlight:hover {
   white-space: nowrap;
 }
 
+.fn-tool-approve.is-outside .fn-tool-approve-block,
 .fn-shell-approve.is-outside .fn-shell-approve-block {
   border-color: color-mix(in srgb, var(--ds-danger, #c44) 40%, var(--ds-code-border));
 }
 
 @media (max-width: 520px) {
+  .fn-tool-approve-row,
   .fn-shell-approve-row {
     flex-direction: column;
   }
 
+  .fn-tool-approve-actions,
   .fn-shell-approve-actions {
     flex-direction: row;
     justify-content: flex-end;

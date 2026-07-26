@@ -1,7 +1,7 @@
 import type { NodeId } from "../types";
 import {
-  isPrimarilyTerminalPlan,
   resolveTerminalApproveCommands,
+  usesInlineToolApproval,
 } from "../lib/agentTools";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
@@ -19,8 +19,8 @@ interface Props {
 }
 
 /**
- * Generic multi-step plan review (non-terminal).
- * Terminal approval uses {@link InlineTerminalApproval} in the message thread.
+ * Rare fallback multi-step plan review when inline Allow/Stop does not apply.
+ * Terminal and write/mutating approvals use {@link InlineToolApproval} in-thread.
  */
 export function AgentPlanReview({
   scope = { kind: "main" },
@@ -50,8 +50,8 @@ export function AgentPlanReview({
 
   if (!plan) return null;
 
-  // Terminal plans use InlineTerminalApproval in the conversation thread.
-  if (isPrimarilyTerminalPlan(plan.planText, plan.steps, plan.commands)) {
+  // Prefer Cursor-like inline Allow/Stop in the conversation thread.
+  if (usesInlineToolApproval(plan.planText, plan.steps, plan.commands)) {
     return null;
   }
 
@@ -114,7 +114,7 @@ export function AgentPlanReview({
           disabled={running}
           onClick={() => void approveAgentPlan()}
         >
-          {running ? t("agentPlan.running") : t("agentPlan.approve")}
+          {running ? t("agentPlan.running") : t("agentTool.allow")}
         </button>
         <button
           type="button"
@@ -122,7 +122,7 @@ export function AgentPlanReview({
           disabled={running}
           onClick={() => rejectAgentPlan()}
         >
-          {t("agentPlan.cancel")}
+          {t("agentTool.stop")}
         </button>
       </div>
     </div>

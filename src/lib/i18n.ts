@@ -258,6 +258,13 @@ const en = {
   "agentPlan.cancel": "Dismiss",
   "agentPlan.running": "Running…",
 
+  "agentTool.aria": "Tool approval",
+  "agentTool.allow": "Allow",
+  "agentTool.stop": "Stop",
+  "agentTool.running": "Running…",
+  "agentTool.actionPending":
+    "Action will be chosen when the agent runs this step.",
+
   "agentTerminal.aria": "Terminal command approval",
   "agentTerminal.kicker": "Terminal",
   "agentTerminal.lead": "Run this command in your bound project?",
@@ -271,7 +278,8 @@ const en = {
   "agentTerminal.run": "Run",
   "agentTerminal.skip": "Skip",
   "agentTerminal.allow": "Allow",
-  "agentTerminal.reject": "Reject",
+  "agentTerminal.reject": "Stop",
+  "agentTerminal.stop": "Stop",
   "agentTerminal.running": "Running…",
   "agentTerminal.commandPending":
     "Command will be chosen when the agent runs this step.",
@@ -756,6 +764,12 @@ const zh: Record<MessageKey, string> = {
   "agentPlan.cancel": "关闭",
   "agentPlan.running": "执行中…",
 
+  "agentTool.aria": "工具批准",
+  "agentTool.allow": "允许",
+  "agentTool.stop": "停止",
+  "agentTool.running": "执行中…",
+  "agentTool.actionPending": "批准后将由代理确定具体操作。",
+
   "agentTerminal.aria": "终端命令批准",
   "agentTerminal.kicker": "终端",
   "agentTerminal.lead": "要在已绑定项目中运行这条命令吗？",
@@ -769,7 +783,8 @@ const zh: Record<MessageKey, string> = {
   "agentTerminal.run": "运行",
   "agentTerminal.skip": "跳过",
   "agentTerminal.allow": "允许",
-  "agentTerminal.reject": "拒绝",
+  "agentTerminal.reject": "停止",
+  "agentTerminal.stop": "停止",
   "agentTerminal.running": "执行中…",
   "agentTerminal.commandPending": "批准后将由代理确定具体命令。",
 
