@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { countBranchesInThread } from "../lib/branches";
 import { resolveConversationContext } from "../lib/conversationContext";
 import { useLocale } from "../lib/i18n";
+import { COMPRESS_SUGGEST_MESSAGE_THRESHOLD } from "../lib/settings";
 import { firstUserMessage } from "../lib/thread";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
@@ -95,6 +96,9 @@ export function MainPanel({
     archiveId: NodeId;
     title: string;
   } | null>(null);
+  /** Per-session dismiss for the long-thread compress suggestion. */
+  const [compressSuggestDismissedFor, setCompressSuggestDismissedFor] =
+    useState<NodeId | null>(null);
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -129,6 +133,25 @@ export function MainPanel({
     () => Boolean(thread?.messages.some((m) => m.content.trim())),
     [thread],
   );
+
+  const showCompressSuggest = useMemo(() => {
+    if (!thread || !activeSessionId || inArchiveMode) return false;
+    if (compressSuggestDismissedFor === activeSessionId) return false;
+    if (loadingCompress) return false;
+    const nonEmpty = thread.messages.filter((m) => m.content.trim()).length;
+    if (nonEmpty < COMPRESS_SUGGEST_MESSAGE_THRESHOLD) return false;
+    // Hide briefly after a successful compress on this note
+    const packAt = activeSession?.contextMemory?.updatedAt;
+    if (packAt && packAt > Date.now() - 5 * 60_000) return false;
+    return true;
+  }, [
+    thread,
+    activeSessionId,
+    inArchiveMode,
+    compressSuggestDismissedFor,
+    loadingCompress,
+    activeSession?.contextMemory?.updatedAt,
+  ]);
 
   const composerBusy =
     loadingMain ||
@@ -491,6 +514,43 @@ export function MainPanel({
                     onClick={dismissModeNotice}
                   >
                     {t("main.gotIt")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showCompressSuggest && (
+              <div
+                className="fn-context-banner fn-context-banner-footer"
+                role="status"
+              >
+                <p className="fn-context-banner-text">
+                  {t("main.compressSuggestText")}
+                </p>
+                <div className="fn-context-banner-actions">
+                  <button
+                    type="button"
+                    className="fn-context-banner-btn"
+                    disabled={composerBusy}
+                    onClick={() => {
+                      if (activeSessionId) {
+                        setCompressSuggestDismissedFor(activeSessionId);
+                      }
+                      void compressContext();
+                    }}
+                  >
+                    {t("main.compressSuggestAction")}
+                  </button>
+                  <button
+                    type="button"
+                    className="fn-context-banner-btn is-quiet"
+                    onClick={() => {
+                      if (activeSessionId) {
+                        setCompressSuggestDismissedFor(activeSessionId);
+                      }
+                    }}
+                  >
+                    {t("main.compressSuggestDismiss")}
                   </button>
                 </div>
               </div>

@@ -40,6 +40,7 @@ import {
   stripToolCalls,
   synthesizeWriteFromReply,
   toolResultMessage,
+  shrinkPriorToolResultsInMessages,
   type AgentActivity,
   type AgentFileChange,
   type AgentToolCall,
@@ -191,6 +192,7 @@ export async function runAgentTurn(
     activeArchive: resolved.archive,
     locale,
     memoryAddendum,
+    settings,
   });
 
   if (extraMessages?.length) {
@@ -464,6 +466,8 @@ export async function runAgentTurn(
 
     while (round < agentMaxRounds) {
       if (signal.aborted) break;
+
+      shrinkPriorToolResultsInMessages(apiMessages);
 
       let roundText = "";
       let streamResult: Awaited<ReturnType<typeof streamChat>>;

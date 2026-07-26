@@ -8,6 +8,17 @@ export const DEFAULT_AGENT_MAX_ROUNDS = 20;
 export const MIN_AGENT_MAX_ROUNDS = 1;
 export const MAX_AGENT_MAX_ROUNDS = 64;
 
+/** Live-mode sliding window: recent user↔assistant turns kept verbatim. */
+export const DEFAULT_CONTEXT_WINDOW_TURNS = 12;
+export const MIN_CONTEXT_WINDOW_TURNS = 4;
+export const MAX_CONTEXT_WINDOW_TURNS = 48;
+
+/**
+ * Soft UI hint: suggest Compress when the main thread has at least this many
+ * non-empty messages (~half that many turns).
+ */
+export const COMPRESS_SUGGEST_MESSAGE_THRESHOLD = 24;
+
 /** First-run defaults when nothing is saved in localStorage. */
 const APP_DEFAULTS: ApiSettings = {
   baseUrl: "",
@@ -17,6 +28,8 @@ const APP_DEFAULTS: ApiSettings = {
   contextMemoryEnabled: true,
   compressAfterArchive: false,
   memoryDir: ".forknote/memory",
+  contextWindowTurns: DEFAULT_CONTEXT_WINDOW_TURNS,
+  contextAutoSummary: true,
   agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
   agentRequireApproval: true,
   agentAllowTerminal: true,
@@ -37,6 +50,19 @@ export function resolveAgentMaxRounds(settings: ApiSettings): number {
     MAX_AGENT_MAX_ROUNDS,
     Math.max(MIN_AGENT_MAX_ROUNDS, Math.round(n)),
   );
+}
+
+export function resolveContextWindowTurns(settings: ApiSettings): number {
+  const n = settings.contextWindowTurns ?? DEFAULT_CONTEXT_WINDOW_TURNS;
+  if (!Number.isFinite(n)) return DEFAULT_CONTEXT_WINDOW_TURNS;
+  return Math.min(
+    MAX_CONTEXT_WINDOW_TURNS,
+    Math.max(MIN_CONTEXT_WINDOW_TURNS, Math.round(n)),
+  );
+}
+
+export function isContextAutoSummaryEnabled(settings: ApiSettings): boolean {
+  return settings.contextAutoSummary !== false;
 }
 
 /** Ensure Base URL has an explicit http(s) scheme (Settings UI / localStorage). */
@@ -82,6 +108,12 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     memoryDir:
       (raw.memoryDir ?? APP_DEFAULTS.memoryDir ?? ".forknote/memory").trim() ||
       ".forknote/memory",
+    contextWindowTurns: resolveContextWindowTurns({
+      contextWindowTurns:
+        raw.contextWindowTurns ?? APP_DEFAULTS.contextWindowTurns,
+    } as ApiSettings),
+    contextAutoSummary:
+      raw.contextAutoSummary ?? APP_DEFAULTS.contextAutoSummary,
     agentMaxRounds: resolveAgentMaxRounds({
       agentMaxRounds: raw.agentMaxRounds ?? APP_DEFAULTS.agentMaxRounds,
     } as ApiSettings),
