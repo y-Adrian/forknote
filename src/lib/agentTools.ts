@@ -788,8 +788,8 @@ export function extractTerminalPlanSummary(
 
 /**
  * True when the pending plan is mainly shell (`run_terminal`), not a multi-file
- * write plan — routes UI to {@link InlineTerminalApproval} instead of the
- * generic AgentPlanReview essay.
+ * write plan — routes UI to inline Allow/Stop instead of the generic
+ * AgentPlanReview essay.
  *
  * `explicitCommands` (inferred / tool-arg shell cmds) count even when the model
  * drafted messy prose without the literal `run_terminal` token — otherwise the
@@ -801,7 +801,8 @@ export function isPrimarilyTerminalPlan(
   explicitCommands?: string[] | null,
 ): boolean {
   const blob = `${planText}\n${steps.join("\n")}`;
-  // File / office mutations → keep generic AgentPlanReview.
+  // File / office mutations → not "terminal-only" (still inline via
+  // {@link usesInlineToolApproval}).
   if (DISK_MUTATING_TOOL_RE.test(blob)) return false;
 
   const hasExplicit = (explicitCommands ?? []).some((c) =>
@@ -823,6 +824,111 @@ export function isPrimarilyTerminalPlan(
       n !== "search_files",
   );
   return nonTerminal.length === 0;
+}
+
+export type InlineApprovalKind =
+  | "terminal"
+  | "write"
+  | "edit"
+  | "office"
+  | "mkdir"
+  | "plan";
+
+export interface InlineApprovalSummary {
+  kind: InlineApprovalKind;
+  /** Compact toolbar label (shell / write / plan). */
+  lang: string;
+  /** Primary action detail shown in the monospace block. */
+  detail: string;
+}
+
+function extractMutationPathFromPlanBlob(
+  blob: string,
+): { tool: string; path: string } | null {
+  const labeled = blob.match(
+    /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b[^\n]{0,160}?path\s*=\s*["'`]([^"'`]+)["'`]/i,
+  );
+  if (labeled?.[1] && labeled[2]) {
+    return { tool: labeled[1].toLowerCase(), path: labeled[2].trim() };
+  }
+  const near = blob.match(
+    /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b[^\n]{0,100}?[`"'“”]?([\w./\\-]+\.\w{1,10}|[\w./\\-]+\/)[`"'“”]?/i,
+  );
+  if (near?.[1] && near[2]) {
+    return { tool: near[1].toLowerCase(), path: near[2].trim() };
+  }
+  return null;
+}
+
+/**
+ * Cursor-like inline Allow/Stop for tool approvals (terminal + write/mutating).
+ * Only when a pending plan actually needs approval — informational turns that
+ * never open the plan gate show no Allow/Stop UI.
+ */
+export function usesInlineToolApproval(
+  planText: string,
+  steps: string[],
+  explicitCommands?: string[] | null,
+): boolean {
+  if (isPrimarilyTerminalPlan(planText, steps, explicitCommands)) return true;
+  const blob = `${planText}\n${steps.join("\n")}`;
+  if (DISK_MUTATING_TOOL_RE.test(blob)) return true;
+  if (
+    (explicitCommands ?? []).some((c) => Boolean(normalizeExtractedCommand(c)))
+  ) {
+    return true;
+  }
+  if (TOOL_MENTION_RE.test(blob)) return true;
+  return steps.some((s) => TOOL_MENTION_RE.test(s));
+}
+
+/** Compact primary-action summary for the inline Allow/Stop row. */
+export function summarizeInlineApprovalAction(options: {
+  planText: string;
+  steps: string[];
+  explicitCommands?: string[] | null;
+}): InlineApprovalSummary {
+  const { planText, steps, explicitCommands } = options;
+  if (isPrimarilyTerminalPlan(planText, steps, explicitCommands)) {
+    const cmds = resolveTerminalApproveCommands({
+      planText,
+      steps,
+      explicitCommands,
+    });
+    return {
+      kind: "terminal",
+      lang: "shell",
+      detail: cmds.length > 0 ? cmds.join("\n") : "",
+    };
+  }
+
+  const blob = `${planText}\n${steps.join("\n")}`;
+  const mutation = extractMutationPathFromPlanBlob(blob);
+  if (mutation) {
+    const tool = mutation.tool;
+    if (tool === "write_file") {
+      return { kind: "write", lang: "write", detail: mutation.path };
+    }
+    if (tool === "search_replace" || tool === "apply_patch") {
+      return { kind: "edit", lang: "edit", detail: mutation.path };
+    }
+    if (tool === "write_docx" || tool === "write_xlsx") {
+      return { kind: "office", lang: tool, detail: mutation.path };
+    }
+    if (tool === "mkdir") {
+      return { kind: "mkdir", lang: "mkdir", detail: mutation.path };
+    }
+  }
+
+  const compact =
+    steps.length > 0
+      ? steps
+          .slice(0, 3)
+          .map((s) => s.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "").trim())
+          .filter(Boolean)
+          .join("\n")
+      : planText.trim().slice(0, 240);
+  return { kind: "plan", lang: "plan", detail: compact };
 }
 
 /** First tool name mentioned in an approved plan, for tool_choice hints. */

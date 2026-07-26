@@ -240,7 +240,7 @@ export interface AgentPendingPlan {
   steps: string[];
   /**
    * Exact shell commands from inferred / prefetch `run_terminal` args.
-   * Preferred by InlineTerminalApproval over plan-prose parsing.
+   * Preferred by InlineToolApproval over plan-prose parsing.
    */
   commands?: string[];
   /**

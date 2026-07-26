@@ -10,9 +10,9 @@ import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
 import { AgentPlanReview } from "./AgentPlanReview";
 import {
-  InlineTerminalApproval,
-  usePendingTerminalPlan,
-} from "./InlineTerminalApproval";
+  InlineToolApproval,
+  usePendingInlineApproval,
+} from "./InlineToolApproval";
 import { ChatComposer } from "./ChatComposer";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
@@ -77,8 +77,8 @@ export function MainPanel({
       ? s.loadingBranchBySession[s.activeSessionId] ?? null
       : null,
   );
-  const { pending: pendingTerminal, assistantId: pendingTerminalAssistantId } =
-    usePendingTerminalPlan({ kind: "main" });
+  const { pending: pendingInline, assistantId: pendingInlineAssistantId } =
+    usePendingInlineApproval({ kind: "main" });
   const error = useAppStore((s) => s.error);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const sidecarUrl = useAppStore((s) => s.sidecarUrl);
@@ -207,7 +207,7 @@ export function MainPanel({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [thread?.messages.length, loadingMain, pendingTerminal]);
+  }, [thread?.messages.length, loadingMain, pendingInline]);
 
   useEffect(() => {
     if (!loadingBranchId && openBranchId) {
@@ -363,7 +363,7 @@ export function MainPanel({
 
           <ProjectStatusBar onOpenProject={onOpenProject} />
 
-          <InlineTerminalApproval scope={{ kind: "main" }} />
+          <InlineToolApproval scope={{ kind: "main" }} />
           <AgentPlanReview scope={{ kind: "main" }} />
 
           <ChatComposer
@@ -483,19 +483,19 @@ export function MainPanel({
                         </div>
                       ) : null
                     ) : null}
-                    {pendingTerminal &&
-                    (pendingTerminalAssistantId
-                      ? pendingTerminalAssistantId === msg.id
+                    {pendingInline &&
+                    (pendingInlineAssistantId
+                      ? pendingInlineAssistantId === msg.id
                       : index === thread.messages.length - 1) ? (
-                      <InlineTerminalApproval scope={{ kind: "main" }} />
+                      <InlineToolApproval scope={{ kind: "main" }} />
                     ) : null}
                   </div>
                 ),
               )}
-              {pendingTerminal &&
-              pendingTerminalAssistantId &&
-              !thread.messages.some((m) => m.id === pendingTerminalAssistantId) ? (
-                <InlineTerminalApproval scope={{ kind: "main" }} />
+              {pendingInline &&
+              pendingInlineAssistantId &&
+              !thread.messages.some((m) => m.id === pendingInlineAssistantId) ? (
+                <InlineToolApproval scope={{ kind: "main" }} />
               ) : null}
               <div ref={bottomRef} />
             </div>
