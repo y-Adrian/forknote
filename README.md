@@ -8,7 +8,8 @@
 
 - 纯 Web（Vite + React）
 - OpenAI 兼容 API（云端或本机 Ollama / LM Studio 等）
-- **多笔记**：左侧列表新建 / 重命名 / 切换 / 删除
+- **多笔记**：左侧列表新建 / 置顶 / 分享 / 重命名 / 切换 / 删除
+- 窄屏（≤768px）：侧栏完全收起，主区品牌 Logo 打开会话列表抽屉（DeepSeek 风格）
 - 无登录；笔记与设置保存在浏览器 `localStorage`
 
 仓库已开启 GitHub **Automatically delete head branches**：PR 合并进 `leading` 后会自动删除远端 head 分枝，避免 `pr/*` 堆积。
@@ -55,7 +56,7 @@ curl -sS http://127.0.0.1:8787/health
 
 | 分类 | 内容 |
 |------|------|
-| **General** | 主题 Light / Dark / System；界面语言 English / 中文（模型回复语言跟随） |
+| **General** | 主题 Light / Dark / System；界面语言下拉选择 English / 中文（确认后整页重载，UI 与模型回复语言一并跟随） |
 | **API** | 提供商预设、Base URL / Model / Key、开发代理；本地上下文记忆包 |
 | **Data** | 导出 / 导入笔记 JSON；清空本地笔记 |
 | **Project** | Sidecar URL、打开本地项目、Agent 工具轮数 / 计划批准 |
@@ -114,7 +115,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 4. 澄清回答以浮动 **Fork** 面板挂在选区附近；可继续在分支里选中澄清（嵌套）
 5. 关闭面板或点 Branch rail / 评论轨上的节点，可重新打开对应分支
 
-绑定本地项目后，Clarify / Fork 可使用与主对话相同的工具、多轮循环与计划批准（底部 Approve & run）；回答仍写入 Fork 分支，不会改写主线。
+绑定本地项目后，Clarify / Fork 可使用与主对话相同的工具、多轮循环与计划批准（浮层内 **Approve & run**）；回答仍写入 Fork 分支，不会改写主线。
 
 ---
 
@@ -150,7 +151,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 1. 运行 `npm run dev`（已包含 sidecar；也可分开跑 `npm run sidecar` + `npm run dev:web`）
 2. 侧栏或输入区上方点 **Open project** → 对话框 **Local project**
-3. **Sidecar URL** 默认 `/sidecar`（经 Vite 代理）；填项目 **绝对路径** → **Connect**
+3. **Sidecar URL** 默认 `/sidecar`（经 Vite 代理）；填项目 **绝对路径**，或点 **Browse…** 用本机文件夹对话框选择 → **Connect**
 4. 绑定写入当前会话（`forknote-sessions-v1` 的 `projectRoot`）；对话框草稿路径仍可记在 `forknote-project.lastPath`，但不驱动状态栏跨会话显示
 5. **Disconnect** 解除**当前会话**的绑定
 
@@ -158,7 +159,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 主对话在已连接项目时会进入 **多轮工具循环**（模型 ↔ sidecar 工具往返，任务完成可提前结束）：
 
-1. **计划批准（默认开启）**：Settings → **Project** → **执行工具前需批准计划**。开启后，模型先输出执行计划；输入区上方出现 **AgentPlanReview** 栏，点 **批准并执行** 才读写文件，**取消** 丢弃本轮。
+1. **计划批准（默认开启）**：Settings → **Project** → **执行工具前需批准计划**。开启后，模型先输出执行计划；主对话输入区上方或 Clarify / Fork 浮层内出现 **AgentPlanReview**，点 **批准并执行** 才读写文件，**取消** 丢弃本轮。
 2. **工具轮数**：同页 **Agent 工具循环轮数** 可调（1–64，**默认 20**），控制单条消息内最多往返次数。
 3. 关闭计划批准后，模型会直接调用工具（仍受轮数上限约束）。
 
@@ -205,13 +206,20 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ---
 
-## 主题与笔记
+## 侧栏、主题与笔记
 
 - **Light / Dark / System**：系统设置 General 或侧栏；偏好键 `forknote-theme`
-- **New note**：新建空笔记
+- **宽屏**：可折叠为图标轨；**窄屏（≤768px）**：侧栏隐藏，点主区 **ForkNote Logo** 打开覆盖式会话抽屉（Esc / 遮罩关闭）
+- **New note**：新建空笔记；默认标题为本地化的 Untitled / 未命名（i18n sentinel，随界面语言显示）
+- **··· 菜单**：置顶 / 取消置顶、**分享**、重命名、删除
 - **重命名**：双击笔记标题，或菜单里重命名；手动命名后标题不再被首条消息自动覆盖
-- **删除**：笔记菜单删除（数据在本地，无云端回收站）
-- 笔记按日期分组显示在左侧
+- **分享**：勾选消息后 **Download HTML** 导出可离线打开的自包含 HTML；可选生成同站 hash 分享链接（不适合跨网络）
+- **删除**：确认对话框；可勾选 **Don't ask again** / **不再提示**（偏好写入 `localStorage`）。数据在本地，无云端回收站
+- 置顶笔记单独分组；其余按日期分组显示在左侧
+
+### 界面语言
+
+**Settings → General → Interface language**：下拉选择 English / 中文 → 确认对话框 → **整页重载**，保证侧栏、设置与默认标题等一并切换（`forknote-locale`）。
 
 ---
 
@@ -310,7 +318,7 @@ flowchart TD
 
 | 层 | 位置 | 职责 |
 |----|------|------|
-| **UI** | `src/components/` | 会话壳、主聊天、澄清浮层、Branch rail、系统设置、归档面板 |
+| **UI** | `src/components/` | 会话侧栏 / 窄屏抽屉、主聊天、澄清浮层、Branch rail、分享导出、系统设置、归档面板 |
 | **状态** | `src/store/useAppStore.ts` | 会话 CRUD、`askMain` / `askBranch`、归档 / 压缩、项目绑定、生成中止 |
 | **领域 lib** | `src/lib/` | 上下文组装、裁决标注、流式协议、agent 工具、记忆、i18n、主题 |
 | **持久化** | `storage.ts` / `settings.ts` / `theme.ts` | `localStorage` 笔记、API、主题、语言 |
@@ -321,7 +329,8 @@ flowchart TD
 
 | 模块 | 文件 | 说明 |
 |------|------|------|
-| 主聊天壳 | `MainPanel.tsx`、`ChatComposer.tsx` | 消息列表、footer 工具栏（项目 / 上下文模式 / Archive / Compress）、DeepSeek 风格气泡 |
+| 主聊天壳 | `MainPanel.tsx`、`ChatComposer.tsx` | 消息列表、footer 工具栏（项目 / 上下文模式 / Archive / Compress）、DeepSeek 风格气泡；窄屏 Logo 打开会话抽屉 |
+| 会话侧栏 | `SessionSidebar.tsx`、`ShareSessionDialog.tsx` | 笔记列表、置顶 / 分享 HTML / 重命名 / 删除确认；窄屏 overlay drawer |
 | 澄清 / 分点 | `SelectableMarkdown.tsx`、`PointizedAnswer.tsx`、`FloatingAskPanel.tsx` | 选中澄清、分点 Accept/Reject/Doubt |
 | 分支导航 | `BranchRail.tsx`、`BranchFloatLayer.tsx` | git-graph 轨与浮动 Fork |
 | 上下文 | `conversationContext.ts`、`contextBuilder.ts`、`points.ts` | live vs archive；system + 历史；裁决注入 |
@@ -349,7 +358,7 @@ flowchart TD
 sidecar/                 # 本机 FS sidecar（Node HTTP :8787）
 public/                  # favicon 等
 src/
-  App.tsx                # 壳：侧栏 + 主区 + 设置 / 项目 / 归档浮层
+  App.tsx                # 壳：侧栏（宽屏轨 / 窄屏抽屉）+ 主区 + 设置 / 项目 / 归档 / 分享浮层
   main.tsx
   types.ts
   components/            # UI（见上表）
@@ -363,5 +372,5 @@ vite.config.ts           # 开发代理
 
 - **本地优先**：笔记与记忆包默认留在本机；LLM 云 API 为可选配置
 - **上下文显式**：Full thread / Archive / 记忆包注入路径可预期，避免「假记忆」
-- **工具隔离**：项目工具仅主对话；路径相对项目根，sidecar 防逃逸
+- **工具隔离**：项目工具仅在已绑定项目时可用（主对话与 Clarify / Fork 浮层同等能力）；路径相对项目根，sidecar 防逃逸
 - **推理诚实**：无 `reasoning` / think 标签则不展示思考 UI
