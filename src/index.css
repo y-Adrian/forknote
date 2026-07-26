@@ -114,7 +114,7 @@
   --fn-text-chat:       1.05rem;   /* ~16.8px — was ~0.975rem / ~15.6px */
   --fn-text-chat-sm:    1rem;      /* compact composer — was ~0.925rem */
 
-  /* Typography — clean UI sans; mono for code */
+  /* Typography — clean UI sans; JetBrains Mono for all code surfaces */
   --ds-font-ui:
     "DM Sans",
     "Segoe UI",
@@ -122,11 +122,8 @@
     -apple-system,
     sans-serif;
   --ds-font-display: var(--ds-font-ui);
-  /* DaddyTimeMono when installed locally; graceful mono fallbacks otherwise */
+  /* Loaded via Google Fonts in index.html — distinct from DM Sans body/UI */
   --ds-font-mono:
-    "DaddyTimeMono Nerd Font Mono",
-    "DaddyTimeMono Nerd Font",
-    "DaddyTimeMono",
     "JetBrains Mono",
     ui-monospace,
     "SF Mono",
@@ -134,6 +131,7 @@
     Monaco,
     Consolas,
     monospace;
+  --font-mono: var(--ds-font-mono);
   --ds-font: var(--ds-font-ui);
 
   font-family: var(--ds-font);
@@ -1464,6 +1462,7 @@ body {
   background: transparent;
   padding: 0;
   border: none;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   color: var(--ds-code-text);
 }
@@ -4223,6 +4222,7 @@ mark.branch-highlight:hover {
 }
 
 .fn-agent-changes code {
+  font-family: var(--font-mono);
   font-size: 0.85em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4544,6 +4544,7 @@ mark.branch-highlight:hover {
 }
 
 .project-connected-hint code {
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 
