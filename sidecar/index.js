@@ -806,8 +806,8 @@ async function rootsMatch(a, b) {
 
 /**
  * Heuristic: does this shell command target paths outside the project?
- * Catches `cd /`, `cd ~`, `ls /tmp`, absolute paths under /Users|/home|… that
- * are not under projectRoot. Used to require allowOutsideProject approval.
+ * Catches `cd /`, `cd ~`, `ls /tmp`, `ls /debris`, any absolute path not under
+ * projectRoot. Used to require allowOutsideProject approval.
  * @param {string} command
  * @param {string} root
  */
@@ -839,9 +839,9 @@ function commandLeavesProject(command, root) {
     if (outside(target) || target === "/" || target === "\\" ) return true;
   }
 
-  // Absolute path tokens (POSIX + common roots). Relative paths ignored.
+  // Absolute path tokens (any POSIX /…, ~, $HOME, Windows drive) — not only /tmp|/Users.
   const absRe =
-    /(?:^|[\s"'`=:(])((?:\/(?:Users|home|private|tmp|var|etc|Volumes|mnt|opt|root)(?:\/[^\s"'`;|&<>]*)?)|(?:\/)|(?:~(?:\/[^\s"'`;|&<>]*)?)|(?:\$\{?HOME\}?(?:\/[^\s"'`;|&<>]*)?))/g;
+    /(?:^|[\s"'`=:(])((?:\/[^\s"'`;|&<>]*)|(?:~(?:\/[^\s"'`;|&<>]*)?)|(?:\$\{?HOME\}?(?:\/[^\s"'`;|&<>]*)?)|(?:[A-Za-z]:[\\/][^\s"'`;|&<>]*))/g;
   while ((m = absRe.exec(raw)) !== null) {
     const token = m[1];
     if (token === "/" || token === "~" || token.startsWith("~/") || /\$\{?HOME\}?/.test(token)) {

@@ -20,7 +20,6 @@ import {
   inferMultiStepPlan,
   inferOfficeCreateIntent,
   inferPreferredToolFromPlan,
-  inferShellIntent,
   isMutatingAgentTool,
   isPrimarilyTerminalPlan,
   limitPlanForApproval,
@@ -33,6 +32,7 @@ import {
   planMentionsOutsideProject,
   planNeedsToolApproval,
   commandLeavesProject,
+  resolveShellIntent,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
   synthesizeShellToolCall,
@@ -200,9 +200,16 @@ export async function runAgentTurn(
   const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
   const officeIntent = projectRoot ? inferOfficeCreateIntent(trimmed) : null;
   const multiStepPlan = projectRoot ? inferMultiStepPlan(trimmed) : [];
+  const priorUserTexts = thread.messages
+    .filter((m) => m.role === "user" && m.content.trim())
+    .map((m) => m.content.trim())
+    .filter((c) => c !== trimmed);
   const shellIntent =
     projectRoot && allowTerminal && !createPath && !officeIntent
-      ? inferShellIntent(trimmed)
+      ? resolveShellIntent(trimmed, {
+          projectRoot,
+          priorUserTexts,
+        })
       : null;
   const exploreIntent =
     projectRoot && !createPath && !officeIntent && !shellIntent
@@ -232,12 +239,16 @@ export async function runAgentTurn(
     multiStepPlan.length < 2 &&
     !shellLeavesProject &&
     (Boolean(exploreIntent) || Boolean(shellIntent?.readOnly));
-  /** Outside-project shell always needs Terminal 权限 card, even if plan approval is off. */
-  const forceOutsideApproval =
+  /**
+   * Clear shell intents skip messy free-form planning:
+   * - Outside-project (ls /debris) always needs Terminal 权限 card.
+   * - Mutating in-project (npm test) with plan gate on → Terminal card with exact command.
+   */
+  const forceDirectShellApproval =
     Boolean(projectRoot) &&
-    Boolean(shellIntent) &&
-    shellLeavesProject &&
-    Boolean(onAwaitPlanApproval);
+    Boolean(shellIntent?.command) &&
+    Boolean(onAwaitPlanApproval) &&
+    (shellLeavesProject || (requireApproval && !shellIntent!.readOnly));
 
   const addExecutionHints = () => {
     if (createPath) {
@@ -256,7 +267,7 @@ export async function runAgentTurn(
     } else if (shellIntent) {
       apiMessages.push({
         role: "system",
-        content: `用户要求执行 shell/终端命令。你必须调用函数 run_terminal：command 必须为 ${JSON.stringify(shellIntent.command)}。禁止用 list_dir 代替；禁止只描述命令而不调用工具。忽略历史中未完成的旧计划（如创建其他文件），除非用户明确要求继续。`,
+        content: `用户最新消息要求执行 shell/终端命令。你必须调用函数 run_terminal：command 必须为 ${JSON.stringify(shellIntent.command)}。禁止用 list_dir 代替；禁止只描述命令而不调用工具；禁止添加用户未要求的操作（如删除 node_modules）。忽略历史中未完成的旧计划，除非用户明确要求继续。`,
       });
     } else if (exploreIntent) {
       apiMessages.push({
@@ -1085,9 +1096,10 @@ export async function runAgentTurn(
     return visibleContent;
   };
 
-  // Outside-project shell (e.g. ls /tmp) always needs Terminal 权限 — even when
-  // plan approval is otherwise off or the command looks "read-only".
-  if (forceOutsideApproval && shellIntent && !signal.aborted) {
+  // Clear shell intents: Terminal 权限 / Approve card with the exact command —
+  // outside-project always; mutating cmds when plan approval is on.
+  // Avoids free-form planning that talks about running without tool_calls.
+  if (forceDirectShellApproval && shellIntent && !signal.aborted) {
     const cmd = shellIntent.command;
     const displayPlan = `run_terminal: ${cmd}`;
     const steps = [displayPlan];
@@ -1109,13 +1121,17 @@ export async function runAgentTurn(
           role: "user",
           content:
             locale === "zh"
-              ? `用户已批准在项目外执行终端命令。请立即调用 run_terminal，command=${JSON.stringify(cmd)}。`
-              : `User approved outside-project terminal access. Call run_terminal now with command=${JSON.stringify(cmd)}.`,
+              ? shellLeavesProject
+                ? `用户已批准在项目外执行终端命令。请立即调用 run_terminal，command=${JSON.stringify(cmd)}。不要用 list_dir 代替。`
+                : `用户已批准执行终端命令。请立即调用 run_terminal，command=${JSON.stringify(cmd)}。不要用 list_dir 代替，不要添加未批准的步骤。`
+              : shellLeavesProject
+                ? `User approved outside-project terminal access. Call run_terminal now with command=${JSON.stringify(cmd)}. Do not use list_dir.`
+                : `User approved the terminal command. Call run_terminal now with command=${JSON.stringify(cmd)}. Do not use list_dir or add extra steps.`,
         });
         forcedShellTool = "run_terminal";
         await executeTools({
           requireToolBatch: true,
-          allowOutsideProject: true,
+          allowOutsideProject: shellLeavesProject,
         });
         forcedShellTool = null;
       },

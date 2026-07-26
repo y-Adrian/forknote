@@ -390,6 +390,8 @@ import {
   commandLeavesProject,
   inferShellIntent,
   inferExploreIntent,
+  resolveShellIntent,
+  isShellResultFollowUp,
   planNeedsToolApproval,
   planMentionsMutatingTools,
   planMentionsOutsideProject,
@@ -526,6 +528,25 @@ const allowTrue = resolveAgentAllowTerminal({ agentAllowTerminal: true });
 const shellZh = inferShellIntent("执行shell命令，查看当前目录下有什么");
 const exploreWhenShell = inferExploreIntent("执行shell命令，查看当前目录下有什么");
 const exploreOnly = inferExploreIntent("查看当前目录下有什么");
+const shellTryNpm = inferShellIntent("try to run npm test");
+const shellRunNpm = inferShellIntent("run npm test");
+const shellRunLsDebris = inferShellIntent("run ls /debris");
+const shellLsDebris = inferShellIntent("ls /debris");
+const shellLsTmp = inferShellIntent("ls /tmp");
+const exploreRunLsDebris = inferExploreIntent("run ls /debris");
+const exploreLsDebris = inferExploreIntent("ls /debris");
+const root = "/Users/debris/cursor/test-branch";
+const leavesDebris = commandLeavesProject("ls /debris", root);
+const leavesDebrisReadOnly = isReadOnlyTerminalCommand("ls /debris", root);
+const followUpResult = isShellResultFollowUp("what is the result?");
+const followUpResolved = resolveShellIntent("what is the result?", {
+  projectRoot: root,
+  priorUserTexts: ["try to run npm test"],
+});
+const followUpNoPrior = resolveShellIntent("what is the result?", {
+  projectRoot: root,
+  priorUserTexts: ["hello"],
+});
 const readOnlyLs = isReadOnlyTerminalCommand("ls -la");
 const readOnlyNpm = isReadOnlyTerminalCommand("npm test");
 const readOnlyLsTmp = isReadOnlyTerminalCommand("ls /tmp");
@@ -567,6 +588,18 @@ console.log(JSON.stringify({
   shellZh,
   exploreWhenShell,
   exploreOnly,
+  shellTryNpm,
+  shellRunNpm,
+  shellRunLsDebris,
+  shellLsDebris,
+  shellLsTmp,
+  exploreRunLsDebris,
+  exploreLsDebris,
+  leavesDebris,
+  leavesDebrisReadOnly,
+  followUpResult,
+  followUpResolved,
+  followUpNoPrior,
   readOnlyLs,
   readOnlyNpm,
   readOnlyLsTmp,
@@ -687,6 +720,50 @@ console.log(JSON.stringify({
       JSON.stringify({
         exploreOnly: data.exploreOnly,
         shellZh: data.shellZh,
+      }),
+    );
+    ok(
+      "9b2 try to run npm test → shell npm test",
+      data.shellTryNpm?.command === "npm test" && data.shellTryNpm.readOnly === false,
+      JSON.stringify(data.shellTryNpm),
+    );
+    ok(
+      "9b3 run npm test → shell npm test",
+      data.shellRunNpm?.command === "npm test",
+      JSON.stringify(data.shellRunNpm),
+    );
+    ok(
+      "9b4 run ls /debris → run_terminal not list_dir",
+      data.shellRunLsDebris?.command === "ls /debris" &&
+        data.exploreRunLsDebris == null &&
+        data.leavesDebris === true &&
+        data.leavesDebrisReadOnly === false,
+      JSON.stringify({
+        shell: data.shellRunLsDebris,
+        explore: data.exploreRunLsDebris,
+        leavesDebris: data.leavesDebris,
+      }),
+    );
+    ok(
+      "9b5 ls /debris and ls /tmp are shell + outside",
+      data.shellLsDebris?.command === "ls /debris" &&
+        data.shellLsTmp?.command === "ls /tmp" &&
+        data.exploreLsDebris == null,
+      JSON.stringify({
+        shellLsDebris: data.shellLsDebris,
+        shellLsTmp: data.shellLsTmp,
+        exploreLsDebris: data.exploreLsDebris,
+      }),
+    );
+    ok(
+      "9b6 what is the result? reuses prior npm test",
+      data.followUpResult === true &&
+        data.followUpResolved?.command === "npm test" &&
+        data.followUpNoPrior == null,
+      JSON.stringify({
+        followUpResult: data.followUpResult,
+        followUpResolved: data.followUpResolved,
+        followUpNoPrior: data.followUpNoPrior,
       }),
     );
     ok("9c isReadOnlyTerminalCommand(ls)", data.readOnlyLs === true);

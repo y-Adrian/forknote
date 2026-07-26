@@ -325,7 +325,7 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     function: {
       name: "run_terminal",
       description:
-        "Run a shell command with starting cwd ALWAYS at the bound project root (via local sidecar) — never the sidecar process cwd. Use when the user asks for shell/terminal/命令行 (e.g. ls, pwd, npm test, git status). Do NOT substitute list_dir when they explicitly asked for a shell command. Prefer short non-interactive commands scoped to the project. Commands that cd away or use absolute paths outside the project require user permission. stdout/stderr are truncated if large. Optional cwd is relative to the project root; optional timeoutMs (default 60000, max 300000).",
+        "Run a shell command with starting cwd ALWAYS at the bound project root (via local sidecar) — never the sidecar process cwd. Use when the user asks to run/execute a command or wants shell/terminal/命令行 (e.g. try to run npm test, run ls /debris, ls, pwd, git status). Do NOT substitute list_dir — especially not for absolute paths outside the project. Prefer short non-interactive commands. Commands that cd away or use absolute paths outside the project require user permission. stdout/stderr are truncated if large. Optional cwd is relative to the project root; optional timeoutMs (default 60000, max 300000).",
       parameters: {
         type: "object",
         properties: {
@@ -378,7 +378,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 - 严格依据用户【最新一条】原话理解意图；忽略历史中未完成的旧计划/旧文件任务，除非用户明确要求继续。
 - 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
 - 意图明确且需要改磁盘或跑可能改系统的 shell 时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
-- 用户明确要求 shell/终端/执行命令时：计划里用 run_terminal，不要改成 list_dir。
+- 用户明确要求 shell/终端/执行命令/run … 时：计划里用 run_terminal（写出确切 command），不要改成 list_dir。
 - 每轮计划最多 ${MAX_PLAN_APPROVAL_STEPS} 个编号步骤。若任务更长，只写本轮要做的前 ${MAX_PLAN_APPROVAL_STEPS} 步，并一句说明其余稍后规划；不要一次列出长清单。
 - 意图明确但无需工具时：直接回答，并写明「无需工具」。
 
@@ -396,7 +396,7 @@ Rules (must follow):
 - Ground everything in the user's LATEST message. Ignore unfinished older plans/file tasks in history unless the user explicitly asks to continue.
 - If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
 - If intent is clear and needs disk changes or potentially mutating shell: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
-- If the user explicitly asked for shell/terminal: plan run_terminal — do not substitute list_dir.
+- If the user explicitly asked for shell/terminal/run …: plan run_terminal with the exact command — do not substitute list_dir.
 - At most ${MAX_PLAN_APPROVAL_STEPS} numbered steps per plan. If the task is longer, list only the next ${MAX_PLAN_APPROVAL_STEPS} steps for this approval round and note that the rest will be planned later — do not dump a long checklist.
 - If intent is clear but no tools are needed: answer directly and say no tools are required.
 
@@ -534,15 +534,8 @@ function isAbsoluteOutsideProject(
   const unixAbs = c.startsWith("/");
   const winAbs = /^[A-Za-z]:[\\/]/.test(c);
   if (!unixAbs && !winAbs) return false;
-  if (!projectRoot?.trim()) {
-    return (
-      c === "/" ||
-      /^\/(?:Users|home|private|tmp|var|etc|Volumes|mnt|opt|root)(?:\/|$)/i.test(
-        c,
-      ) ||
-      winAbs
-    );
-  }
+  // Any absolute path is outside when project root is unknown.
+  if (!projectRoot?.trim()) return true;
   const root = normalizePathForCompare(projectRoot);
   const abs = normalizePathForCompare(c);
   return abs !== root && !abs.toLowerCase().startsWith(root.toLowerCase() + "/");
@@ -550,7 +543,7 @@ function isAbsoluteOutsideProject(
 
 /**
  * Heuristic: command references paths outside the bound project
- * (`cd /`, `cd ~`, `ls /tmp`, absolute paths under /Users|/home|… not in root).
+ * (`cd /`, `cd ~`, `ls /tmp`, `ls /debris`, any absolute path not under root).
  */
 export function commandLeavesProject(
   command: string,
@@ -570,8 +563,9 @@ export function commandLeavesProject(
     }
   }
 
+  // POSIX absolute (/…), home (~), $HOME, or Windows drive paths — any prefix.
   const absRe =
-    /(?:^|[\s"'`=:(])((?:\/(?:Users|home|private|tmp|var|etc|Volumes|mnt|opt|root)(?:\/[^\s"'`;|&<>]*)?)|(?:\/)|(?:~(?:\/[^\s"'`;|&<>]*)?)|(?:\$\{?HOME\}?(?:\/[^\s"'`;|&<>]*)?))/g;
+    /(?:^|[\s"'`=:(])((?:\/[^\s"'`;|&<>]*)|(?:~(?:\/[^\s"'`;|&<>]*)?)|(?:\$\{?HOME\}?(?:\/[^\s"'`;|&<>]*)?)|(?:[A-Za-z]:[\\/][^\s"'`;|&<>]*))/g;
   while ((m = absRe.exec(raw)) !== null) {
     const token = m[1];
     if (
@@ -1004,11 +998,12 @@ export function buildCodingToolsSystem(
   const terminalBlock = allowTerminal
     ? `
 终端：
-- 用户明确要求 shell / 终端 / 执行命令 / 跑命令 → 必须用 run_terminal（不要改用 list_dir 代替）
+- 用户要求 run / 执行 / 运行 / shell / 终端命令（含 try to run npm test、run ls /path）→ 必须用 run_terminal，command 为用户指定的命令；禁止改用 list_dir，禁止只描述不调用
 - 默认起始 cwd = 已绑定项目根（${projectRoot}），不是 sidecar 进程目录
 - 用于 ls / pwd / npm test / 构建 / git status 等；stdout/stderr 过大时会截断
 - 工具结果会标明 projectRoot 与 cwdAbsolute —— 据此总结，不要编造目录
-- 禁止擅自 cd /、cd ~、访问 /tmp 等项目外路径；若用户明确要求，须等用户批准权限后再执行
+- 绝对路径（ls /tmp、ls /debris、cd ~）属项目外：须等用户批准权限后再执行；禁止用 list_dir 列项目根冒充结果
+- 用户追问结果时：依据上一轮 run_terminal 输出回答，或重新调用同一命令；禁止发明无关破坏性操作
 `
     : "";
   return `
@@ -1018,8 +1013,8 @@ export function buildCodingToolsSystem(
 你有原生函数工具：${toolNames}。
 
 查看项目（必须用工具，不要凭空猜目录内容）：
-- 列出目录 → list_dir（项目根用 path="."；子目录如 "src"）——仅当用户要看目录且未要求 shell 时
-- 用户要「执行 shell / 终端命令」查看目录 → run_terminal（如 command="ls" 或 "ls -la"），不要用 list_dir 顶替
+- 列出目录 → list_dir（项目根用 path="."；子目录如 "src"）——仅当用户要看项目内目录且未要求 shell/run/绝对路径 ls 时
+- 用户要「执行 shell / 终端 / run 命令」或带绝对路径的 ls → run_terminal（如 command="ls"、"ls /debris"、"npm test"），不要用 list_dir 顶替
 - 阅读文件 → read_file（先 list_dir 再读具体路径）
 - 全文搜索 → search_files
 
@@ -1029,12 +1024,12 @@ export function buildCodingToolsSystem(
 - Word → write_docx；Excel → write_xlsx
 ${terminalBlock}
 只把内容写在 Markdown 里不会写入磁盘。
-路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径。
+路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径（run_terminal 的 command 内除外）。
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
 
 多轮工作流（一次用户消息内可循环多轮）：
 1. 依据用户【最新一条】明确意图决定是否需要工具；意图不清则先回答/澄清，不要擅自改文件或列目录；不要继续执行历史里未完成的旧任务，除非用户明确要求
-2. 需要工具时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行）
+2. 需要工具时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行；若要跑命令则立刻 tool_calls run_terminal）
 3. 阅读 tool / 工具结果；若用户任务尚未完成 → 再调下一批必要工具
 4. 全部做完 → 最后一轮用中文总结，不要再调工具
 5. 禁止自行添加用户未要求的验证步骤（如写完再 list_dir、无必要的反复 read）`;
@@ -1844,6 +1839,7 @@ export function alignOfficeToolCall(
 
 /**
  * Detect "看看当前目录有什么 / 读一下某文件" explore intents.
+ * Never steals explicit shell / absolute-path listing — those belong to run_terminal.
  */
 export function inferExploreIntent(
   userText: string,
@@ -1855,8 +1851,25 @@ export function inferExploreIntent(
   const t = userText.trim();
   if (!t) return null;
 
+  // Shell / terminal wording or absolute-path ls → not list_dir of project root.
+  if (
+    /(?:(?:please|pls|try\s+to|can\s+you|could\s+you)\s+)?(?:run|execute|exec)\b/i.test(
+      t,
+    ) ||
+    /(?:在终端|用终端|用 shell|via shell|in (?:the )?terminal|run_terminal)/i.test(
+      t,
+    ) ||
+    /(?:执行|运行|跑)\s*(?:一下)?\s*(?:shell|bash|zsh|sh|终端|命令行)?\s*命令/i.test(
+      t,
+    ) ||
+    /\bls\s+(?:\/|~|[A-Za-z]:)/i.test(t) ||
+    /^(?:ls|pwd)(?:\s|$)/i.test(t)
+  ) {
+    return null;
+  }
+
   const wantsList =
-    /列出|罗列|有哪些|有什么文件|目录|文件夹|项目结构|树形|ls\b|list\s+(files|dir|directory)|what('s| is) in|show\s+(me\s+)?(the\s+)?(files|dir|directory|folder|tree)|当前(目录|文件夹|项目)/i.test(
+    /列出|罗列|有哪些|有什么文件|目录|文件夹|项目结构|树形|list\s+(files|dir|directory)|what('s| is) in|show\s+(me\s+)?(the\s+)?(files|dir|directory|folder|tree)|当前(目录|文件夹|项目)/i.test(
       t,
     ) || /看看.*(目录|文件夹|项目|文件)/i.test(t);
 
@@ -1915,15 +1928,58 @@ export type ShellIntent = {
   readOnly: boolean;
 };
 
+/** Strip leading polite / run verbs so we can parse the actual command. */
+function stripRunPrefix(text: string): string {
+  return text
+    .trim()
+    .replace(
+      /^(?:(?:please|pls|try\s+to|can\s+you|could\s+you|would\s+you)\s+)*(?:run|execute|exec)\s+/i,
+      "",
+    )
+    .replace(/^(?:请)?(?:试着|尝试)?(?:执行|运行|跑)(?:一下)?\s*/i, "")
+    .trim();
+}
+
+/**
+ * Whole-message (or post-run-prefix) commands we can deterministically map to
+ * run_terminal — including absolute paths like `ls /debris`.
+ */
+const BARE_SHELL_COMMAND_RE =
+  /^(?:ls(?:\s+[-\w./\\~]+)*|pwd|echo\s+.+|cat\s+\S+|head(?:\s+\S+)*|tail(?:\s+\S+)*|which\s+\S+|git\s+status|git\s+log(?:\s+.*)?|git\s+diff(?:\s+.*)?|npm\s+test|npm\s+run\s+\S+(?:\s+.*)?|npm\s+(?:ci|install|i|build|start|lint|outdated|ls|list)(?:\s+.*)?|yarn\s+\S+(?:\s+.*)?|pnpm\s+\S+(?:\s+.*)?|npx\s+\S+(?:\s+.*)?|node\s+-v|npm\s+-v|python(?:3)?\s+--version)$/i;
+
+function shellIntentFromCommand(
+  command: string,
+  projectRoot?: string | null,
+): ShellIntent {
+  const cmd = command.trim();
+  return {
+    command: cmd,
+    readOnly: isReadOnlyTerminalCommand(cmd, projectRoot),
+  };
+}
+
 /**
  * Detect explicit shell/terminal requests. Prefer run_terminal over list_dir
  * when the user asked to run a command (even if they also say "list files").
+ *
+ * Captures: `try to run npm test`, `run ls /debris`, `ls /tmp`, quoted cmds.
  */
-export function inferShellIntent(userText: string): ShellIntent | null {
+export function inferShellIntent(
+  userText: string,
+  projectRoot?: string | null,
+): ShellIntent | null {
   const t = userText.trim();
   if (!t) return null;
 
+  const runVerb =
+    /(?:(?:please|pls|try\s+to|can\s+you|could\s+you|would\s+you)\s+)*(?:run|execute|exec)\b/i.test(
+      t,
+    ) ||
+    // CJK verbs have no \b word-boundary; require a following token/space/quote.
+    /(?:请)?(?:试着|尝试)?(?:执行|运行|跑)(?:一下)?(?:\s|[：:`"'“”])/i.test(t);
+
   const wantsShell =
+    runVerb ||
     /(?:执行|运行|跑)\s*(?:一下)?\s*(?:shell|bash|zsh|sh|终端|命令行)?\s*命令/i.test(
       t,
     ) ||
@@ -1931,57 +1987,117 @@ export function inferShellIntent(userText: string): ShellIntent | null {
     /\brun_terminal\b/i.test(t) ||
     /(?:在终端|用终端|用 shell|via shell|in (?:the )?terminal|run (?:a )?shell)/i.test(
       t,
-    ) ||
-    /(?:执行|运行|跑一下)\s*[`"'“”][^`'“”\n]+[`"'“”]/i.test(t);
+    );
 
-  // Bare common commands as the whole message
-  const bare = t.match(
-    /^(?:ls(?:\s+-\w+)*|pwd|echo\s+.+|git\s+status|git\s+log(?:\s+.*)?|npm\s+test|npm\s+run\s+\w+)$/i,
-  );
-  if (!wantsShell && !bare) return null;
-
-  // Explicit quoted / fenced command
+  // Explicit quoted / fenced command (with or without run verb)
   const quoted =
     t.match(
-      /(?:执行|运行|跑(?:一下)?|run|exec)\s*[：:\s]*[`"'“”]([^`'“”\n]+)[`"'“”]/i,
-    ) || t.match(/```(?:bash|sh|zsh|shell)?\s*\n?([^\n`]+)```/i);
+      /(?:执行|运行|跑(?:一下)?|run|execute|exec)\s*[：:\s]*[`"'“”]([^`'“”\n]+)[`"'“”]/i,
+    ) ||
+    t.match(/[`"'“”]((?:ls|pwd|npm|git|echo|cat|head|tail)\b[^`'“”\n]*)[`"'“”]/i) ||
+    t.match(/```(?:bash|sh|zsh|shell)?\s*\n?([^\n`]+)```/i);
   if (quoted?.[1]?.trim()) {
-    const command = quoted[1].trim();
-    return {
-      command,
-      readOnly: isReadOnlyTerminalCommand(command, null),
-    };
+    return shellIntentFromCommand(quoted[1].trim(), projectRoot);
   }
 
-  if (bare) {
-    const command = bare[0].trim();
-    return {
-      command,
-      readOnly: isReadOnlyTerminalCommand(command, null),
-    };
+  // Bare common commands as the whole message (incl. absolute paths)
+  if (BARE_SHELL_COMMAND_RE.test(t)) {
+    return shellIntentFromCommand(t, projectRoot);
+  }
+
+  // "run npm test" / "try to run ls /debris" / "执行 npm test"
+  if (runVerb) {
+    const rest = stripRunPrefix(t);
+    if (rest && BARE_SHELL_COMMAND_RE.test(rest)) {
+      return shellIntentFromCommand(rest, projectRoot);
+    }
+    // Free-form remainder only when it looks like a real shell invocation —
+    // reject leftover Chinese prose from「执行shell命令，查看…」.
+    if (
+      rest &&
+      rest.length <= 300 &&
+      looksLikeShellCommand(rest) &&
+      !/[\u4e00-\u9fff]/.test(rest)
+    ) {
+      return shellIntentFromCommand(rest, projectRoot);
+    }
+  }
+
+  if (!wantsShell) {
+    // Absolute-path listing without "run": `ls /debris`, `ls /tmp`
+    const absLs = t.match(/^(ls(?:\s+-\w+)*)\s+(\/[^\s;|&]+|~(?:\/\S*)?)$/i);
+    if (absLs) {
+      return shellIntentFromCommand(`${absLs[1]} ${absLs[2]}`, projectRoot);
+    }
+    return null;
   }
 
   // "执行shell命令，查看当前目录下有什么" → ls
+  // But prefer an explicit ls path if present: "run ls /debris" already handled above
+  const lsWithPath = t.match(/\bls((?:\s+-\w+)*)\s+(\/[^\s;|&]+|~(?:\/\S*)?)/i);
+  if (lsWithPath) {
+    return shellIntentFromCommand(
+      `ls${lsWithPath[1]} ${lsWithPath[2]}`,
+      projectRoot,
+    );
+  }
   if (
     /(?:当前目录|目录下|文件夹|有什么|有哪些|列出|list|files?|folder)/i.test(t) ||
     /\bls\b/i.test(t)
   ) {
-    return { command: "ls -la", readOnly: true };
+    return shellIntentFromCommand("ls -la", projectRoot);
   }
   if (/\bpwd\b|当前路径|工作目录/i.test(t)) {
-    return { command: "pwd", readOnly: true };
+    return shellIntentFromCommand("pwd", projectRoot);
   }
   if (/git\s*status|仓库状态/i.test(t)) {
-    return { command: "git status", readOnly: true };
+    return shellIntentFromCommand("git status", projectRoot);
+  }
+  if (/npm\s+test|跑测试|运行测试/i.test(t)) {
+    return shellIntentFromCommand("npm test", projectRoot);
   }
 
-  // Generic "run a shell command" without a specific command — still shell intent;
-  // leave command empty so execute path can force tool_choice and let the model fill it,
-  // or use ls as a safe default when they clearly want to inspect the project.
+  // Generic "run a shell command" without a specific command — safe inspect default
   if (wantsShell) {
-    return { command: "ls -la", readOnly: true };
+    return shellIntentFromCommand("ls -la", projectRoot);
   }
 
+  return null;
+}
+
+/** Follow-ups that ask for the outcome of a prior shell/tool run. */
+export function isShellResultFollowUp(userText: string): boolean {
+  const t = userText.trim();
+  if (!t || t.length > 120) return false;
+  return (
+    /^(?:what(?:'s|\s+is|\s+was)?\s+the\s+(?:result|output|outcome)|how\s+did\s+it\s+go|did\s+it\s+(?:work|run|finish)|any\s+(?:result|output)|结果(?:呢|是什么|如何|怎么样)?|输出(?:呢|是什么)?|跑完了吗|怎么样了|成功了吗|怎样了)\??$/i.test(
+      t,
+    ) || /^(?:so\s+)?(?:what|whats|what's)\s+happened\??$/i.test(t)
+  );
+}
+
+/**
+ * Resolve shell intent for this turn. If the user asks "what is the result?"
+ * after a prior shell request that may not have completed, reuse that command
+ * instead of inventing unrelated follow-ups (e.g. delete node_modules).
+ */
+export function resolveShellIntent(
+  userText: string,
+  options?: {
+    projectRoot?: string | null;
+    /** Prior user messages, oldest → newest (excluding the current turn). */
+    priorUserTexts?: string[];
+  },
+): ShellIntent | null {
+  const projectRoot = options?.projectRoot;
+  const direct = inferShellIntent(userText, projectRoot);
+  if (direct) return direct;
+  if (!isShellResultFollowUp(userText)) return null;
+  const priors = options?.priorUserTexts ?? [];
+  for (let i = priors.length - 1; i >= 0; i--) {
+    const prev = inferShellIntent(priors[i], projectRoot);
+    if (prev) return prev;
+  }
   return null;
 }
 
