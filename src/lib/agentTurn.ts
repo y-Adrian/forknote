@@ -156,11 +156,6 @@ export async function runAgentTurn(
   } = options;
 
   const trimmed = userText.trim();
-  const createPathEarly = inferCreateFilePath(trimmed);
-  const officeIntentEarly = inferOfficeCreateIntent(trimmed);
-  if ((createPathEarly || officeIntentEarly) && !projectRoot) {
-    return "need_project";
-  }
 
   const agentMaxRounds = resolveAgentMaxRounds(settings);
   const allowTerminal = resolveAgentAllowTerminal(settings);
@@ -201,22 +196,88 @@ export async function runAgentTurn(
     apiMessages.push(...extraMessages);
   }
 
-  const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
-  const officeIntent = projectRoot ? inferOfficeCreateIntent(trimmed) : null;
-  const multiStepPlan = projectRoot ? inferMultiStepPlan(trimmed) : [];
+  /**
+   * No bound project → plain Q&A (Cursor chat without codebase tools).
+   * Skip tools schema, plan approval, explore/shell nudges, and need_project
+   * blocking so ordinary asks (incl. “write some code”) just get an answer.
+   */
+  if (!projectRoot) {
+    let apiReasoning = "";
+    const patchAssistantContent = (content: string) => {
+      if (!isOwned() || signal.aborted) return;
+      patchContent({ content });
+    };
+    const patchAssistantState = (patch: AgentContentPatch) => {
+      if (!isOwned() || signal.aborted) return;
+      patchContent(patch);
+    };
+
+    patchAssistantContent(t("chat.thinking", undefined, locale));
+
+    let roundText = "";
+    const streamResult = await streamChat(
+      llm,
+      apiMessages,
+      (delta) => {
+        roundText += delta;
+        const cleaned = stripToolCalls(roundText);
+        if (cleaned.length > 0) {
+          patchAssistantState({
+            content: cleaned,
+            ...(apiReasoning.trim() ? { reasoning: apiReasoning } : {}),
+          });
+        }
+      },
+      {
+        signal,
+        temperature: 0.6,
+        // Explicitly no tools — unbound sessions are chat-only.
+        tools: undefined,
+        toolChoice: undefined,
+        onReasoningDelta: (piece) => {
+          apiReasoning += piece;
+          if (apiReasoning.trim()) {
+            patchAssistantState({ reasoning: apiReasoning });
+          }
+        },
+      },
+    );
+
+    if (signal.aborted || !isOwned()) {
+      return "aborted";
+    }
+
+    roundText = streamResult.content || roundText;
+    if (streamResult.reasoning.length >= apiReasoning.length) {
+      apiReasoning = streamResult.reasoning;
+    }
+    const merged = mergeReasoningChannels(
+      apiReasoning,
+      stripToolCalls(roundText),
+    );
+    patchAssistantState({
+      content: merged.content,
+      ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
+    });
+    return "completed";
+  }
+
+  const createPath = inferCreateFilePath(trimmed);
+  const officeIntent = inferOfficeCreateIntent(trimmed);
+  const multiStepPlan = inferMultiStepPlan(trimmed);
   const priorUserTexts = thread.messages
     .filter((m) => m.role === "user" && m.content.trim())
     .map((m) => m.content.trim())
     .filter((c) => c !== trimmed);
   const shellIntent =
-    projectRoot && allowTerminal && !createPath && !officeIntent
+    allowTerminal && !createPath && !officeIntent
       ? resolveShellIntent(trimmed, {
           projectRoot,
           priorUserTexts,
         })
       : null;
   const exploreIntent =
-    projectRoot && !createPath && !officeIntent && !shellIntent
+    !createPath && !officeIntent && !shellIntent
       ? inferExploreIntent(trimmed)
       : null;
   const explorePlaceholder =

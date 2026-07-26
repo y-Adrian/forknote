@@ -406,10 +406,10 @@ const en = {
     "This thread is getting long — Compress into SUMMARY / TASKS / DECISIONS to keep later turns cheaper and clearer.",
   "main.compressSuggestAction": "Compress now",
   "main.compressSuggestDismiss": "Not now",
-  "main.placeholderEmpty": "Ask what you're researching…",
+  "main.placeholderEmpty": "Ask anything — questions, ideas, or sample code…",
   "main.placeholderProject":
     "Ask about the project — e.g. list the folder, read package.json, or edit the README…",
-  "main.placeholderContinue": "Continue the main thread…",
+  "main.placeholderContinue": "Continue the conversation…",
   "main.placeholderContinueProject":
     "Continue the main thread, or ask to list/read/write project files…",
   "main.placeholderArchive": "Continue on the archive context…",
@@ -898,10 +898,10 @@ const zh: Record<MessageKey, string> = {
     "对话已经较长 — 建议压缩为 SUMMARY / TASKS / DECISIONS，让后续轮次更省、更清晰。",
   "main.compressSuggestAction": "立即压缩",
   "main.compressSuggestDismiss": "暂不",
-  "main.placeholderEmpty": "问你正在研究的问题…",
+  "main.placeholderEmpty": "随便问 — 问题、想法，或要一段示例代码…",
   "main.placeholderProject":
     "询问项目，例如：列出当前目录、读取 package.json、或修改 README…",
-  "main.placeholderContinue": "继续主线对话…",
+  "main.placeholderContinue": "继续对话…",
   "main.placeholderContinueProject":
     "继续主线，或让助手列出/读取/修改项目文件…",
   "main.placeholderArchive": "在归档上下文上继续…",
