@@ -466,6 +466,9 @@ function ProjectSettingsPanel() {
   const [approvalDraft, setApprovalDraft] = useState(
     settings.agentRequireApproval ?? true,
   );
+  const [terminalDraft, setTerminalDraft] = useState(
+    settings.agentAllowTerminal ?? true,
+  );
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -473,8 +476,14 @@ function ProjectSettingsPanel() {
     setUrlDraft(sidecarUrl || prefs.sidecarUrl || "/sidecar");
     setRoundsDraft(settings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS);
     setApprovalDraft(settings.agentRequireApproval ?? true);
+    setTerminalDraft(settings.agentAllowTerminal ?? true);
     setSaved(false);
-  }, [sidecarUrl, settings.agentMaxRounds, settings.agentRequireApproval]);
+  }, [
+    sidecarUrl,
+    settings.agentMaxRounds,
+    settings.agentRequireApproval,
+    settings.agentAllowTerminal,
+  ]);
 
   const save = () => {
     const next = urlDraft.trim() || "/sidecar";
@@ -491,6 +500,7 @@ function ProjectSettingsPanel() {
       ...settings,
       agentMaxRounds: clamped,
       agentRequireApproval: approvalDraft,
+      agentAllowTerminal: terminalDraft,
     });
     saveSettings(nextSettings);
     setSettings(nextSettings);
@@ -546,6 +556,21 @@ function ProjectSettingsPanel() {
       </label>
       <p className="hint local-hint">
         {t("projectSettings.agentRequireApprovalHint")}
+      </p>
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={terminalDraft}
+          onChange={(e) => {
+            setTerminalDraft(e.target.checked);
+            setSaved(false);
+          }}
+        />
+        <span>{t("projectSettings.agentAllowTerminal")}</span>
+      </label>
+      <p className="hint local-hint">
+        {t("projectSettings.agentAllowTerminalHint")}
       </p>
 
       {projectRoot ? (

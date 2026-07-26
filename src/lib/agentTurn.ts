@@ -13,23 +13,30 @@ import {
   buildPlanningPhaseSystem,
   collectToolCalls,
   executeToolCall,
+  extractTerminalCommandsFromPlan,
+  getProjectOpenAITools,
   inferCreateFilePath,
   inferExploreIntent,
   inferMultiStepPlan,
   inferOfficeCreateIntent,
   inferPreferredToolFromPlan,
+  inferShellIntent,
   isMutatingAgentTool,
+  isPrimarilyTerminalPlan,
   limitPlanForApproval,
+  looksLikeMutationRequest,
   multiStepFollowUpHint,
   multiStepSystemHint,
   parseAgentPlan,
   pathsMatch,
   planMentionsMutatingTools,
+  planMentionsOutsideProject,
   planNeedsToolApproval,
+  commandLeavesProject,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
+  synthesizeShellToolCall,
   nativeToolResultMessage,
-  PROJECT_OPENAI_TOOLS,
   stripToolCalls,
   synthesizeWriteFromReply,
   toolResultMessage,
@@ -51,6 +58,7 @@ import {
 } from "./openai";
 import { mergeReasoningChannels } from "./reasoning";
 import {
+  resolveAgentAllowTerminal,
   resolveAgentMaxRounds,
   resolveAgentRequireApproval,
 } from "./settings";
@@ -92,6 +100,8 @@ export type RunAgentTurnOptions = {
   onAwaitPlanApproval: (args: {
     planText: string;
     steps: string[];
+    /** Exact run_terminal commands when known (preferred by Terminal card). */
+    commands?: string[];
     /** Total steps before chunking (for UI “showing N of M”). */
     totalStepCount?: number;
     continueExecution: () => Promise<void>;
@@ -151,8 +161,10 @@ export async function runAgentTurn(
   }
 
   const agentMaxRounds = resolveAgentMaxRounds(settings);
+  const allowTerminal = resolveAgentAllowTerminal(settings);
+  const projectTools = getProjectOpenAITools({ allowTerminal });
   const codingToolsSystem = projectRoot
-    ? buildCodingToolsSystem(projectRoot)
+    ? buildCodingToolsSystem(projectRoot, { allowTerminal })
     : null;
   const resolved = resolveConversationContext(session);
   if (resolved.repairedToLive) {
@@ -188,8 +200,12 @@ export async function runAgentTurn(
   const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
   const officeIntent = projectRoot ? inferOfficeCreateIntent(trimmed) : null;
   const multiStepPlan = projectRoot ? inferMultiStepPlan(trimmed) : [];
+  const shellIntent =
+    projectRoot && allowTerminal && !createPath && !officeIntent
+      ? inferShellIntent(trimmed)
+      : null;
   const exploreIntent =
-    projectRoot && !createPath && !officeIntent
+    projectRoot && !createPath && !officeIntent && !shellIntent
       ? inferExploreIntent(trimmed)
       : null;
   const explorePlaceholder =
@@ -200,8 +216,28 @@ export async function runAgentTurn(
         : exploreIntent?.kind === "search"
           ? t("agent.status.searching", { query: exploreIntent.query }, locale)
           : null;
+  const shellPlaceholder = shellIntent
+    ? t("agent.status.terminal", { command: shellIntent.command }, locale)
+    : null;
   const requireApproval =
     Boolean(projectRoot) && resolveAgentRequireApproval(settings);
+  /** Pure read/list/search or read-only shell — skip plan gate (still gated for writes / mutating shell / outside-project). */
+  const shellLeavesProject =
+    Boolean(shellIntent) &&
+    Boolean(projectRoot) &&
+    commandLeavesProject(shellIntent!.command, projectRoot);
+  const skipPlanApproval =
+    Boolean(projectRoot) &&
+    !looksLikeMutationRequest(trimmed) &&
+    multiStepPlan.length < 2 &&
+    !shellLeavesProject &&
+    (Boolean(exploreIntent) || Boolean(shellIntent?.readOnly));
+  /** Outside-project shell always needs Terminal 权限 card, even if plan approval is off. */
+  const forceOutsideApproval =
+    Boolean(projectRoot) &&
+    Boolean(shellIntent) &&
+    shellLeavesProject &&
+    Boolean(onAwaitPlanApproval);
 
   const addExecutionHints = () => {
     if (createPath) {
@@ -216,6 +252,11 @@ export async function runAgentTurn(
           officeIntent.tool === "write_xlsx"
             ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
             : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落数组（空白文档用 [] 或 [""]）。禁止只把 JSON 贴在 Markdown 里；禁止未调用工具就声称已创建。禁止用 write_file。`,
+      });
+    } else if (shellIntent) {
+      apiMessages.push({
+        role: "system",
+        content: `用户要求执行 shell/终端命令。你必须调用函数 run_terminal：command 必须为 ${JSON.stringify(shellIntent.command)}。禁止用 list_dir 代替；禁止只描述命令而不调用工具。忽略历史中未完成的旧计划（如创建其他文件），除非用户明确要求继续。`,
       });
     } else if (exploreIntent) {
       apiMessages.push({
@@ -247,10 +288,12 @@ export async function runAgentTurn(
         : exploreIntent?.kind === "search"
           ? "search_files"
           : null;
+  let forcedShellTool = Boolean(shellIntent) ? ("run_terminal" as const) : null;
   /** After Approve & run: prefer the first tool named in the approved plan. */
   let forcedPlanTool: AgentToolName | null = null;
   let officeFallbackUsed = false;
   let exploreFallbackUsed = false;
+  let shellFallbackUsed = false;
   let officeToolFailed = false;
   let officeTargetWritten = false;
   let toolBatchesExecuted = 0;
@@ -275,8 +318,11 @@ export async function runAgentTurn(
   const executeTools = async (opts?: {
     /** Keep nudging until at least one tool batch runs (post-approve). */
     requireToolBatch?: boolean;
+    /** User approved outside-project terminal access for this batch. */
+    allowOutsideProject?: boolean;
   }): Promise<string> => {
     const requireToolBatch = Boolean(opts?.requireToolBatch);
+    const allowOutsideProject = Boolean(opts?.allowOutsideProject);
     // Each approve/execute phase gets a fresh round budget.
     round = 0;
     lastModelToolBatches = 0;
@@ -284,9 +330,52 @@ export async function runAgentTurn(
     addExecutionHints();
 
     if (!deterministicPrefetchDone) {
+      const preflightShell =
+        projectRoot &&
+        allowTerminal &&
+        !signal.aborted &&
+        shellIntent &&
+        shellIntent.readOnly &&
+        !commandLeavesProject(shellIntent.command, projectRoot);
+      if (preflightShell) {
+        const shellCall = synthesizeShellToolCall(shellIntent);
+        patchAssistantContent(
+          t("agent.status.terminal", { command: shellIntent.command }, locale),
+        );
+        const pre = await abortable(
+          executeToolCall(shellCall, sidecarUrl, signal, projectRoot, locale, {
+            allowTerminal,
+            allowOutsideProject,
+          }),
+          signal,
+        );
+        if (!signal.aborted) {
+          onAgentActivity({
+            id: createId(),
+            at: Date.now(),
+            ...pre.activity,
+          });
+          toolBatchesExecuted = 1;
+          shellFallbackUsed = true;
+          forcedShellTool = null;
+          apiMessages.push({
+            role: "user",
+            content: pre.ok
+              ? `【工具结果：run_terminal command=${JSON.stringify(shellIntent.command)}】\n${pre.resultText}\n\n（以上为真实终端输出。）\n用户任务：${trimmed}\n请据此用中文简要总结；若任务已完成则不要再调工具。`
+              : `【run_terminal 失败】${pre.resultText}\n\n请向用户说明 sidecar/终端权限问题，不要编造命令输出。`,
+          });
+          if (!pre.ok) {
+            patchAssistantContent(
+              `Could not run command: ${pre.resultText}`,
+            );
+          }
+        }
+      }
+
       const preflightList =
         projectRoot &&
         !signal.aborted &&
+        !shellIntent &&
         (exploreIntent?.kind === "list" ||
           multiStepPlan[0]?.tool === "list_dir");
       if (preflightList) {
@@ -296,7 +385,10 @@ export async function runAgentTurn(
             : { tool: "list_dir", path: multiStepPlan[0]?.path ?? "." };
         patchAssistantContent(t("agent.status.listRoot", undefined, locale));
         const pre = await abortable(
-          executeToolCall(listCall, sidecarUrl, signal, projectRoot, locale),
+          executeToolCall(listCall, sidecarUrl, signal, projectRoot, locale, {
+            allowTerminal,
+            allowOutsideProject,
+          }),
           signal,
         );
         if (!signal.aborted) {
@@ -327,7 +419,10 @@ export async function runAgentTurn(
           if (step.tool !== "read_file" || !step.path) continue;
           patchAssistantContent(t("agent.status.reading", { path: step.path }, locale));
           const readExec = await abortable(
-            executeToolCall(step, sidecarUrl, signal, projectRoot, locale),
+            executeToolCall(step, sidecarUrl, signal, projectRoot, locale, {
+              allowTerminal,
+              allowOutsideProject,
+            }),
             signal,
           );
           if (signal.aborted) break;
@@ -383,14 +478,16 @@ export async function runAgentTurn(
                   ? t("agent.status.creating", { path: createPath }, locale)
                   : officeIntent
                     ? t("agent.status.creating", { path: officeIntent.path }, locale)
-                    : explorePlaceholder || t("agent.status.tools", undefined, locale),
+                    : shellPlaceholder ||
+                      explorePlaceholder ||
+                      t("agent.status.tools", undefined, locale),
               );
             }
           },
           {
             signal,
             temperature: projectRoot ? 0.2 : 0.6,
-            tools: useNativeTools ? PROJECT_OPENAI_TOOLS : undefined,
+            tools: useNativeTools ? projectTools : undefined,
             toolChoice:
               useNativeTools && forcedWrite && round === 0
                 ? { type: "function", function: { name: "write_file" } }
@@ -399,6 +496,11 @@ export async function runAgentTurn(
                       type: "function",
                       function: { name: forcedOfficeTool },
                     }
+                  : useNativeTools && forcedShellTool && round === 0
+                    ? {
+                        type: "function",
+                        function: { name: "run_terminal" },
+                      }
                   : useNativeTools && forcedExploreTool && round === 0
                     ? {
                         type: "function",
@@ -497,6 +599,13 @@ export async function runAgentTurn(
             ) {
               agent.query = exploreIntent.query;
             }
+            if (
+              shellIntent &&
+              agent.tool === "run_terminal" &&
+              !agent.command?.trim()
+            ) {
+              agent.command = shellIntent.command;
+            }
             pending.push({ agent, native: tc });
           }
         }
@@ -535,6 +644,13 @@ export async function runAgentTurn(
           ) {
             agent.query = exploreIntent.query;
           }
+          if (
+            shellIntent &&
+            agent.tool === "run_terminal" &&
+            !agent.command?.trim()
+          ) {
+            agent.command = shellIntent.command;
+          }
           pending.push({ agent });
         }
       }
@@ -569,6 +685,20 @@ export async function runAgentTurn(
           agent: synthesizeExploreToolCall(exploreIntent),
         });
         exploreFallbackUsed = true;
+      }
+
+      if (
+        shellIntent &&
+        projectRoot &&
+        allowTerminal &&
+        !shellFallbackUsed &&
+        toolBatchesExecuted === 0 &&
+        !pending.some((p) => p.agent.tool === "run_terminal")
+      ) {
+        pending.push({
+          agent: synthesizeShellToolCall(shellIntent),
+        });
+        shellFallbackUsed = true;
       }
 
       if (
@@ -650,6 +780,26 @@ export async function runAgentTurn(
           continue;
         }
 
+        if (shellIntent && projectRoot && allowTerminal && round === 0) {
+          apiMessages.push({
+            role: "assistant",
+            content: cleanedRound || roundText || "",
+          });
+          apiMessages.push({
+            role: "user",
+            content: `请立刻调用 run_terminal，command=${JSON.stringify(shellIntent.command)}。不要用 list_dir 代替，不要只描述命令。`,
+          });
+          visibleContent = cleanedRound;
+          patchAssistantContent(
+            visibleContent ||
+              shellPlaceholder ||
+              t("agent.status.tools", undefined, locale),
+          );
+          round += 1;
+          forcedShellTool = "run_terminal";
+          continue;
+        }
+
         if (projectRoot && toolBatchesExecuted === batchesAtStart && round < 2) {
           apiMessages.push({
             role: "assistant",
@@ -658,7 +808,7 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content:
-              "请立刻调用工具执行（list_dir / read_file / write_file / search_replace / write_docx 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
+              "请立刻调用工具执行（list_dir / read_file / write_file / search_replace / write_docx / run_terminal 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
           });
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
@@ -736,7 +886,9 @@ export async function runAgentTurn(
               ? t("agent.status.creating", { path: createPath }, locale)
               : officeIntent
                 ? t("agent.status.creating", { path: officeIntent.path }, locale)
-                : explorePlaceholder || t("agent.status.tools", undefined, locale)),
+                : shellPlaceholder ||
+                  explorePlaceholder ||
+                  t("agent.status.tools", undefined, locale)),
         );
       }
 
@@ -746,13 +898,22 @@ export async function runAgentTurn(
       for (const item of pending) {
         if (signal.aborted) break;
         const executed = await abortable(
-          executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale),
+          executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
+            allowTerminal,
+            allowOutsideProject,
+          }),
           signal,
         );
         if (signal.aborted) break;
         if (executed.ok) {
           batchHadSuccess = true;
-          if (isMutatingAgentTool(item.agent.tool)) {
+          if (
+            isMutatingAgentTool(
+              item.agent.tool,
+              item.agent.command,
+              projectRoot,
+            )
+          ) {
             lastMutatingToolSuccesses += 1;
           }
         }
@@ -883,7 +1044,10 @@ export async function runAgentTurn(
       const synth = synthesizeOfficeFromIntent(officeIntent, trimmed);
       patchAssistantContent(t("agent.status.creating", { path: officeIntent.path }, locale));
       const executed = await abortable(
-        executeToolCall(synth, sidecarUrl, signal, projectRoot, locale),
+        executeToolCall(synth, sidecarUrl, signal, projectRoot, locale, {
+          allowTerminal,
+          allowOutsideProject,
+        }),
         signal,
       );
       onAgentActivity({
@@ -921,7 +1085,45 @@ export async function runAgentTurn(
     return visibleContent;
   };
 
-  if (requireApproval && !signal.aborted) {
+  // Outside-project shell (e.g. ls /tmp) always needs Terminal 权限 — even when
+  // plan approval is otherwise off or the command looks "read-only".
+  if (forceOutsideApproval && shellIntent && !signal.aborted) {
+    const cmd = shellIntent.command;
+    const displayPlan = `run_terminal: ${cmd}`;
+    const steps = [displayPlan];
+    // Inline shell approval shows the command; keep the bubble short.
+    patchAssistantContent(
+      locale === "zh" ? "需要批准后才能运行：" : "Needs approval to run:",
+    );
+    onAwaitPlanApproval({
+      planText: displayPlan,
+      steps,
+      commands: [cmd],
+      totalStepCount: 1,
+      continueExecution: async () => {
+        apiMessages.push({
+          role: "system",
+          content: buildExecutionPhaseSystem(locale),
+        });
+        apiMessages.push({
+          role: "user",
+          content:
+            locale === "zh"
+              ? `用户已批准在项目外执行终端命令。请立即调用 run_terminal，command=${JSON.stringify(cmd)}。`
+              : `User approved outside-project terminal access. Call run_terminal now with command=${JSON.stringify(cmd)}.`,
+        });
+        forcedShellTool = "run_terminal";
+        await executeTools({
+          requireToolBatch: true,
+          allowOutsideProject: true,
+        });
+        forcedShellTool = null;
+      },
+    });
+    return "waiting_plan";
+  }
+
+  if (requireApproval && !skipPlanApproval && !signal.aborted) {
     apiMessages.push({
       role: "system",
       content: buildPlanningPhaseSystem(locale),
@@ -995,9 +1197,30 @@ export async function runAgentTurn(
         drafted.displayPlan,
         drafted.steps,
       );
+      const extractedCmds = extractTerminalCommandsFromPlan(
+        `${drafted.displayPlan}\n${drafted.steps.join("\n")}`,
+      );
+      const planCommands =
+        extractedCmds.length > 0
+          ? extractedCmds
+          : shellIntent?.command?.trim()
+            ? [shellIntent.command.trim()]
+            : undefined;
+      const terminalPlan = isPrimarilyTerminalPlan(
+        drafted.displayPlan,
+        drafted.steps,
+        planCommands,
+      );
+      // Terminal: short lead in the bubble; exact command lives in InlineTerminalApproval.
+      if (terminalPlan && planCommands && planCommands.length > 0) {
+        patchAssistantContent(
+          locale === "zh" ? "需要批准后才能运行：" : "Needs approval to run:",
+        );
+      }
       onAwaitPlanApproval({
         planText: drafted.displayPlan,
         steps: drafted.steps,
+        commands: planCommands,
         totalStepCount: drafted.totalSteps,
         continueExecution: async () => {
           apiMessages.push({
@@ -1012,8 +1235,17 @@ export async function runAgentTurn(
           const needsMutation = planMentionsMutatingTools(
             approvedPlanText,
             drafted.steps,
+            projectRoot,
           );
-          await executeTools({ requireToolBatch: true });
+          const needsOutside = planMentionsOutsideProject(
+            approvedPlanText,
+            drafted.steps,
+            projectRoot,
+          );
+          await executeTools({
+            requireToolBatch: true,
+            allowOutsideProject: needsOutside,
+          });
           forcedPlanTool = null;
 
           // Approve → run → plan next chunk when steps were deferred.

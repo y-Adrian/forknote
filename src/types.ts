@@ -178,6 +178,12 @@ export interface ApiSettings {
    * approval before running tools. Default true.
    */
   agentRequireApproval?: boolean;
+  /**
+   * When a project is bound, expose the `run_terminal` agent tool.
+   * Default true — mutating commands still gated by plan approval when enabled;
+   * read-only commands (ls/pwd/…) may skip approval.
+   */
+  agentAllowTerminal?: boolean;
 }
 
 /** Agent plan awaiting user approval before tool execution. */
@@ -188,6 +194,11 @@ export interface AgentPendingPlan {
   userPrompt: string;
   planText: string;
   steps: string[];
+  /**
+   * Exact shell commands from inferred / prefetch `run_terminal` args.
+   * Preferred by InlineTerminalApproval over plan-prose parsing.
+   */
+  commands?: string[];
   /**
    * Total steps before chunking. When greater than `steps.length`, the UI
    * shows that only this round’s chunk is up for approval.

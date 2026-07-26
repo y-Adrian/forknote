@@ -208,6 +208,9 @@ const en = {
   "projectSettings.agentRequireApproval": "Require plan approval before tools",
   "projectSettings.agentRequireApprovalHint":
     "When a project is connected, the agent drafts a plan first. Tools run only after you approve.",
+  "projectSettings.agentAllowTerminal": "Allow terminal tool (run_terminal)",
+  "projectSettings.agentAllowTerminalHint":
+    "Lets the agent run shell commands in the bound project via the sidecar. Default on. Commands start at the project root (not the sidecar process directory). Read-only in-project commands (ls/pwd/…) skip plan approval; mutating or outside-project commands require approval (权限).",
 
   "agentPlan.aria": "Agent plan review",
   "agentPlan.kicker": "Agent plan",
@@ -216,6 +219,24 @@ const en = {
   "agentPlan.approve": "Approve & run",
   "agentPlan.cancel": "Dismiss",
   "agentPlan.running": "Running…",
+
+  "agentTerminal.aria": "Terminal command approval",
+  "agentTerminal.kicker": "Terminal",
+  "agentTerminal.lead": "Run this command in your bound project?",
+  "agentTerminal.cwd": "cwd",
+  "agentTerminal.note":
+    "Runs via the local sidecar under the project root. A shell can still reach paths outside the project.",
+  "agentTerminal.outsideWarn":
+    "This command targets paths outside the bound project. Approving grants elevated terminal permission for this run only.",
+  "agentTerminal.outsideLead":
+    "This command leaves the project directory. Approve to allow outside-project access?",
+  "agentTerminal.run": "Run",
+  "agentTerminal.skip": "Skip",
+  "agentTerminal.allow": "Allow",
+  "agentTerminal.reject": "Reject",
+  "agentTerminal.running": "Running…",
+  "agentTerminal.commandPending":
+    "Command will be chosen when the agent runs this step.",
 
   "about.title": "About",
   "about.tag":
@@ -449,6 +470,7 @@ const en = {
   "agent.status.creating": "Creating {path}…",
   "agent.status.tools": "Using project tools…",
   "agent.status.listRoot": "Listing project root…",
+  "agent.status.terminal": "Running `{command}`…",
 
   "agent.activity.listed": "Listed {path}",
   "agent.activity.reading": "Reading {path} ({size} bytes)",
@@ -457,6 +479,14 @@ const en = {
   "agent.activity.patched": "Patched {path} ×{n}",
   "agent.activity.patchedEdits": "Patched {path} ({edits} edits)",
   "agent.activity.search": "Search “{query}” → {n} hit(s)",
+  "agent.activity.ranCommand": "Ran `{command}` (exit {code})",
+  "agent.activity.terminalMissingCommand": "run_terminal missing command",
+  "agent.activity.terminalDisabled": "run_terminal is disabled in settings",
+  "agent.activity.terminalNoProject": "run_terminal requires an open project",
+  "agent.activity.terminalOutsideDenied":
+    "Outside-project terminal blocked — approval required",
+  "agent.activity.terminalDenied":
+    "Command blocked as dangerous by terminal deny-list",
   "agent.activity.unknownTool": "Unknown tool",
   "agent.activity.toolFailed": "Tool failed",
   "agent.activity.readMissingPath": "read_file missing path",
@@ -629,6 +659,9 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentRequireApproval": "执行工具前需批准计划",
   "projectSettings.agentRequireApprovalHint":
     "连接项目后，Agent 会先输出计划；你点击「批准并执行」后才会读写文件。",
+  "projectSettings.agentAllowTerminal": "允许终端工具（run_terminal）",
+  "projectSettings.agentAllowTerminalHint":
+    "允许 Agent 通过 sidecar 在已绑定项目内执行 shell 命令。默认开启。命令从项目根启动（不是 sidecar 进程目录）。项目内只读命令（ls/pwd 等）可跳过计划批准；改动命令或访问项目外路径需先批准权限。",
 
   "agentPlan.aria": "Agent 计划审核",
   "agentPlan.kicker": "执行计划",
@@ -637,6 +670,23 @@ const zh: Record<MessageKey, string> = {
   "agentPlan.approve": "批准并执行",
   "agentPlan.cancel": "关闭",
   "agentPlan.running": "执行中…",
+
+  "agentTerminal.aria": "终端命令批准",
+  "agentTerminal.kicker": "终端",
+  "agentTerminal.lead": "要在已绑定项目中运行这条命令吗？",
+  "agentTerminal.cwd": "cwd",
+  "agentTerminal.note":
+    "经本地 sidecar 在项目根下执行。shell 仍可能访问项目外的路径。",
+  "agentTerminal.outsideWarn":
+    "此命令会访问绑定项目以外的路径。批准即授予本次运行的项目外终端权限。",
+  "agentTerminal.outsideLead":
+    "此命令会离开项目目录。是否批准项目外访问权限？",
+  "agentTerminal.run": "运行",
+  "agentTerminal.skip": "跳过",
+  "agentTerminal.allow": "允许",
+  "agentTerminal.reject": "拒绝",
+  "agentTerminal.running": "执行中…",
+  "agentTerminal.commandPending": "批准后将由代理确定具体命令。",
 
   "about.title": "关于",
   "about.tag":
@@ -861,6 +911,7 @@ const zh: Record<MessageKey, string> = {
   "agent.status.creating": "正在创建 {path}…",
   "agent.status.tools": "正在使用项目工具…",
   "agent.status.listRoot": "正在列出项目根目录…",
+  "agent.status.terminal": "正在运行 `{command}`…",
 
   "agent.activity.listed": "已列出 {path}",
   "agent.activity.reading": "正在读取 {path}（{size} 字节）",
@@ -869,6 +920,13 @@ const zh: Record<MessageKey, string> = {
   "agent.activity.patched": "已修补 {path} ×{n}",
   "agent.activity.patchedEdits": "已修补 {path}（{edits} 处）",
   "agent.activity.search": "搜索 “{query}” → {n} 处",
+  "agent.activity.ranCommand": "已运行 `{command}`（exit {code}）",
+  "agent.activity.terminalMissingCommand": "run_terminal 缺少 command",
+  "agent.activity.terminalDisabled": "设置中已禁用 run_terminal",
+  "agent.activity.terminalNoProject": "run_terminal 需要先打开项目",
+  "agent.activity.terminalOutsideDenied":
+    "已拦截项目外终端 — 需要先批准权限",
+  "agent.activity.terminalDenied": "命令被终端危险命令黑名单拦截",
   "agent.activity.unknownTool": "未知工具",
   "agent.activity.toolFailed": "工具失败",
   "agent.activity.readMissingPath": "read_file 缺少 path",

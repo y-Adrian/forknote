@@ -7,8 +7,9 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { isDeniedTerminalCommand } from "../shared/terminalDenyList.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,6 +17,11 @@ const PORT = Number(process.env.SIDECAR_PORT || 8787);
 const HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const MAX_READ_BYTES = 200 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
+const MAX_RUN_OUTPUT_BYTES = 200 * 1024;
+const DEFAULT_RUN_TIMEOUT_MS = 60_000;
+const MIN_RUN_TIMEOUT_MS = 1_000;
+const MAX_RUN_TIMEOUT_MS = 300_000;
+const MAX_COMMAND_CHARS = 8_000;
 const MAX_LIST_ENTRIES = 500;
 const MAX_SEARCH_HITS = 40;
 const SEARCH_SKIP = new Set([
@@ -723,6 +729,329 @@ async function handleSearch(body) {
 }
 
 /**
+ * Append chunk into a capped Buffer; marks truncated when the cap is hit.
+ * @param {{ buf: Buffer, truncated: boolean }} state
+ * @param {Buffer | string} chunk
+ */
+function appendCapped(state, chunk) {
+  const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+  if (state.buf.length >= MAX_RUN_OUTPUT_BYTES) {
+    state.truncated = true;
+    return;
+  }
+  const room = MAX_RUN_OUTPUT_BYTES - state.buf.length;
+  if (buf.length > room) {
+    state.buf = Buffer.concat([state.buf, buf.subarray(0, room)]);
+    state.truncated = true;
+  } else {
+    state.buf = Buffer.concat([state.buf, buf]);
+  }
+}
+
+/**
+ * Kill a spawned shell process (and children on POSIX via negative PID when possible).
+ * @param {import("node:child_process").ChildProcess} child
+ */
+function killRunChild(child) {
+  try {
+    if (child.pid && process.platform !== "win32") {
+      // Process group: spawn with detached below so SIGTERM reaches shell children.
+      try {
+        process.kill(-child.pid, "SIGTERM");
+        return;
+      } catch {
+        // fall through to child.kill
+      }
+    }
+    child.kill("SIGTERM");
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Force-kill after a grace period.
+ * @param {import("node:child_process").ChildProcess} child
+ */
+function forceKillRunChild(child) {
+  try {
+    if (child.pid && process.platform !== "win32") {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+        return;
+      } catch {
+        // fall through
+      }
+    }
+    child.kill("SIGKILL");
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Compare two directory paths (realpath when possible).
+ * @param {string} a
+ * @param {string} b
+ */
+async function rootsMatch(a, b) {
+  try {
+    const ra = await fs.realpath(a);
+    const rb = await fs.realpath(b);
+    return ra === rb;
+  } catch {
+    return path.resolve(a) === path.resolve(b);
+  }
+}
+
+/**
+ * Heuristic: does this shell command target paths outside the project?
+ * Catches `cd /`, `cd ~`, `ls /tmp`, absolute paths under /Users|/home|… that
+ * are not under projectRoot. Used to require allowOutsideProject approval.
+ * @param {string} command
+ * @param {string} root
+ */
+function commandLeavesProject(command, root) {
+  const raw = String(command ?? "").trim();
+  if (!raw) return false;
+  const rootAbs = path.resolve(root);
+
+  /** @param {string} candidate */
+  const outside = (candidate) => {
+    const c = String(candidate ?? "").trim();
+    if (!c) return false;
+    if (c === "~" || c.startsWith("~/") || c === "$HOME" || c.startsWith("$HOME/") || c.startsWith("${HOME}")) {
+      return true;
+    }
+    if (!path.isAbsolute(c) && !/^[A-Za-z]:[\\/]/.test(c)) return false;
+    const abs = path.resolve(c);
+    const rel = path.relative(rootAbs, abs);
+    return rel.startsWith("..") || path.isAbsolute(rel);
+  };
+
+  // cd / pushd to home, root, or absolute outside project
+  const cdRe =
+    /(?:^|[;&|\n]|(?:&&|\|\|))\s*(?:cd|pushd)\s+(?:(?:--|-[LP]\s+)*)([^\s;|&]+)/gi;
+  let m;
+  while ((m = cdRe.exec(raw)) !== null) {
+    let target = m[1].replace(/^['"]|['"]$/g, "");
+    if (target === "-" || target === "--") continue;
+    if (outside(target) || target === "/" || target === "\\" ) return true;
+  }
+
+  // Absolute path tokens (POSIX + common roots). Relative paths ignored.
+  const absRe =
+    /(?:^|[\s"'`=:(])((?:\/(?:Users|home|private|tmp|var|etc|Volumes|mnt|opt|root)(?:\/[^\s"'`;|&<>]*)?)|(?:\/)|(?:~(?:\/[^\s"'`;|&<>]*)?)|(?:\$\{?HOME\}?(?:\/[^\s"'`;|&<>]*)?))/g;
+  while ((m = absRe.exec(raw)) !== null) {
+    const token = m[1];
+    if (token === "/" || token === "~" || token.startsWith("~/") || /\$\{?HOME\}?/.test(token)) {
+      return true;
+    }
+    if (outside(token)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Run a shell command with starting cwd under the bound project root.
+ * Body: { command, cwd?, timeoutMs?, expectedRoot?, allowOutsideProject? }
+ *
+ * Uses `shell: true` so pipelines like `npm test && echo ok` work (same class
+ * of agent UX as Cline). Starting cwd is always confined via resolveSafe to the
+ * bound project (never process.cwd()). Commands that reference paths outside
+ * the project require allowOutsideProject: true (UI approval).
+ *
+ * When `res` is provided, client disconnect / AbortSignal cancels the child
+ * (response `close` before settle).
+ *
+ * @param {Record<string, unknown>} body
+ * @param {http.ServerResponse | null} [res]
+ */
+function handleRun(body, res = null) {
+  if (!projectRoot) {
+    throw Object.assign(new Error("No project open"), { status: 400 });
+  }
+  const command = String(body?.command ?? "").trim();
+  if (!command) {
+    throw Object.assign(new Error("command is required"), { status: 400 });
+  }
+  if (command.length > MAX_COMMAND_CHARS) {
+    throw Object.assign(
+      new Error(`command too long (max ${MAX_COMMAND_CHARS} chars)`),
+      { status: 400 },
+    );
+  }
+  const denied = isDeniedTerminalCommand(command);
+  if (denied.denied) {
+    throw Object.assign(
+      new Error(
+        denied.reason ||
+          "Command blocked as dangerous by terminal deny-list",
+      ),
+      { status: 403 },
+    );
+  }
+
+  const allowOutsideProject = Boolean(body?.allowOutsideProject);
+  const expectedRaw =
+    body?.expectedRoot === undefined || body?.expectedRoot === null
+      ? ""
+      : String(body.expectedRoot).trim();
+
+  const cwdInput =
+    body?.cwd === undefined || body?.cwd === null
+      ? "."
+      : String(body.cwd).trim() || ".";
+
+  let timeoutMs = Number(body?.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS);
+  if (!Number.isFinite(timeoutMs)) timeoutMs = DEFAULT_RUN_TIMEOUT_MS;
+  timeoutMs = Math.min(
+    MAX_RUN_TIMEOUT_MS,
+    Math.max(MIN_RUN_TIMEOUT_MS, Math.round(timeoutMs)),
+  );
+
+  return (async () => {
+    if (expectedRaw) {
+      const expected = path.resolve(expectedRaw);
+      if (!(await rootsMatch(projectRoot, expected))) {
+        throw Object.assign(
+          new Error(
+            `Sidecar project root mismatch. Bound: ${projectRoot}. Expected: ${expected}. Re-open the project and retry.`,
+          ),
+          { status: 409 },
+        );
+      }
+    }
+
+    // Starting cwd is always under the bound project — never process.cwd().
+    const { resolved: cwd, relative, root } = resolveSafe(cwdInput);
+
+    if (commandLeavesProject(command, root) && !allowOutsideProject) {
+      throw Object.assign(
+        new Error(
+          "Command targets paths outside the bound project. Approve outside-project terminal access (权限) before running.",
+        ),
+        { status: 403 },
+      );
+    }
+
+    let stat;
+    try {
+      stat = await fs.stat(cwd);
+    } catch {
+      throw Object.assign(new Error(`cwd not found: ${relative}`), {
+        status: 404,
+      });
+    }
+    if (!stat.isDirectory()) {
+      throw Object.assign(new Error("cwd must be a directory"), {
+        status: 400,
+      });
+    }
+
+    return new Promise((resolve, reject) => {
+      const stdoutState = { buf: Buffer.alloc(0), truncated: false };
+      const stderrState = { buf: Buffer.alloc(0), truncated: false };
+      let settled = false;
+      let timedOut = false;
+      let aborted = false;
+
+      const child = spawn(command, {
+        cwd,
+        shell: true,
+        windowsHide: true,
+        env: process.env,
+        // New process group on POSIX so timeout/abort can signal the whole tree
+        // (shell + sleep/pipeline children), not only the wrapping shell.
+        detached: process.platform !== "win32",
+      });
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killRunChild(child);
+        setTimeout(() => forceKillRunChild(child), 2_000).unref?.();
+      }, timeoutMs);
+
+      const onClientGone = () => {
+        if (settled) return;
+        aborted = true;
+        killRunChild(child);
+        setTimeout(() => forceKillRunChild(child), 2_000).unref?.();
+      };
+
+      // Client AbortSignal / disconnect: response closes before we finish.
+      // (Request 'close' is unreliable here — body was already fully read.)
+      if (res) {
+        res.on("close", onClientGone);
+      }
+
+      child.stdout?.on("data", (chunk) => appendCapped(stdoutState, chunk));
+      child.stderr?.on("data", (chunk) => appendCapped(stderrState, chunk));
+
+      const shapeResult = (extra) => ({
+        exitCode: extra.exitCode,
+        stdout: stdoutState.buf.toString("utf8"),
+        stderr: extra.stderr ?? stderrState.buf.toString("utf8"),
+        truncated: stdoutState.truncated || stderrState.truncated,
+        /** Relative to project root ("." or "subdir"). */
+        cwd: relative,
+        /** Absolute starting cwd (always under project root). */
+        cwdAbsolute: cwd,
+        /** Absolute bound project root used for this run. */
+        projectRoot: root,
+        timedOut: Boolean(extra.timedOut),
+        ...(extra.aborted ? { aborted: true } : {}),
+      });
+
+      child.on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (res) res.off?.("close", onClientGone);
+        reject(
+          Object.assign(
+            new Error(err instanceof Error ? err.message : "Failed to spawn"),
+            { status: 500 },
+          ),
+        );
+      });
+
+      child.on("close", (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (res) res.off?.("close", onClientGone);
+        // Client already gone — do not bother shaping a body they will not read.
+        if (aborted && res && res.writableEnded === false && res.destroyed) {
+          resolve(
+            shapeResult({
+              exitCode: 130,
+              timedOut: false,
+              aborted: true,
+            }),
+          );
+          return;
+        }
+        let stderr = stderrState.buf.toString("utf8");
+        if (timedOut) {
+          stderr = stderr
+            ? `${stderr}\n(command timed out after ${timeoutMs}ms)`
+            : `(command timed out after ${timeoutMs}ms)`;
+        }
+        resolve(
+          shapeResult({
+            exitCode: typeof code === "number" ? code : timedOut ? 124 : 1,
+            stderr,
+            timedOut,
+          }),
+        );
+      });
+    });
+  })();
+}
+
+/**
  * @param {http.IncomingMessage} req
  * @param {http.ServerResponse} res
  */
@@ -788,6 +1117,12 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/search") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleSearch(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/run") {
+      const body = await readBody(req);
+      const result = await handleRun(body, res);
+      if (res.writableEnded || res.destroyed) return;
+      return sendJson(res, 200, result);
     }
     if (req.method === "GET" && pathname === "/health") {
       return sendJson(res, 200, { ok: true, root: projectRoot });
