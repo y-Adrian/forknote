@@ -1503,7 +1503,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Prevent double-submit on the same session (other sessions may still generate)
     if (get().loadingMainBySession[sessionId]) return "rejected";
-    if (get().agentPendingPlan?.sessionId === sessionId) return "rejected";
+    // A new user message supersedes any stale pending plan from an earlier turn.
+    if (get().agentPendingPlan?.sessionId === sessionId) {
+      clearPendingAgentPlan(set, sessionId);
+    }
 
     const llm = settingsForSession(settings, getActiveSession(get()));
     const authError = requireApiKey(llm);
@@ -1600,7 +1603,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (patch.content !== undefined && patch.content.trim() && firstAnswerAt == null) {
         // Prefer real answer tokens over tool placeholders for Thought timing
         const placeholder =
-          /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在使用项目工具)/.test(
+          /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/.test(
             patch.content.trim(),
           );
         if (!placeholder) firstAnswerAt = Date.now();
@@ -1657,6 +1660,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         onAwaitPlanApproval: ({
           planText,
           steps,
+          commands,
           totalStepCount,
           continueExecution,
         }) => {
@@ -1668,6 +1672,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               sessionId,
               planText,
               steps,
+              commands,
               totalStepCount,
               userPrompt: trimmed,
               userId,
@@ -1720,8 +1725,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!thread || !activeSessionId) return;
     const sessionId = activeSessionId;
 
-    // Don't start a clarify turn while a plan is awaiting approval for this session
-    if (get().agentPendingPlan?.sessionId === sessionId) return;
+    // Don't start a clarify turn while tools are running; a new clarify may
+    // supersede a stale pending plan for this session.
+    if (get().loadingMainBySession[sessionId]) return;
+    if (get().loadingBranchBySession[sessionId]) return;
+    if (get().agentPendingPlan?.sessionId === sessionId) {
+      clearPendingAgentPlan(set, sessionId);
+    }
 
     const llm = settingsForSession(settings, getActiveSession(get()));
     const authError = requireApiKey(llm);
@@ -1809,7 +1819,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           firstAnswerAt == null
         ) {
           const placeholder =
-            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在使用项目工具)/.test(
+            /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/.test(
               patch.content.trim(),
             );
           if (!placeholder) firstAnswerAt = Date.now();
@@ -1887,6 +1897,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           onAwaitPlanApproval: ({
             planText,
             steps,
+            commands,
             totalStepCount,
             continueExecution,
           }) => {
@@ -1898,6 +1909,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 sessionId,
                 planText,
                 steps,
+                commands,
                 totalStepCount,
                 userPrompt: trimmed,
                 branchId,
@@ -1947,7 +1959,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!thread || !activeSessionId) return;
     const sessionId = activeSessionId;
 
-    if (get().agentPendingPlan?.sessionId === sessionId) return;
+    if (get().agentPendingPlan?.sessionId === sessionId) {
+      clearPendingAgentPlan(set, sessionId);
+    }
     if (get().loadingBranchBySession[sessionId]) return;
 
     const existing = findBranchInThread(thread, branchId);
@@ -2017,7 +2031,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           firstAnswerAt == null
         ) {
           const placeholder =
-            /^(Creating |Listing |Reading |Searching |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在使用项目工具)/.test(
+            /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/.test(
               patch.content.trim(),
             );
           if (!placeholder) firstAnswerAt = Date.now();
@@ -2097,6 +2111,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           onAwaitPlanApproval: ({
             planText,
             steps,
+            commands,
             totalStepCount,
             continueExecution,
           }) => {
@@ -2108,6 +2123,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 sessionId,
                 planText,
                 steps,
+                commands,
                 totalStepCount,
                 userPrompt: trimmed,
                 branchId,

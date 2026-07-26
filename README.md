@@ -165,11 +165,12 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 主对话在已连接项目时会进入 **多轮工具循环**（模型 ↔ sidecar 工具往返，任务完成可提前结束）：
 
-1. **计划批准（默认开启）**：Settings → **Project** → **执行工具前需批准计划**。开启后，模型先输出执行计划；主对话输入区上方或 Clarify / Fork 浮层内出现 **AgentPlanReview**，点 **批准并执行** 才读写文件，**取消** 丢弃本轮。
+1. **计划批准（默认开启）**：Settings → **Project** → **执行工具前需批准计划**。开启后，模型先输出执行计划；主对话输入区上方或 Clarify / Fork 浮层内出现 **AgentPlanReview**，点 **批准并执行** 才读写文件或跑终端命令，**取消** 丢弃本轮。
 2. **工具轮数**：同页 **Agent 工具循环轮数** 可调（1–64，**默认 20**），控制单条消息内最多往返次数。
-3. 关闭计划批准后，模型会直接调用工具（仍受轮数上限约束）。
+3. **终端工具（默认开启）**：同页 **允许终端工具（run_terminal）**。关闭后模型看不到该工具。只读命令（`ls` / `pwd` / `git status` 等）可跳过计划批准；可能改系统的命令仍受计划批准门控。命令经 sidecar 在项目绑定后执行。
+4. 关闭计划批准后，模型会直接调用工具（仍受轮数上限约束）。
 
-活动日志与 **Changes this turn** 显示本轮读/写过的路径；可 **Clear log**。
+活动日志与 **Changes this turn** 显示本轮读/写过的路径与命令；可 **Clear log**。
 
 ### 工具能力
 
@@ -184,10 +185,13 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `write_xlsx` | 生成真实 Excel `.xlsx`（`rows` 二维数组） |
 | `mkdir` | 创建目录 |
 | `search_files` | 简单全文搜索 |
+| `run_terminal` | 在项目内执行 shell 命令（可选相对 `cwd`、`timeoutMs`） |
 
 示例提问：
 
 > 读取 package.json，并在 README.md 顶部加一行说明本项目用途
+
+> 运行 `npm test`，把失败输出总结给我
 
 ### Sidecar HTTP（`127.0.0.1:8787`）
 
@@ -206,9 +210,10 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `POST` | `/fs/write_xlsx` | `{ "path", "sheet_name?", "rows": cell[][] }` |
 | `POST` | `/fs/mkdir` | `{ "path" }` |
 | `POST` | `/fs/search` | `{ "query", "path?" }` |
+| `POST` | `/fs/run` | `{ "command", "cwd?", "timeoutMs?" }` → `{ exitCode, stdout, stderr, truncated, cwd }` |
 | `GET` | `/health` | 探活 |
 
-安全：拒绝 `..` 与绝对路径逃逸；FS 操作必须落在绑定根下。
+安全：拒绝 `..` 与绝对路径逃逸；FS 操作必须落在绑定根下。`run_terminal` 仅在已绑定项目时可用；起始 `cwd` 经同样的路径沙箱解析。实现使用 `spawn` + `shell: true`（便于 `npm test` 等管道），因此 **shell 仍可访问项目外路径**——这是刻意保留的能力与风险；只读命令可直接执行，写操作/破坏性命令请配合计划批准，并只对信任任务开启终端工具。另有 **危险命令 deny-list**（客户端 + sidecar `POST /fs/run` 双重硬拦截：`rm -rf /`、pipe-to-shell、`sudo`、强制推 `main`/`master` 等）——这是启发式黑名单，**不是完整沙箱**；混淆写法仍可能绕过。
 
 ---
 
@@ -343,7 +348,7 @@ flowchart TD
 | 归档 | `archive.ts`、`ArchivePanel.tsx` | 开发日志草稿与面板 |
 | 记忆包 | `contextMemory.ts` | Compress → 三 MD；`askMain` 注入 |
 | 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
-| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / …；多轮循环 + 计划批准门控 |
+| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / `run_terminal` / …；多轮循环 + 计划批准门控 |
 | 计划审核 | `AgentPlanReview.tsx` | 绑定项目且开启批准时，工具执行前的计划审阅栏 |
 | 设置 / i18n | `SettingsPanel.tsx`、`i18n.ts`、`theme.ts` | 系统设置；EN/ZH；主题 |
 | 类型 | `types.ts` | `ChatSession`、`ThreadRoot`、归档、记忆包等 |
@@ -378,5 +383,5 @@ vite.config.ts           # 开发代理
 
 - **本地优先**：笔记与记忆包默认留在本机；LLM 云 API 为可选配置
 - **上下文显式**：Full thread / Archive / 记忆包注入路径可预期，避免「假记忆」
-- **工具隔离**：项目工具仅在已绑定项目时可用（主对话与 Clarify / Fork 浮层同等能力）；路径相对项目根，sidecar 防逃逸
+- **工具隔离**：项目工具仅在已绑定项目时可用（主对话与 Clarify / Fork 浮层同等能力）；路径相对项目根，sidecar 防逃逸；`run_terminal` 额外受 Settings 开关与计划批准约束，且 shell 能力超出纯路径沙箱（见上文安全说明）
 - **推理诚实**：无 `reasoning` / think 标签则不展示思考 UI

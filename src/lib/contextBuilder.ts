@@ -104,14 +104,15 @@ ${HISTORY_CONTEXT_RULE}
 - 不要用工具去「找回」聊天历史；工具只用于读写本地项目文件。磁盘上的文件不能代替本会话已给出的对话记录。
 
 硬性规则：
-1. 用户已绑定本地项目。查看目录/读文件/改文件时，必须使用函数工具（list_dir / read_file / search_files / write_file / search_replace / apply_patch / write_docx / write_xlsx / mkdir）。
-2. 不要猜测项目里有什么文件：先 list_dir（根目录 path="."），再 read_file。
+1. 用户已绑定本地项目。查看目录/读文件/改文件/跑命令时，必须使用函数工具（list_dir / read_file / search_files / write_file / search_replace / apply_patch / write_docx / write_xlsx / mkdir / run_terminal）。
+2. 不要猜测项目里有什么文件：先 list_dir（根目录 path="."），再 read_file。若用户明确要求用 shell/终端查看，则用 run_terminal（如 ls），不要改用 list_dir。
 3. 只把代码贴在 Markdown 里不会写入磁盘。
 4. 路径用相对项目根的相对路径（如 soft/hello.c），不要用绝对路径。
-5. 新建纯文本用 write_file；修改已有文件优先 search_replace / apply_patch；Word 用 write_docx；Excel 用 write_xlsx。
+5. 新建纯文本用 write_file；修改已有文件优先 search_replace / apply_patch；Word 用 write_docx；Excel 用 write_xlsx；跑测试/构建/shell 用 run_terminal。
 6. 工具执行完后再用简短总结；可用【N】分点，但不要用分点代替工具调用。
 7. 禁止在未调用工具、未收到工具结果前声称文件已创建或已写入磁盘。
-8. 复杂任务分多轮：先工具、看结果、再工具；全部完成后再总结，不要第一轮只描述计划就结束。`;
+8. 复杂任务分多轮：先工具、看结果、再工具；全部完成后再总结，不要第一轮只描述计划就结束。
+9. 只服务用户最新一条消息的意图；不要自动继续历史里未完成的旧计划，除非用户明确要求继续。`;
 
 export type ConversationOptions = {
   /** When set, append coding tool instructions for the local project sidecar. */
@@ -227,7 +228,7 @@ export function buildClarifyAddendumMessages(
 
 说明：
 - 优先解释选中片段与当前子问题；可引用上级澄清结论，勿整段复述主回答。
-- 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度（list_dir、read_file、write_file 等），勿因「澄清」而拒绝工具或缩短任务。
+- 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度（list_dir、read_file、write_file、run_terminal 等），勿因「澄清」而拒绝工具或缩短任务。
 - 纯概念澄清时保持简洁；项目任务则按任务需要完成（含计划批准后的多轮工具调用）。
 - 上下文里「已拒绝」的点勿再展开；「已采纳✅」视为已确认；「用户存疑」请重点回应括号内疑问。`,
     locale,

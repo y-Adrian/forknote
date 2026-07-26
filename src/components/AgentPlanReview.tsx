@@ -1,4 +1,8 @@
 import type { NodeId } from "../types";
+import {
+  isPrimarilyTerminalPlan,
+  resolveTerminalApproveCommands,
+} from "../lib/agentTools";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 
@@ -14,7 +18,10 @@ interface Props {
   className?: string;
 }
 
-/** Plan review bar — approve or cancel before agent tools run. */
+/**
+ * Generic multi-step plan review (non-terminal).
+ * Terminal approval uses {@link InlineTerminalApproval} in the message thread.
+ */
 export function AgentPlanReview({
   scope = { kind: "main" },
   className,
@@ -43,13 +50,19 @@ export function AgentPlanReview({
 
   if (!plan) return null;
 
+  // Terminal plans use InlineTerminalApproval in the conversation thread.
+  if (isPrimarilyTerminalPlan(plan.planText, plan.steps, plan.commands)) {
+    return null;
+  }
+
   const shown = plan.steps.length;
   const total = plan.totalStepCount ?? shown;
   const isChunked = total > shown && shown > 0;
+  const floatClass = className ? ` ${className}` : "";
 
   return (
     <div
-      className={`fn-agent-plan${className ? ` ${className}` : ""}`}
+      className={`fn-agent-plan${floatClass}`}
       role="region"
       aria-label={t("agentPlan.aria")}
     >
@@ -65,9 +78,30 @@ export function AgentPlanReview({
 
       {plan.steps.length > 0 ? (
         <ol className="fn-agent-plan-steps">
-          {plan.steps.map((step, i) => (
-            <li key={`${i}-${step.slice(0, 24)}`}>{step}</li>
-          ))}
+          {plan.steps.map((step, i) => {
+            const stepCmds = /\brun_terminal\b/i.test(step)
+              ? resolveTerminalApproveCommands({
+                  planText: step,
+                  steps: [step],
+                })
+              : [];
+            return (
+              <li key={`${i}-${step.slice(0, 24)}`}>
+                {step}
+                {stepCmds.map((cmd) => (
+                  <pre key={cmd} className="fn-agent-plan-inline-cmd">
+                    <span
+                      className="fn-terminal-approve-prompt"
+                      aria-hidden="true"
+                    >
+                      $
+                    </span>
+                    <code>{cmd}</code>
+                  </pre>
+                ))}
+              </li>
+            );
+          })}
         </ol>
       ) : (
         <pre className="fn-agent-plan-body">{plan.planText}</pre>

@@ -4180,6 +4180,10 @@ mark.branch-highlight:hover {
   color: var(--ds-text-dim);
 }
 
+.fn-agent-activity li.is-terminal {
+  color: var(--ds-text-dim);
+}
+
 .fn-agent-activity li.is-error {
   color: #c44;
 }
@@ -4232,6 +4236,182 @@ mark.branch-highlight:hover {
   border-radius: var(--ds-radius-md);
   border: 1px solid color-mix(in srgb, var(--ds-accent) 28%, var(--ds-border));
   background: color-mix(in srgb, var(--ds-accent-soft) 65%, var(--ds-surface));
+}
+
+/* Inline shell approval in the conversation (Cursor-like) */
+.fn-shell-approve {
+  width: 100%;
+  max-width: var(--ds-content-max-width);
+  margin: 8px 0 4px;
+  min-width: 0;
+}
+
+.fn-shell-approve.is-float {
+  max-width: none;
+  margin: 10px 0 4px;
+}
+
+.fn-shell-approve-warn {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  font-size: var(--fn-text-ui-xs);
+  line-height: 1.45;
+  color: var(--ds-text);
+  background: color-mix(in srgb, var(--ds-danger, #c44) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-danger, #c44) 35%, transparent);
+  border-radius: 6px;
+}
+
+.fn-shell-approve-cwd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 6px;
+  min-width: 0;
+  font-size: var(--fn-text-ui-xs);
+  color: var(--ds-muted);
+}
+
+.fn-shell-approve-cwd-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.fn-shell-approve-cwd code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-mono);
+  font-size: 0.92em;
+  color: var(--ds-text-dim);
+  background: none;
+  padding: 0;
+}
+
+.fn-shell-approve-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fn-shell-approve-block {
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid var(--ds-code-border);
+  background: var(--ds-code-bg);
+  overflow: hidden;
+}
+
+.fn-shell-approve-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--ds-code-border);
+  background: color-mix(in srgb, var(--ds-code-bg) 88%, var(--ds-border));
+}
+
+.fn-shell-approve-lang {
+  font-size: var(--fn-text-ui-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--ds-muted);
+}
+
+.fn-shell-approve-pre {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ds-code-text);
+  overflow: auto;
+  max-height: 160px;
+}
+
+.fn-shell-approve-pre code {
+  font: inherit;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.fn-shell-approve-pending {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.45;
+  color: var(--ds-muted);
+}
+
+.fn-shell-approve-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.fn-shell-approve-allow,
+.fn-shell-approve-reject {
+  min-width: 4.5rem;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.fn-shell-approve.is-outside .fn-shell-approve-block {
+  border-color: color-mix(in srgb, var(--ds-danger, #c44) 40%, var(--ds-code-border));
+}
+
+@media (max-width: 520px) {
+  .fn-shell-approve-row {
+    flex-direction: column;
+  }
+
+  .fn-shell-approve-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}
+
+.fn-agent-plan-inline-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid var(--ds-code-border);
+  background: var(--ds-code-bg);
+  font-family: var(--ds-font-mono);
+  font-size: var(--fn-text-ui-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ds-code-text);
+}
+
+.fn-agent-plan-inline-cmd code {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.fn-terminal-approve-prompt {
+  flex-shrink: 0;
+  color: color-mix(in srgb, #5a8f6a 80%, var(--ds-muted));
+  user-select: none;
 }
 
 .fn-agent-plan-header {

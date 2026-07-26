@@ -10,6 +10,10 @@ import {
 import { useDraggableFloat } from "../lib/useDraggableFloat";
 import { useAppStore } from "../store/useAppStore";
 import { AgentPlanReview } from "./AgentPlanReview";
+import {
+  InlineTerminalApproval,
+  usePendingTerminalPlan,
+} from "./InlineTerminalApproval";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -104,6 +108,10 @@ export function FloatingBranchDetail({
     if (!plan || plan.sessionId !== s.activeSessionId) return false;
     return plan.branchId === branchId;
   });
+  const { pending: pendingTerminal } = usePendingTerminalPlan({
+    kind: "branch",
+    branchId,
+  });
   const [followUp, setFollowUp] = useState("");
   const composingRef = useRef(false);
   const { t } = useLocale();
@@ -137,6 +145,7 @@ export function FloatingBranchDetail({
     branch?.children.length ?? 0,
     loadingBranchId ?? "",
     pendingPlanForThis ? "plan" : "",
+    pendingTerminal ? "term" : "",
   ].join(":");
 
   const { onDragHandlePointerDown } = useDraggableFloat(panelRef, {
@@ -337,10 +346,17 @@ export function FloatingBranchDetail({
             />
           </TurnBlock>
         ) : null}
+
+        {pendingTerminal ? (
+          <InlineTerminalApproval
+            scope={{ kind: "branch", branchId }}
+            className="is-float"
+          />
+        ) : null}
       </div>
 
       <footer className="float-panel-detail-footer">
-        {pendingPlanForThis ? (
+        {pendingPlanForThis && !pendingTerminal ? (
           <AgentPlanReview
             scope={{ kind: "branch", branchId }}
             className="is-float"
@@ -359,7 +375,11 @@ export function FloatingBranchDetail({
               }}
               onKeyDown={handleKeyDown}
               placeholder={t("fork.followUpPlaceholder")}
-              disabled={branchLoading || !branch.assistantMessage.trim()}
+              disabled={
+                branchLoading ||
+                !branch.assistantMessage.trim() ||
+                pendingTerminal
+              }
               aria-label={t("fork.followUpAria")}
             />
             <div className="float-panel-detail-footer-actions">
@@ -378,6 +398,7 @@ export function FloatingBranchDetail({
                   className="btn primary"
                   disabled={
                     branchLoading ||
+                    pendingTerminal ||
                     !followUp.trim() ||
                     !branch.assistantMessage.trim()
                   }

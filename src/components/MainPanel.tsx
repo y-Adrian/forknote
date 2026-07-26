@@ -8,6 +8,10 @@ import type { NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
 import { AgentPlanReview } from "./AgentPlanReview";
+import {
+  InlineTerminalApproval,
+  usePendingTerminalPlan,
+} from "./InlineTerminalApproval";
 import { ChatComposer } from "./ChatComposer";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
@@ -72,11 +76,8 @@ export function MainPanel({
       ? s.loadingBranchBySession[s.activeSessionId] ?? null
       : null,
   );
-  const agentPendingPlan = useAppStore((s) =>
-    s.agentPendingPlan && s.agentPendingPlan.sessionId === s.activeSessionId
-      ? s.agentPendingPlan
-      : null,
-  );
+  const { pending: pendingTerminal, assistantId: pendingTerminalAssistantId } =
+    usePendingTerminalPlan({ kind: "main" });
   const error = useAppStore((s) => s.error);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const askMain = useAppStore((s) => s.askMain);
@@ -133,7 +134,6 @@ export function MainPanel({
     loadingMain ||
     loadingArchive ||
     loadingCompress ||
-    Boolean(agentPendingPlan) ||
     Boolean(loadingBranchId);
 
   useEffect(() => {
@@ -179,7 +179,7 @@ export function MainPanel({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [thread?.messages.length, loadingMain]);
+  }, [thread?.messages.length, loadingMain, pendingTerminal]);
 
   useEffect(() => {
     if (!loadingBranchId && openBranchId) {
@@ -269,7 +269,7 @@ export function MainPanel({
     const state = useAppStore.getState();
     const sid = state.activeSessionId;
     if (sid && state.loadingMainBySession[sid]) return;
-    if (state.agentPendingPlan?.sessionId === sid) return;
+    // Stale pending plans are cleared inside askMain so a new request can proceed.
     if (sid && state.loadingArchiveSessionId === sid) return;
     if (sid && state.loadingCompressSessionId === sid) return;
     lastSentPromptRef.current = saved;
@@ -335,6 +335,7 @@ export function MainPanel({
 
           <ProjectStatusBar onOpenProject={onOpenProject} />
 
+          <InlineTerminalApproval scope={{ kind: "main" }} />
           <AgentPlanReview scope={{ kind: "main" }} />
 
           <ChatComposer
@@ -449,9 +450,20 @@ export function MainPanel({
                         </div>
                       ) : null
                     ) : null}
+                    {pendingTerminal &&
+                    (pendingTerminalAssistantId
+                      ? pendingTerminalAssistantId === msg.id
+                      : index === thread.messages.length - 1) ? (
+                      <InlineTerminalApproval scope={{ kind: "main" }} />
+                    ) : null}
                   </div>
                 ),
               )}
+              {pendingTerminal &&
+              pendingTerminalAssistantId &&
+              !thread.messages.some((m) => m.id === pendingTerminalAssistantId) ? (
+                <InlineTerminalApproval scope={{ kind: "main" }} />
+              ) : null}
               <div ref={bottomRef} />
             </div>
           </div>

@@ -273,3 +273,75 @@ export async function searchFiles(
   });
   return parseJson(res);
 }
+
+export type RunTerminalResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+  /** Relative to project root ("." or "subdir"). */
+  cwd: string;
+  /** Absolute starting cwd (under project root). */
+  cwdAbsolute?: string;
+  /** Absolute bound project root used for this run. */
+  projectRoot?: string;
+  timedOut?: boolean;
+};
+
+/**
+ * Ensure the sidecar's bound root matches `expectedRoot` (re-open if stale).
+ * Prevents /fs/run from listing a previous project's tree while the UI shows another.
+ */
+export async function ensureProjectBound(
+  expectedRoot: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<string> {
+  const expected = expectedRoot.trim().replace(/\/+$/, "");
+  if (!expected) {
+    throw new Error("expectedRoot is required");
+  }
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  try {
+    const health = await sidecarHealth(sidecarUrl);
+    if (health.root && norm(health.root) === norm(expected)) {
+      return health.root;
+    }
+  } catch {
+    // Fall through to open
+  }
+  const { root } = await openProject(expected, sidecarUrl);
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  return root;
+}
+
+/** Run a shell command via sidecar (cwd must resolve under the bound project). */
+export async function runTerminal(
+  options: {
+    command: string;
+    cwd?: string;
+    timeoutMs?: number;
+    /** UI-bound project root — sidecar rejects on mismatch (409). */
+    expectedRoot?: string;
+    /** After user approval for outside-project paths. */
+    allowOutsideProject?: boolean;
+  },
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<RunTerminalResult> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      command: options.command,
+      cwd: options.cwd,
+      timeoutMs: options.timeoutMs,
+      expectedRoot: options.expectedRoot,
+      allowOutsideProject: options.allowOutsideProject || undefined,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}

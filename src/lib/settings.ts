@@ -19,10 +19,15 @@ const APP_DEFAULTS: ApiSettings = {
   memoryDir: ".forknote/memory",
   agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
   agentRequireApproval: true,
+  agentAllowTerminal: true,
 };
 
 export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
   return settings.agentRequireApproval ?? true;
+}
+
+export function resolveAgentAllowTerminal(settings: ApiSettings): boolean {
+  return settings.agentAllowTerminal ?? true;
 }
 
 export function resolveAgentMaxRounds(settings: ApiSettings): number {
@@ -82,6 +87,8 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     } as ApiSettings),
     agentRequireApproval:
       raw.agentRequireApproval ?? APP_DEFAULTS.agentRequireApproval,
+    agentAllowTerminal:
+      raw.agentAllowTerminal ?? APP_DEFAULTS.agentAllowTerminal,
   };
 }
 

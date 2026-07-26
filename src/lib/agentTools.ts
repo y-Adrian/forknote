@@ -2,9 +2,11 @@ import { getLocale, t, type Locale } from "./i18n";
 import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
 import {
   applyPatch,
+  ensureProjectBound,
   listDir,
   mkdir as sidecarMkdir,
   readFile,
+  runTerminal,
   searchFiles,
   searchReplace,
   writeDocx,
@@ -12,6 +14,7 @@ import {
   writeXlsx,
   type SearchHit,
 } from "./sidecar";
+import { isDeniedTerminalCommand } from "./terminalDenyList";
 
 /** Default max tool loop rounds per main chat turn (project bound). */
 export const DEFAULT_AGENT_MAX_ROUNDS = 20;
@@ -31,7 +34,8 @@ export type AgentToolName =
   | "write_docx"
   | "write_xlsx"
   | "mkdir"
-  | "search_files";
+  | "search_files"
+  | "run_terminal";
 
 export type SpreadsheetCell = string | number | boolean | null;
 
@@ -54,11 +58,25 @@ export type AgentToolCall = {
   new_string?: string;
   replace_all?: boolean;
   edits?: TextEdit[];
+  /** Shell command for run_terminal */
+  command?: string;
+  /** Optional cwd relative to project root (run_terminal) */
+  cwd?: string;
+  /** Optional timeout in ms (run_terminal) */
+  timeoutMs?: number;
 };
 
 export type AgentActivity = {
   id: string;
-  kind: "list" | "read" | "write" | "mkdir" | "search" | "error" | "info";
+  kind:
+    | "list"
+    | "read"
+    | "write"
+    | "mkdir"
+    | "search"
+    | "terminal"
+    | "error"
+    | "info";
   message: string;
   at: number;
 };
@@ -79,6 +97,7 @@ const TOOL_NAMES = new Set<string>([
   "write_xlsx",
   "mkdir",
   "search_files",
+  "run_terminal",
 ]);
 
 /** Native OpenAI-compatible tools — same mechanism Cursor uses with the model API. */
@@ -301,7 +320,47 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "run_terminal",
+      description:
+        "Run a shell command with starting cwd ALWAYS at the bound project root (via local sidecar) — never the sidecar process cwd. Use when the user asks for shell/terminal/命令行 (e.g. ls, pwd, npm test, git status). Do NOT substitute list_dir when they explicitly asked for a shell command. Prefer short non-interactive commands scoped to the project. Commands that cd away or use absolute paths outside the project require user permission. stdout/stderr are truncated if large. Optional cwd is relative to the project root; optional timeoutMs (default 60000, max 300000).",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description:
+              'Shell command to run, e.g. "ls", "pwd", "npm test", or "npx tsc --noEmit". Prefer project-relative paths; avoid cd /, cd ~, or /tmp unless the user explicitly asked.',
+          },
+          cwd: {
+            type: "string",
+            description:
+              'Optional working directory relative to the project root (default "." = project root). Absolute paths outside the project are rejected.',
+          },
+          timeoutMs: {
+            type: "number",
+            description:
+              "Optional timeout in milliseconds (default 60000, clamped 1000–300000).",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
 ];
+
+/** Filter project tools (e.g. hide run_terminal when disabled in settings). */
+export function getProjectOpenAITools(options?: {
+  allowTerminal?: boolean;
+}): OpenAITool[] {
+  const allowTerminal = options?.allowTerminal !== false;
+  if (allowTerminal) return PROJECT_OPENAI_TOOLS;
+  return PROJECT_OPENAI_TOOLS.filter(
+    (t) => t.function.name !== "run_terminal",
+  );
+}
 
 /**
  * Max numbered steps shown/approved in one plan-review round.
@@ -316,9 +375,10 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 【计划阶段】用户已连接本地项目。此轮禁止调用任何工具，禁止声称已读写文件。
 
 原则（必须遵守）：
-- 严格依据用户原话理解意图。
+- 严格依据用户【最新一条】原话理解意图；忽略历史中未完成的旧计划/旧文件任务，除非用户明确要求继续。
 - 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
-- 意图明确且需要改磁盘时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
+- 意图明确且需要改磁盘或跑可能改系统的 shell 时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
+- 用户明确要求 shell/终端/执行命令时：计划里用 run_terminal，不要改成 list_dir。
 - 每轮计划最多 ${MAX_PLAN_APPROVAL_STEPS} 个编号步骤。若任务更长，只写本轮要做的前 ${MAX_PLAN_APPROVAL_STEPS} 步，并一句说明其余稍后规划；不要一次列出长清单。
 - 意图明确但无需工具时：直接回答，并写明「无需工具」。
 
@@ -333,9 +393,10 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 [Planning phase] A local project is connected. Do not call tools or claim files were read/written.
 
 Rules (must follow):
-- Ground everything in the user's words.
+- Ground everything in the user's LATEST message. Ignore unfinished older plans/file tasks in history unless the user explicitly asks to continue.
 - If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
-- If intent is clear and needs disk changes: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
+- If intent is clear and needs disk changes or potentially mutating shell: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
+- If the user explicitly asked for shell/terminal: plan run_terminal — do not substitute list_dir.
 - At most ${MAX_PLAN_APPROVAL_STEPS} numbered steps per plan. If the task is longer, list only the next ${MAX_PLAN_APPROVAL_STEPS} steps for this approval round and note that the rest will be planned later — do not dump a long checklist.
 - If intent is clear but no tools are needed: answer directly and say no tools are required.
 
@@ -426,9 +487,10 @@ export function buildExecutionPhaseSystem(locale: Locale): string {
 }
 
 const TOOL_MENTION_RE =
-  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files)\b/i;
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files|run_terminal)\b/i;
 
-const MUTATING_TOOL_RE =
+/** Disk-mutating tools excluding run_terminal (terminal is classified by command). */
+const DISK_MUTATING_TOOL_RE =
   /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b/i;
 
 const MUTATING_TOOLS = new Set<AgentToolName>([
@@ -438,7 +500,336 @@ const MUTATING_TOOLS = new Set<AgentToolName>([
   "write_docx",
   "write_xlsx",
   "mkdir",
+  "run_terminal",
 ]);
+
+/**
+ * Read-only / inspect-only shell commands that should not require plan approval.
+ * Anything else (including unknown) is treated as mutating.
+ * Outside-project paths (cd /, ls /tmp, …) are never read-only — they need 权限.
+ */
+const READ_ONLY_TERMINAL_RE =
+  /^(?:ls|dir|pwd|echo|printf|cat|head|tail|wc|which|type|file|stat|du|df|uname|whoami|date|env|printenv|id|hostname|basename|dirname|realpath|readlink|md5sum|sha256sum|git\s+(?:status|log|diff|show|branch|remote|rev-parse|describe|ls-files|blame)|npm\s+(?:(?:ls|list|outdated|view|info|ping|config\s+get)\b)|node\s+-v|npm\s+-v|npx\s+--version|python(?:3)?\s+--version|tsc\s+--version)(?:\s|$)/i;
+
+function normalizePathForCompare(p: string): string {
+  return p.replace(/\\/g, "/").replace(/\/+$/, "") || "/";
+}
+
+/** True when `candidate` is absolute and not under `projectRoot` (when known). */
+function isAbsoluteOutsideProject(
+  candidate: string,
+  projectRoot?: string | null,
+): boolean {
+  const c = candidate.trim();
+  if (!c) return false;
+  if (
+    c === "~" ||
+    c.startsWith("~/") ||
+    c === "$HOME" ||
+    c.startsWith("$HOME/") ||
+    c.startsWith("${HOME}")
+  ) {
+    return true;
+  }
+  const unixAbs = c.startsWith("/");
+  const winAbs = /^[A-Za-z]:[\\/]/.test(c);
+  if (!unixAbs && !winAbs) return false;
+  if (!projectRoot?.trim()) {
+    return (
+      c === "/" ||
+      /^\/(?:Users|home|private|tmp|var|etc|Volumes|mnt|opt|root)(?:\/|$)/i.test(
+        c,
+      ) ||
+      winAbs
+    );
+  }
+  const root = normalizePathForCompare(projectRoot);
+  const abs = normalizePathForCompare(c);
+  return abs !== root && !abs.toLowerCase().startsWith(root.toLowerCase() + "/");
+}
+
+/**
+ * Heuristic: command references paths outside the bound project
+ * (`cd /`, `cd ~`, `ls /tmp`, absolute paths under /Users|/home|… not in root).
+ */
+export function commandLeavesProject(
+  command: string,
+  projectRoot?: string | null,
+): boolean {
+  const raw = command.trim();
+  if (!raw) return false;
+
+  const cdRe =
+    /(?:^|[;&|\n]|(?:&&|\|\|))\s*(?:cd|pushd)\s+(?:(?:--|-[LP]\s+)*)([^\s;|&]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = cdRe.exec(raw)) !== null) {
+    const target = m[1].replace(/^['"]|['"]$/g, "");
+    if (target === "-" || target === "--") continue;
+    if (target === "/" || target === "\\" || isAbsoluteOutsideProject(target, projectRoot)) {
+      return true;
+    }
+  }
+
+  const absRe =
+    /(?:^|[\s"'`=:(])((?:\/(?:Users|home|private|tmp|var|etc|Volumes|mnt|opt|root)(?:\/[^\s"'`;|&<>]*)?)|(?:\/)|(?:~(?:\/[^\s"'`;|&<>]*)?)|(?:\$\{?HOME\}?(?:\/[^\s"'`;|&<>]*)?))/g;
+  while ((m = absRe.exec(raw)) !== null) {
+    const token = m[1];
+    if (
+      token === "/" ||
+      token === "~" ||
+      token.startsWith("~/") ||
+      /\$\{?HOME\}?/.test(token) ||
+      isAbsoluteOutsideProject(token, projectRoot)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** True when a shell command is obviously inspect-only (ls/pwd/git status/…). */
+export function isReadOnlyTerminalCommand(
+  command: string,
+  projectRoot?: string | null,
+): boolean {
+  const raw = command.trim();
+  if (!raw) return false;
+  if (commandLeavesProject(raw, projectRoot)) return false;
+  // Redirects / pipes to write, or chaining with mutating ops → not read-only.
+  if (/[>]|>>|\btee\b/i.test(raw)) return false;
+  if (/\b(?:rm|mv|cp|chmod|chown|mkdir|touch|kill|pkill|dd|mkfs|shutdown|reboot|sudo)\b/i.test(raw)) {
+    return false;
+  }
+  // Split on shell chain operators; every segment must be read-only.
+  const parts = raw.split(/(?:&&|\|\||;|\n)/);
+  return parts.every((part) => {
+    const cmd = part.trim().replace(/^\(+/, "").trim();
+    if (!cmd) return true;
+    // Allow simple pipes of read-only commands (ls | head).
+    const pipeSegs = cmd.split("|").map((s) => s.trim());
+    return pipeSegs.every((seg) => {
+      const s = seg.replace(/^\(+/, "").trim();
+      return Boolean(s) && READ_ONLY_TERMINAL_RE.test(s);
+    });
+  });
+}
+
+/**
+ * True when a string looks like a real shell invocation — not Chinese prose,
+ * markdown headings, or list markers that plan parsers sometimes leak.
+ */
+export function looksLikeShellCommand(raw: string): boolean {
+  const t = raw.trim();
+  if (!t || t.length > 500) return false;
+  if (/\n/.test(t)) {
+    const lines = t
+      .split(/\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return false;
+    // Continuations / heredocs are rare in plans; reject messy multi-line blobs.
+    if (lines.length > 3) return false;
+    return lines.every((l) => looksLikeShellCommand(l));
+  }
+  if (/^#{1,6}(?:\s|$)/.test(t)) return false;
+  if (/^[-*•]+$/.test(t)) return false;
+  if (/^[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(t)) return false;
+  if (/^[),，。、；：!？?]/.test(t)) return false;
+  if (
+    /^(?:使用|删除|保留|执行|运行|然后|首先|接下来|预期|操作|计划|none|n\/a)\b/i.test(
+      t,
+    )
+  ) {
+    return false;
+  }
+  if (/^(?:with|using|via|to|for|and|then|tool|function|call)\b/i.test(t)) {
+    return false;
+  }
+  // Strip a leading prompt if present, then require a shell-like token.
+  const body = t.replace(/^\$\s+/, "").trim();
+  if (!body) return false;
+  // ENV=value cmd  |  ./script  |  /abs/path  |  bare command
+  if (/^(?:[A-Za-z_][\w]*=\S+\s+)+/.test(body)) return true;
+  if (/^(?:\.\/|\/|~\/)/.test(body)) return true;
+  if (/^(?:sudo\s+)?(?:[\w.@+-]+\/)*[\w.@+-]+\b/.test(body)) return true;
+  return false;
+}
+
+function normalizeExtractedCommand(raw: string | undefined): string | null {
+  let cmd = raw?.trim().replace(/^[`"'“”]+|[`"'“”]+$/g, "").trim();
+  if (!cmd) return null;
+  cmd = cmd
+    .replace(/^\$\s+/, "")
+    .replace(/^command\s*[=:]\s*/i, "")
+    .replace(/^[`"'“”]+|[`"'“”]+$/g, "")
+    .trim();
+  if (!cmd) return null;
+  if (!looksLikeShellCommand(cmd)) return null;
+  return cmd;
+}
+
+/**
+ * Pull real shell commands from plan prose / steps.
+ * Ignores Chinese sentence fragments, `##` headings, and bare list markers.
+ * Prefer {@link resolveTerminalApproveCommands} when explicit tool args exist.
+ */
+export function extractTerminalCommandsFromPlan(blob: string): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string | undefined) => {
+    const cmd = normalizeExtractedCommand(raw);
+    if (!cmd) return;
+    const key = cmd.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push(cmd);
+  };
+
+  // run_terminal: ls -la  /  run_terminal command="npm test"  /  run_terminal(ls)
+  // Use [ \t] (not \s) so we never jump across newlines onto prose.
+  const labeled =
+    /run_terminal[ \t]*(?:[:：][ \t]*|\([ \t]*|[ \t]+command\s*[=:][ \t]*)[`"'“”]?([^`"'“”\n\)]+?)[`"'“”]?[ \t]*(?=\)|\n|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = labeled.exec(blob)) !== null) push(m[1]);
+
+  // Numbered / bulleted steps: "1. run_terminal: ls -la" (colon preferred)
+  const stepRe =
+    /(?:^|\n)[ \t]*(?:\d+[.)]|[-*•])[ \t]+run_terminal[ \t]*[:：][ \t]*(.+)$/gim;
+  while ((m = stepRe.exec(blob)) !== null) push(m[1]);
+
+  // Same-line backticks only (no cross-line fence gobbling)
+  const tickRe = /run_terminal[^\n`]{0,80}`([^`\n]+)`/gi;
+  while ((m = tickRe.exec(blob)) !== null) push(m[1]);
+
+  // Explicit shell prompt lines: "$ rm -rf node_modules"
+  const promptRe = /(?:^|\n)[ \t]*\$[ \t]+([^\n]+)/g;
+  while ((m = promptRe.exec(blob)) !== null) push(m[1]);
+
+  // Fenced bash/sh blocks — one command per non-empty line
+  const fenceRe = /```(?:bash|sh|zsh|shell)?[ \t]*\n([\s\S]*?)```/gi;
+  while ((m = fenceRe.exec(blob)) !== null) {
+    for (const line of m[1]!.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      push(trimmed);
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Commands to show on the Terminal approve card.
+ * Explicit tool-call / inferred commands win over messy plan prose.
+ */
+export function resolveTerminalApproveCommands(options: {
+  planText: string;
+  steps: string[];
+  explicitCommands?: string[] | null;
+}): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: string | undefined) => {
+    const cmd = normalizeExtractedCommand(raw);
+    if (!cmd) return;
+    const key = cmd.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(cmd);
+  };
+
+  for (const c of options.explicitCommands ?? []) push(c);
+  if (out.length > 0) return out;
+
+  const blob = `${options.planText}\n${options.steps.join("\n")}`;
+  for (const c of extractTerminalCommandsFromPlan(blob)) push(c);
+  return out;
+}
+
+/**
+ * Optional one-line intent for the Terminal card (normal text, not a `$` block).
+ * Returns null when the plan is only commands / headings / noise.
+ */
+export function extractTerminalPlanSummary(
+  planText: string,
+  steps: string[],
+): string | null {
+  const candidates = [
+    ...steps,
+    ...planText.split(/\n/).map((l) =>
+      l
+        .replace(/^#{1,6}\s*/, "")
+        .replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "")
+        .trim(),
+    ),
+  ];
+  for (const raw of candidates) {
+    let s = raw.trim();
+    if (!s) continue;
+    if (/^#{1,6}\s*/.test(s)) continue;
+    if (/^[-*•]+$/.test(s)) continue;
+    if (/^[),，。、；：]/.test(s)) continue;
+    if (/^(?:预期操作|Expected operations|Plan|计划)\b/i.test(s)) continue;
+    if (/^(?:使用|none|n\/a)$/i.test(s)) continue;
+    if (/\brun_terminal\b/i.test(s)) {
+      s = s
+        .replace(/\brun_terminal\b/gi, "")
+        .replace(/[:：]\s*/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    if (!s || s.length < 4 || s.length > 120) continue;
+    if (looksLikeShellCommand(s)) continue;
+    // Prefer a short Chinese/English intent sentence
+    if (
+      /[\u4e00-\u9fff]{2,}/.test(s) ||
+      /^(?:delete|remove|run|install|build|test|clean|list)\b/i.test(s)
+    ) {
+      return s;
+    }
+  }
+  return null;
+}
+
+/**
+ * True when the pending plan is mainly shell (`run_terminal`), not a multi-file
+ * write plan — routes UI to {@link InlineTerminalApproval} instead of the
+ * generic AgentPlanReview essay.
+ *
+ * `explicitCommands` (inferred / tool-arg shell cmds) count even when the model
+ * drafted messy prose without the literal `run_terminal` token — otherwise the
+ * bottom plan card stays up and the inline shell block never appears.
+ */
+export function isPrimarilyTerminalPlan(
+  planText: string,
+  steps: string[],
+  explicitCommands?: string[] | null,
+): boolean {
+  const blob = `${planText}\n${steps.join("\n")}`;
+  // File / office mutations → keep generic AgentPlanReview.
+  if (DISK_MUTATING_TOOL_RE.test(blob)) return false;
+
+  const hasExplicit = (explicitCommands ?? []).some((c) =>
+    Boolean(normalizeExtractedCommand(c)),
+  );
+  const hasRunTerminal = /\brun_terminal\b/i.test(blob);
+  if (!hasRunTerminal && !hasExplicit) return false;
+
+  const mentioned = [
+    ...blob.matchAll(
+      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files|run_terminal)\b/gi,
+    ),
+  ].map((m) => m[1]!.toLowerCase());
+  const nonTerminal = mentioned.filter(
+    (n) =>
+      n !== "run_terminal" &&
+      n !== "list_dir" &&
+      n !== "read_file" &&
+      n !== "search_files",
+  );
+  return nonTerminal.length === 0;
+}
 
 /** First tool name mentioned in an approved plan, for tool_choice hints. */
 export function inferPreferredToolFromPlan(
@@ -456,11 +847,46 @@ export function inferPreferredToolFromPlan(
 export function planMentionsMutatingTools(
   planText: string,
   steps: string[],
+  projectRoot?: string | null,
 ): boolean {
-  return MUTATING_TOOL_RE.test(`${planText}\n${steps.join("\n")}`);
+  const blob = `${planText}\n${steps.join("\n")}`;
+  if (DISK_MUTATING_TOOL_RE.test(blob)) return true;
+  if (!/\brun_terminal\b/i.test(blob)) return false;
+  const cmds = extractTerminalCommandsFromPlan(blob);
+  if (cmds.length === 0) return true; // unknown terminal → treat as mutating
+  return cmds.some((c) => !isReadOnlyTerminalCommand(c, projectRoot));
 }
 
-export function isMutatingAgentTool(tool: AgentToolName): boolean {
+/** True when plan terminal commands target paths outside the project. */
+export function planMentionsOutsideProject(
+  planText: string,
+  steps: string[],
+  projectRoot?: string | null,
+): boolean {
+  const blob = `${planText}\n${steps.join("\n")}`;
+  const cmds = extractTerminalCommandsFromPlan(blob);
+  if (cmds.length === 0) {
+    return commandLeavesProject(blob, projectRoot);
+  }
+  return cmds.some((c) => commandLeavesProject(c, projectRoot));
+}
+
+/**
+ * True when a tool call mutates the project / machine.
+ * For `run_terminal`, pass the command — read-only cmds (ls/pwd/…) are not mutating.
+ * Outside-project commands always count as mutating (need 权限 approval).
+ */
+export function isMutatingAgentTool(
+  tool: AgentToolName,
+  command?: string | null,
+  projectRoot?: string | null,
+): boolean {
+  if (tool === "run_terminal") {
+    if (command != null && command.trim()) {
+      return !isReadOnlyTerminalCommand(command, projectRoot);
+    }
+    return true;
+  }
   return MUTATING_TOOLS.has(tool);
 }
 
@@ -515,7 +941,7 @@ export function planNeedsToolApproval(
   if (
     steps.length > 0 &&
     steps.some((s) =>
-      /创建|写入|修改|删除|列出|阅读|搜索|create|write|edit|delete|list|read|search/i.test(
+      /创建|写入|修改|删除|列出|阅读|搜索|运行|执行|命令|终端|create|write|edit|delete|list|read|search|run|exec|shell|terminal|npm|test/i.test(
         s,
       ),
     ) &&
@@ -549,24 +975,51 @@ export function isWriteTool(tool: AgentToolName): boolean {
     tool === "apply_patch" ||
     tool === "write_docx" ||
     tool === "write_xlsx" ||
-    tool === "mkdir"
+    tool === "mkdir" ||
+    tool === "run_terminal"
   );
 }
 
-export function batchNeedsWriteApproval(calls: AgentToolCall[]): boolean {
-  return calls.some((c) => isWriteTool(c.tool));
+export function batchNeedsWriteApproval(
+  calls: AgentToolCall[],
+  projectRoot?: string | null,
+): boolean {
+  return calls.some(
+    (c) =>
+      c.tool !== "run_terminal"
+        ? isWriteTool(c.tool)
+        : !isReadOnlyTerminalCommand(c.command ?? "", projectRoot),
+  );
 }
 
 /** System prompt appendix when a local project is bound. */
-export function buildCodingToolsSystem(projectRoot: string): string {
+export function buildCodingToolsSystem(
+  projectRoot: string,
+  options?: { allowTerminal?: boolean },
+): string {
+  const allowTerminal = options?.allowTerminal !== false;
+  const toolNames = allowTerminal
+    ? "list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files、run_terminal"
+    : "list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files";
+  const terminalBlock = allowTerminal
+    ? `
+终端：
+- 用户明确要求 shell / 终端 / 执行命令 / 跑命令 → 必须用 run_terminal（不要改用 list_dir 代替）
+- 默认起始 cwd = 已绑定项目根（${projectRoot}），不是 sidecar 进程目录
+- 用于 ls / pwd / npm test / 构建 / git status 等；stdout/stderr 过大时会截断
+- 工具结果会标明 projectRoot 与 cwdAbsolute —— 据此总结，不要编造目录
+- 禁止擅自 cd /、cd ~、访问 /tmp 等项目外路径；若用户明确要求，须等用户批准权限后再执行
+`
+    : "";
   return `
 
 你已连接到本地项目：${projectRoot}
 
-你有原生函数工具：list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files。
+你有原生函数工具：${toolNames}。
 
 查看项目（必须用工具，不要凭空猜目录内容）：
-- 列出目录 → list_dir（项目根用 path="."；子目录如 "src"）
+- 列出目录 → list_dir（项目根用 path="."；子目录如 "src"）——仅当用户要看目录且未要求 shell 时
+- 用户要「执行 shell / 终端命令」查看目录 → run_terminal（如 command="ls" 或 "ls -la"），不要用 list_dir 顶替
 - 阅读文件 → read_file（先 list_dir 再读具体路径）
 - 全文搜索 → search_files
 
@@ -574,13 +1027,13 @@ export function buildCodingToolsSystem(projectRoot: string): string {
 - 新建纯文本 → write_file
 - 修改已有文本 → 优先 search_replace / apply_patch（先 read_file）
 - Word → write_docx；Excel → write_xlsx
-
+${terminalBlock}
 只把内容写在 Markdown 里不会写入磁盘。
 路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径。
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
 
 多轮工作流（一次用户消息内可循环多轮）：
-1. 依据用户明确意图决定是否需要工具；意图不清则先回答/澄清，不要擅自改文件或列目录
+1. 依据用户【最新一条】明确意图决定是否需要工具；意图不清则先回答/澄清，不要擅自改文件或列目录；不要继续执行历史里未完成的旧任务，除非用户明确要求
 2. 需要工具时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行）
 3. 阅读 tool / 工具结果；若用户任务尚未完成 → 再调下一批必要工具
 4. 全部做完 → 最后一轮用中文总结，不要再调工具
@@ -728,6 +1181,13 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
               typeof e.replace_all === "boolean" ? e.replace_all : undefined,
           }))
       : undefined,
+    command: typeof args.command === "string" ? args.command : undefined,
+    cwd:
+      typeof args.cwd === "string" ? normalizeRelPath(args.cwd) : undefined,
+    timeoutMs:
+      typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)
+        ? args.timeoutMs
+        : undefined,
   };
 }
 
@@ -825,6 +1285,12 @@ function parseOneToolCall(raw: string): AgentToolCall | null {
       path: typeof obj.path === "string" ? obj.path : undefined,
       content: typeof obj.content === "string" ? obj.content : undefined,
       query: typeof obj.query === "string" ? obj.query : undefined,
+      command: typeof obj.command === "string" ? obj.command : undefined,
+      cwd: typeof obj.cwd === "string" ? obj.cwd : undefined,
+      timeoutMs:
+        typeof obj.timeoutMs === "number" && Number.isFinite(obj.timeoutMs)
+          ? obj.timeoutMs
+          : undefined,
     };
   } catch {
     return parseWriteFileLoose(raw);
@@ -1085,6 +1551,7 @@ function looksLikeToolArgsObject(obj: unknown): boolean {
     typeof o.query === "string" ||
     typeof o.old_string === "string" ||
     typeof o.content === "string" ||
+    typeof o.command === "string" ||
     Array.isArray(o.paragraphs) ||
     Array.isArray(o.rows)
   );
@@ -1097,8 +1564,11 @@ function inferToolFromPartialObject(
 ): AgentToolName | null {
   const path = typeof obj.path === "string" ? obj.path.trim() : undefined;
   const query = typeof obj.query === "string" ? obj.query.trim() : undefined;
+  const command =
+    typeof obj.command === "string" ? obj.command.trim() : undefined;
   const ctx = `${userText}\n${assistantText}`;
 
+  if (/run_terminal\b/i.test(assistantText) && command) return "run_terminal";
   if (/list_dir\b/i.test(assistantText) && path !== undefined) return "list_dir";
   if (/read_file\b/i.test(assistantText) && path) return "read_file";
   if (/write_docx\b/i.test(assistantText) && path) return "write_docx";
@@ -1109,6 +1579,7 @@ function inferToolFromPartialObject(
   if (/write_file\b/i.test(assistantText) && path) return "write_file";
   if (/mkdir\b/i.test(assistantText) && path) return "mkdir";
 
+  if (command) return "run_terminal";
   if (query && /搜索|search/i.test(ctx)) return "search_files";
   if (typeof obj.old_string === "string") return "search_replace";
   if (Array.isArray(obj.paragraphs)) return "write_docx";
@@ -1150,6 +1621,11 @@ function agentCallFromPartialObject(
   if (typeof obj.old_string === "string") call.old_string = obj.old_string;
   if (typeof obj.new_string === "string") call.new_string = obj.new_string;
   if (typeof obj.replace_all === "boolean") call.replace_all = obj.replace_all;
+  if (typeof obj.command === "string") call.command = obj.command;
+  if (typeof obj.cwd === "string") call.cwd = normalizeRelPath(obj.cwd);
+  if (typeof obj.timeoutMs === "number" && Number.isFinite(obj.timeoutMs)) {
+    call.timeoutMs = obj.timeoutMs;
+  }
   if (Array.isArray(obj.paragraphs)) {
     call.paragraphs = obj.paragraphs.map((p) => String(p ?? ""));
   }
@@ -1180,7 +1656,7 @@ export function parseArgsOnlyToolCalls(
       assistantText,
     );
     if (!call) return;
-    const key = `${call.tool}:${call.path ?? ""}:${call.query ?? ""}`;
+    const key = `${call.tool}:${call.path ?? ""}:${call.query ?? ""}:${call.command ?? ""}`;
     if (seen.has(key)) return;
     seen.add(key);
     calls.push(call);
@@ -1427,6 +1903,92 @@ export function inferExploreIntent(
   return null;
 }
 
+/** True when the message also asks for writes / installs / destructive ops. */
+export function looksLikeMutationRequest(userText: string): boolean {
+  return /创建|写入|新建|修改|删除|覆盖|安装|卸载|移动|重命名|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|create|write|edit|delete|remove|install/i.test(
+    userText,
+  );
+}
+
+export type ShellIntent = {
+  command: string;
+  readOnly: boolean;
+};
+
+/**
+ * Detect explicit shell/terminal requests. Prefer run_terminal over list_dir
+ * when the user asked to run a command (even if they also say "list files").
+ */
+export function inferShellIntent(userText: string): ShellIntent | null {
+  const t = userText.trim();
+  if (!t) return null;
+
+  const wantsShell =
+    /(?:执行|运行|跑)\s*(?:一下)?\s*(?:shell|bash|zsh|sh|终端|命令行)?\s*命令/i.test(
+      t,
+    ) ||
+    /(?:shell|bash|zsh|终端|命令行)\s*命令/i.test(t) ||
+    /\brun_terminal\b/i.test(t) ||
+    /(?:在终端|用终端|用 shell|via shell|in (?:the )?terminal|run (?:a )?shell)/i.test(
+      t,
+    ) ||
+    /(?:执行|运行|跑一下)\s*[`"'“”][^`'“”\n]+[`"'“”]/i.test(t);
+
+  // Bare common commands as the whole message
+  const bare = t.match(
+    /^(?:ls(?:\s+-\w+)*|pwd|echo\s+.+|git\s+status|git\s+log(?:\s+.*)?|npm\s+test|npm\s+run\s+\w+)$/i,
+  );
+  if (!wantsShell && !bare) return null;
+
+  // Explicit quoted / fenced command
+  const quoted =
+    t.match(
+      /(?:执行|运行|跑(?:一下)?|run|exec)\s*[：:\s]*[`"'“”]([^`'“”\n]+)[`"'“”]/i,
+    ) || t.match(/```(?:bash|sh|zsh|shell)?\s*\n?([^\n`]+)```/i);
+  if (quoted?.[1]?.trim()) {
+    const command = quoted[1].trim();
+    return {
+      command,
+      readOnly: isReadOnlyTerminalCommand(command, null),
+    };
+  }
+
+  if (bare) {
+    const command = bare[0].trim();
+    return {
+      command,
+      readOnly: isReadOnlyTerminalCommand(command, null),
+    };
+  }
+
+  // "执行shell命令，查看当前目录下有什么" → ls
+  if (
+    /(?:当前目录|目录下|文件夹|有什么|有哪些|列出|list|files?|folder)/i.test(t) ||
+    /\bls\b/i.test(t)
+  ) {
+    return { command: "ls -la", readOnly: true };
+  }
+  if (/\bpwd\b|当前路径|工作目录/i.test(t)) {
+    return { command: "pwd", readOnly: true };
+  }
+  if (/git\s*status|仓库状态/i.test(t)) {
+    return { command: "git status", readOnly: true };
+  }
+
+  // Generic "run a shell command" without a specific command — still shell intent;
+  // leave command empty so execute path can force tool_choice and let the model fill it,
+  // or use ls as a safe default when they clearly want to inspect the project.
+  if (wantsShell) {
+    return { command: "ls -la", readOnly: true };
+  }
+
+  return null;
+}
+
+export function synthesizeShellToolCall(intent: ShellIntent): AgentToolCall {
+  return { tool: "run_terminal", command: intent.command };
+}
+
 export function synthesizeExploreToolCall(
   intent: NonNullable<ReturnType<typeof inferExploreIntent>>,
 ): AgentToolCall {
@@ -1504,7 +2066,7 @@ export function stripToolCalls(text: string): string {
       const obj = JSON.parse(inner);
       if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return "";
     } catch {
-      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files)"/.test(inner)) {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|run_terminal)"/.test(inner)) {
         return "";
       }
     }
@@ -1627,12 +2189,15 @@ export async function executeToolCall(
   signal?: AbortSignal,
   projectRoot?: string | null,
   locale: Locale = getLocale(),
+  options?: { allowTerminal?: boolean; allowOutsideProject?: boolean },
 ): Promise<{
   ok: boolean;
   resultText: string;
   activity: Omit<AgentActivity, "id" | "at">;
   change?: Omit<AgentFileChange, "at">;
 }> {
+  const allowTerminal = options?.allowTerminal !== false;
+  const allowOutsideProject = Boolean(options?.allowOutsideProject);
   try {
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
@@ -1883,6 +2448,145 @@ export async function executeToolCall(
           },
         };
       }
+      case "run_terminal": {
+        if (!allowTerminal) {
+          return {
+            ok: false,
+            resultText:
+              "Error: run_terminal is disabled in Settings → Project",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.terminalDisabled", undefined, locale),
+            },
+          };
+        }
+        const command = call.command?.trim();
+        if (!command) {
+          return {
+            ok: false,
+            resultText: "Error: command is required",
+            activity: {
+              kind: "error",
+              message: t(
+                "agent.activity.terminalMissingCommand",
+                undefined,
+                locale,
+              ),
+            },
+          };
+        }
+        const denied = isDeniedTerminalCommand(command);
+        if (denied.denied) {
+          return {
+            ok: false,
+            resultText: `Error: ${denied.reason || "Command blocked as dangerous by terminal deny-list"}`,
+            activity: {
+              kind: "error",
+              message: t("agent.activity.terminalDenied", undefined, locale),
+            },
+          };
+        }
+        const boundRoot = projectRoot?.trim() || null;
+        if (!boundRoot) {
+          return {
+            ok: false,
+            resultText: "Error: no project bound — open a project first",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.terminalNoProject", undefined, locale),
+            },
+          };
+        }
+        // Re-bind sidecar if another session left a stale root (wrong ls listings).
+        let ensuredRoot = boundRoot;
+        try {
+          ensuredRoot = await ensureProjectBound(boundRoot, sidecarUrl, signal);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          return {
+            ok: false,
+            resultText: `Error: could not bind sidecar to project: ${msg}`,
+            activity: { kind: "error", message: msg },
+          };
+        }
+        if (commandLeavesProject(command, ensuredRoot) && !allowOutsideProject) {
+          return {
+            ok: false,
+            resultText:
+              "Error: command targets paths outside the bound project. User must approve outside-project terminal access (权限) before this can run.",
+            activity: {
+              kind: "error",
+              message: t(
+                "agent.activity.terminalOutsideDenied",
+                undefined,
+                locale,
+              ),
+            },
+          };
+        }
+        // Always start under the project root (or a relative subdir) — never process.cwd().
+        const cwdRaw = call.cwd?.trim() || ".";
+        if (
+          isAbsoluteOutsideProject(cwdRaw, ensuredRoot) &&
+          !allowOutsideProject
+        ) {
+          return {
+            ok: false,
+            resultText:
+              "Error: cwd is outside the bound project. Approve outside-project terminal access first.",
+            activity: {
+              kind: "error",
+              message: t(
+                "agent.activity.terminalOutsideDenied",
+                undefined,
+                locale,
+              ),
+            },
+          };
+        }
+        const cwd = normalizeRelPath(cwdRaw, ensuredRoot);
+        const result = await runTerminal(
+          {
+            command,
+            cwd,
+            timeoutMs: call.timeoutMs,
+            expectedRoot: ensuredRoot,
+            allowOutsideProject,
+          },
+          sidecarUrl,
+          signal,
+        );
+        const preview =
+          command.length > 80 ? `${command.slice(0, 77)}…` : command;
+        const absCwd = result.cwdAbsolute || ensuredRoot;
+        const absRoot = result.projectRoot || ensuredRoot;
+        const parts = [
+          `projectRoot=${JSON.stringify(absRoot)}`,
+          `cwdAbsolute=${JSON.stringify(absCwd)}`,
+          `cwd=${JSON.stringify(result.cwd)}`,
+          `exitCode=${result.exitCode}`,
+          result.timedOut ? "timedOut=true" : null,
+          result.truncated ? "truncated=true" : null,
+          "",
+          "--- stdout ---",
+          result.stdout || "(empty)",
+          "",
+          "--- stderr ---",
+          result.stderr || "(empty)",
+        ].filter((line) => line !== null);
+        return {
+          ok: result.exitCode === 0 && !result.timedOut,
+          resultText: parts.join("\n"),
+          activity: {
+            kind: "terminal",
+            message: t(
+              "agent.activity.ranCommand",
+              { command: preview, code: result.exitCode },
+              locale,
+            ),
+          },
+        };
+      }
       default:
         return {
           ok: false,
@@ -1916,7 +2620,9 @@ export function toolResultMessage(
   const label =
     call.tool === "search_files"
       ? `search_files query=${JSON.stringify(call.query ?? "")}`
-      : `${call.tool} path=${JSON.stringify(call.path ?? ".")}`;
+      : call.tool === "run_terminal"
+        ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
+        : `${call.tool} path=${JSON.stringify(call.path ?? ".")}`;
   const truncated =
     resultText.length > 120_000
       ? `${resultText.slice(0, 120_000)}\n…(truncated)`
