@@ -23,6 +23,7 @@ import {
   isMutatingAgentTool,
   isPrimarilyTerminalPlan,
   limitPlanForApproval,
+  looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
   multiStepFollowUpHint,
   multiStepSystemHint,
@@ -133,6 +134,75 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
+/** Stream a plain chat reply with tools schema omitted (no plan / write path). */
+async function streamPlainChatAnswer(args: {
+  llm: ApiSettings;
+  apiMessages: ApiChatMessage[];
+  signal: AbortSignal;
+  isOwned: () => boolean;
+  patchContent: (patch: AgentContentPatch) => void;
+  locale: Locale;
+}): Promise<AgentTurnOutcome> {
+  const { llm, apiMessages, signal, isOwned, patchContent, locale } = args;
+  let apiReasoning = "";
+  const patchAssistantContent = (content: string) => {
+    if (!isOwned() || signal.aborted) return;
+    patchContent({ content });
+  };
+  const patchAssistantState = (patch: AgentContentPatch) => {
+    if (!isOwned() || signal.aborted) return;
+    patchContent(patch);
+  };
+
+  patchAssistantContent(t("chat.thinking", undefined, locale));
+
+  let roundText = "";
+  const streamResult = await streamChat(
+    llm,
+    apiMessages,
+    (delta) => {
+      roundText += delta;
+      const cleaned = stripToolCalls(roundText);
+      if (cleaned.length > 0) {
+        patchAssistantState({
+          content: cleaned,
+          ...(apiReasoning.trim() ? { reasoning: apiReasoning } : {}),
+        });
+      }
+    },
+    {
+      signal,
+      temperature: 0.6,
+      tools: undefined,
+      toolChoice: undefined,
+      onReasoningDelta: (piece) => {
+        apiReasoning += piece;
+        if (apiReasoning.trim()) {
+          patchAssistantState({ reasoning: apiReasoning });
+        }
+      },
+    },
+  );
+
+  if (signal.aborted || !isOwned()) {
+    return "aborted";
+  }
+
+  roundText = streamResult.content || roundText;
+  if (streamResult.reasoning.length >= apiReasoning.length) {
+    apiReasoning = streamResult.reasoning;
+  }
+  const merged = mergeReasoningChannels(
+    apiReasoning,
+    stripToolCalls(roundText),
+  );
+  patchAssistantState({
+    content: merged.content,
+    ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
+  });
+  return "completed";
+}
+
 export async function runAgentTurn(
   options: RunAgentTurnOptions,
 ): Promise<AgentTurnOutcome> {
@@ -202,64 +272,14 @@ export async function runAgentTurn(
    * blocking so ordinary asks (incl. “write some code”) just get an answer.
    */
   if (!projectRoot) {
-    let apiReasoning = "";
-    const patchAssistantContent = (content: string) => {
-      if (!isOwned() || signal.aborted) return;
-      patchContent({ content });
-    };
-    const patchAssistantState = (patch: AgentContentPatch) => {
-      if (!isOwned() || signal.aborted) return;
-      patchContent(patch);
-    };
-
-    patchAssistantContent(t("chat.thinking", undefined, locale));
-
-    let roundText = "";
-    const streamResult = await streamChat(
+    return streamPlainChatAnswer({
       llm,
       apiMessages,
-      (delta) => {
-        roundText += delta;
-        const cleaned = stripToolCalls(roundText);
-        if (cleaned.length > 0) {
-          patchAssistantState({
-            content: cleaned,
-            ...(apiReasoning.trim() ? { reasoning: apiReasoning } : {}),
-          });
-        }
-      },
-      {
-        signal,
-        temperature: 0.6,
-        // Explicitly no tools — unbound sessions are chat-only.
-        tools: undefined,
-        toolChoice: undefined,
-        onReasoningDelta: (piece) => {
-          apiReasoning += piece;
-          if (apiReasoning.trim()) {
-            patchAssistantState({ reasoning: apiReasoning });
-          }
-        },
-      },
-    );
-
-    if (signal.aborted || !isOwned()) {
-      return "aborted";
-    }
-
-    roundText = streamResult.content || roundText;
-    if (streamResult.reasoning.length >= apiReasoning.length) {
-      apiReasoning = streamResult.reasoning;
-    }
-    const merged = mergeReasoningChannels(
-      apiReasoning,
-      stripToolCalls(roundText),
-    );
-    patchAssistantState({
-      content: merged.content,
-      ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
+      signal,
+      isOwned,
+      patchContent,
+      locale,
     });
-    return "completed";
   }
 
   const createPath = inferCreateFilePath(trimmed);
@@ -280,6 +300,28 @@ export async function runAgentTurn(
     !createPath && !officeIntent && !shellIntent
       ? inferExploreIntent(trimmed)
       : null;
+  /**
+   * Soft judgment (not a hard zero-tools early-return): informational /
+   * sample-code phrasing prefers Markdown in chat, but tools stay available
+   * (tool_choice auto) if the model later needs them for the user's goal.
+   */
+  const softInformationalAsk =
+    !createPath &&
+    !officeIntent &&
+    !shellIntent &&
+    !exploreIntent &&
+    multiStepPlan.length < 2 &&
+    (looksLikeAnswerOnlyRequest(trimmed) ||
+      !looksLikeMutationRequest(trimmed));
+  if (softInformationalAsk) {
+    apiMessages.push({
+      role: "system",
+      content:
+        locale === "zh"
+          ? "根据实际情景判断：若用户只要示例/解释/概念问答，优先用 Markdown 直接回答（代码用围栏）；仅当为实现其目标确有必要（明确要求保存/创建到项目、改文件、跑命令，或上下文显然需要读仓库）时再调用工具。不要编造路径（如 hello.py）或擅自 write_file；也不要仅为「写一段代码」起草批准计划。"
+          : "Judge by situation and necessity: if the ask is informational/sample, prefer answering in Markdown (fenced code). Use write/edit/terminal only when needed for the user's goal (explicit save/create/path/run, or context clearly requires project access). Do not invent paths (e.g. hello.py) or write_file unprompted; do not invent an approval plan just for a sample snippet.",
+    });
+  }
   const explorePlaceholder =
     exploreIntent?.kind === "list"
       ? t("agent.status.listing", { path: exploreIntent.path }, locale)
@@ -293,7 +335,7 @@ export async function runAgentTurn(
     : null;
   const requireApproval =
     Boolean(projectRoot) && resolveAgentRequireApproval(settings);
-  /** Pure read/list/search or read-only shell — skip plan gate (still gated for writes / mutating shell / outside-project). */
+  /** Pure read/list/search, read-only shell, or soft informational — skip plan gate. */
   const shellLeavesProject =
     Boolean(shellIntent) &&
     Boolean(projectRoot) &&
@@ -303,7 +345,9 @@ export async function runAgentTurn(
     !looksLikeMutationRequest(trimmed) &&
     multiStepPlan.length < 2 &&
     !shellLeavesProject &&
-    (Boolean(exploreIntent) || Boolean(shellIntent?.readOnly));
+    (Boolean(exploreIntent) ||
+      Boolean(shellIntent?.readOnly) ||
+      softInformationalAsk);
   /**
    * Clear shell intents skip messy free-form planning:
    * - Outside-project (ls /debris) always needs Terminal 权限 card.
