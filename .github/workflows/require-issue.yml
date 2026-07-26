@@ -1,6 +1,17 @@
-# Fail PRs targeting `leading` unless they reference a GitHub Issue.
-# Authors: put `#N`, `Fixes #N`, `Closes #N`, or `Resolves #N` in the PR title/body,
-# or use GitHub's "Development" sidebar to link an issue.
+# Fail PRs targeting `leading` unless they link a real GitHub Issue.
+#
+# Accepted in PR title/body (not bare #N):
+#   - Fixes / Closes / Resolves #N (and Fix/Close/Resolve / past tense)
+#   - Related: #N / Related Issue: #N / Related Issues: #N
+# Also accepted: GitHub Development sidebar closing-issue links.
+#
+# Rejected:
+#   - Casual mentions like "merged #102 / issue #101" (bare #N)
+#   - The PR's own number (#PR)
+#   - Numbers that do not exist, or that refer to a Pull Request
+#
+# Local dry-run (regex + self-ref only; no API):
+#   scripts/test-require-linked-issue.sh
 name: Require Linked Issue
 
 on:
@@ -32,40 +43,93 @@ jobs:
           BODY=$(printf '%s' "$META" | jq -r '.body')
           COMBINED="${TITLE}"$'\n'"${BODY}"
 
-          # Closing keywords + bare #N in title/body (common PR template style).
-          if printf '%s' "$COMBINED" | grep -Eiq '(^|[^A-Za-z0-9_])((close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s*)?#([0-9]+)'; then
-            REF=$(printf '%s' "$COMBINED" | grep -Eio '(close[sd]?|fix(e[sd])?|resolve[sd]?)?\s*:?\s*#[0-9]+' | head -n1 || true)
-            echo "OK: found issue reference in PR title/body (${REF:-#N})."
+          # Explicit link clauses only (keyword required). Captures trailing #N lists
+          # like "Fixes #1, #2" or "Related Issue: #3". Bare "#N" alone does NOT match.
+          CLAUSE_RE='(close[sd]?|fix(e[sd])?|resolve[sd]?|related([[:space:]]+issues?)?)[[:space:]]*:?[[:space:]]*#[0-9]+([[:space:]]*([,&]|and)[[:space:]]*#[0-9]+)*'
+
+          CANDIDATES=""
+          while IFS= read -r clause; do
+            [ -z "$clause" ] && continue
+            while IFS= read -r num; do
+              [ -z "$num" ] && continue
+              CANDIDATES="${CANDIDATES}${num}"$'\n'
+            done < <(printf '%s' "$clause" | grep -Eo '#[0-9]+' | tr -d '#' || true)
+          done < <(printf '%s' "$COMBINED" | grep -Eio "$CLAUSE_RE" || true)
+
+          is_real_issue() {
+            local n="$1"
+            local json
+            if ! json=$(gh api "repos/${OWNER}/${REPO}/issues/${n}" --jq '{number, is_pr: (.pull_request != null)}' 2>/dev/null); then
+              echo "skip: #${n} does not exist"
+              return 1
+            fi
+            if [ "$(printf '%s' "$json" | jq -r '.is_pr')" = "true" ]; then
+              echo "skip: #${n} is a Pull Request, not an Issue"
+              return 1
+            fi
+            return 0
+          }
+
+          VALID=""
+          while IFS= read -r n; do
+            [ -z "$n" ] && continue
+            if [ "$n" = "$PR_NUMBER" ]; then
+              echo "skip: #${n} is this PR's own number"
+              continue
+            fi
+            if is_real_issue "$n"; then
+              VALID="${VALID}${n}"$'\n'
+            fi
+          done <<< "$(printf '%s' "$CANDIDATES" | awk 'NF' | sort -nu)"
+
+          if [ -n "$(printf '%s' "$VALID" | awk 'NF')" ]; then
+            LIST=$(printf '%s' "$VALID" | awk 'NF' | paste -sd',' - | sed 's/,/, #/g')
+            echo "OK: found verified Issue link(s) in PR title/body (#${LIST})."
             exit 0
           fi
 
           # Linked via GitHub Development sidebar (closingIssuesReferences).
-          LINKED=$(gh api graphql -f query='
+          LINKED_JSON=$(gh api graphql -f query='
             query($owner:String!, $repo:String!, $number:Int!) {
               repository(owner:$owner, name:$repo) {
                 pullRequest(number:$number) {
                   closingIssuesReferences(first:20) {
-                    nodes { number title }
+                    nodes { number }
                   }
                 }
               }
             }' -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER" \
-            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes | length')
+            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number' || true)
 
-          if [ "${LINKED:-0}" -gt 0 ]; then
-            echo "OK: PR is linked to ${LINKED} issue(s) via Development sidebar."
+          SIDEBAR_VALID=""
+          while IFS= read -r n; do
+            [ -z "$n" ] && continue
+            if [ "$n" = "$PR_NUMBER" ]; then
+              echo "skip: Development link #${n} is this PR's own number"
+              continue
+            fi
+            if is_real_issue "$n"; then
+              SIDEBAR_VALID="${SIDEBAR_VALID}${n}"$'\n'
+            fi
+          done <<< "$(printf '%s' "$LINKED_JSON" | awk 'NF' | sort -nu)"
+
+          if [ -n "$(printf '%s' "$SIDEBAR_VALID" | awk 'NF')" ]; then
+            LIST=$(printf '%s' "$SIDEBAR_VALID" | awk 'NF' | paste -sd',' - | sed 's/,/, #/g')
+            echo "OK: PR is linked to verified Issue(s) via Development sidebar (#${LIST})."
             exit 0
           fi
 
           cat <<'EOF'
-          ::error::未关联 Issue，无法通过检查。
+          ::error::未关联有效 Issue，无法通过检查。
 
-          合并到 leading 的 PR 必须关联至少一个 GitHub Issue。
+          合并到 leading 的 PR 必须关联至少一个真实的 GitHub Issue（不能是 PR 编号，也不能是本 PR 自己的编号）。
 
           请任选一种方式：
           1. 在 PR 描述中填写：Related Issue: #编号
           2. 使用关闭关键词：Fixes #编号 / Closes #编号 / Resolves #编号
           3. 在 PR 右侧 Development 面板点击「Link an issue」关联 Issue
+
+          注意：正文里随口提到的「merged #102 / issue #101」等裸 #编号不算关联。
 
           关联后编辑 PR 描述或推送新提交即可重新触发本检查。
           EOF
