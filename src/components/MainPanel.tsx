@@ -81,6 +81,11 @@ export function MainPanel({
     usePendingTerminalPlan({ kind: "main" });
   const error = useAppStore((s) => s.error);
   const projectRoot = useAppStore((s) => s.projectRoot);
+  const sidecarUrl = useAppStore((s) => s.sidecarUrl);
+  const pendingFileIncludes = useAppStore((s) => s.pendingFileIncludes);
+  const addFileInclude = useAppStore((s) => s.addFileInclude);
+  const removeFileInclude = useAppStore((s) => s.removeFileInclude);
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const askMain = useAppStore((s) => s.askMain);
   const askBranch = useAppStore((s) => s.askBranch);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
@@ -371,6 +376,11 @@ export function MainPanel({
               projectRoot ? t("main.placeholderProject") : undefined
             }
             leading={<SessionApiSettings disabled={composerBusy} />}
+            projectRoot={projectRoot}
+            sidecarUrl={sidecarUrl}
+            includedFiles={pendingFileIncludes}
+            onIncludeFile={addFileInclude}
+            onRemoveInclude={removeFileInclude}
           />
           {error && <p className="ds-error">{error}</p>}
         </div>
@@ -622,6 +632,15 @@ export function MainPanel({
                     type="button"
                     className="fn-archive-btn"
                     disabled={composerBusy}
+                    title={t("main.memoryTitle")}
+                    onClick={() => setSettingsOpen(true, "memory")}
+                  >
+                    {t("main.memory")}
+                  </button>
+                  <button
+                    type="button"
+                    className="fn-archive-btn"
+                    disabled={composerBusy}
                     title={t("main.compressTitle")}
                     onClick={() => void compressContext()}
                   >
@@ -652,6 +671,11 @@ export function MainPanel({
               loading={composerBusy}
               compact
               leading={<SessionApiSettings disabled={composerBusy} />}
+              projectRoot={projectRoot}
+              sidecarUrl={sidecarUrl}
+              includedFiles={pendingFileIncludes}
+              onIncludeFile={addFileInclude}
+              onRemoveInclude={removeFileInclude}
               placeholder={
                 inArchiveMode
                   ? t("main.placeholderArchive")

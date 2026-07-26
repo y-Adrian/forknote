@@ -122,6 +122,7 @@ interface AppState {
   agentChanges: AgentFileChange[];
   /** Plan awaiting user approval before tool execution (project agent). */
   agentPendingPlan: AgentPendingPlan | null;
+  pendingFileIncludes: string[];
 
   init: () => void;
   setSettings: (settings: ApiSettings) => void;
@@ -195,6 +196,15 @@ interface AppState {
   /** Set the model for the active session (snapshotted; empty clears to inherit settings). */
   setSessionApi: (api: SessionApiOverride | null) => void;
   clearSessionApi: () => void;
+  setSessionMemory: (summary: string) => void;
+  saveContextMemoryFields: (fields: {
+    summary?: string;
+    tasks?: string;
+    decisions?: string;
+  }) => Promise<void>;
+  addFileInclude: (path: string) => void;
+  removeFileInclude: (path: string) => void;
+  clearFileIncludes: () => void;
 
   askMain: (question: string) => Promise<"started" | "rejected" | "rolled_back">;
   askBranch: (
@@ -246,7 +256,11 @@ function patchActiveSessionMeta(
   patch: Partial<
     Pick<
       ChatSession,
-      "archives" | "contextMode" | "activeArchiveId" | "contextMemory"
+      | "archives"
+      | "contextMode"
+      | "activeArchiveId"
+      | "contextMemory"
+      | "sessionMemory"
     >
   >,
 ): ChatSession[] {
@@ -532,6 +546,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   agentActivity: [],
   agentChanges: [],
   agentPendingPlan: null,
+  pendingFileIncludes: [],
 
   init: () => {
     const store = loadSessionStore();
@@ -1055,6 +1070,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const nextSessions = patchActiveSessionMeta(get().sessions, sessionId, {
         contextMemory: saved,
+        ...(saved.summary.trim()
+          ? {
+              sessionMemory: {
+                summary: saved.summary.trim().slice(0, 2000),
+                updatedAt: saved.updatedAt,
+              },
+            }
+          : {}),
       });
       persistSessions(nextSessions, get().activeSessionId);
       set({ sessions: nextSessions });
@@ -1272,6 +1295,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projectError: null,
       agentActivity: [],
       agentChanges: [],
+      pendingFileIncludes: [],
     });
     restoreSessionProject(get, set, sessionId, targetProject, sidecarUrl);
   },
@@ -1486,6 +1510,61 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sessions: nextSessions });
   },
 
+  setSessionMemory: (summary) => {
+    const { sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const trimmed = summary.trim();
+    const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
+      sessionMemory: trimmed
+        ? { summary: trimmed.slice(0, 4000), updatedAt: Date.now() }
+        : null,
+    });
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
+  saveContextMemoryFields: async (fields) => {
+    const { settings, projectRoot, sidecarUrl, sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const session = sessions.find((s) => s.id === activeSessionId);
+    const existing =
+      (await loadContextMemoryPack({ settings, session, projectRoot, sidecarUrl })) ?? {
+        summary: "",
+        tasks: "",
+        decisions: "",
+        updatedAt: Date.now(),
+        storage: "local" as const,
+      };
+    const pack = {
+      ...existing,
+      summary: fields.summary ?? existing.summary,
+      tasks: fields.tasks ?? existing.tasks,
+      decisions: fields.decisions ?? existing.decisions,
+      updatedAt: Date.now(),
+    };
+    const saved = await saveContextMemoryPack({ pack, settings, projectRoot, sidecarUrl });
+    const nextSessions = patchActiveSessionMeta(get().sessions, activeSessionId, {
+      contextMemory: saved,
+    });
+    persistSessions(nextSessions, get().activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
+  addFileInclude: (path) => {
+    const cleaned = path.replace(/^\.\/+/, "").trim();
+    if (!cleaned || cleaned.includes("..")) return;
+    set((s) => {
+      if (s.pendingFileIncludes.includes(cleaned)) return {};
+      return { pendingFileIncludes: [...s.pendingFileIncludes, cleaned].slice(0, 4) };
+    });
+  },
+
+  removeFileInclude: (path) => {
+    set((s) => ({ pendingFileIncludes: s.pendingFileIncludes.filter((p) => p !== path) }));
+  },
+
+  clearFileIncludes: () => set({ pendingFileIncludes: [] }),
+
   askMain: async (question) => {
     const trimmed = question.trim();
     if (!trimmed) return "rejected";
@@ -1630,7 +1709,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     try {
-      const { projectRoot, sidecarUrl } = get();
+      const { projectRoot, sidecarUrl, pendingFileIncludes } = get();
+      const includeFiles = [...pendingFileIncludes];
+      if (includeFiles.length > 0) {
+        set({ pendingFileIncludes: [] });
+      }
       const outcome = await runAgentTurn({
         llm,
         settings,
@@ -1642,6 +1725,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         sidecarUrl,
         signal,
         isOwned,
+        includeFiles,
         patchContent: patchAssistantState,
         onAgentActivity: (activity) => {
           set((s) => ({ agentActivity: [...s.agentActivity, activity] }));
