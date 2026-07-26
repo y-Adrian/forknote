@@ -1,4 +1,10 @@
+<div align="center">
+
 # ForkNote
+
+[![CI](https://github.com/y-Adrian/forknote/actions/workflows/ci.yml/badge.svg?branch=leading)](https://github.com/y-Adrian/forknote/actions/workflows/ci.yml)
+
+</div>
 
 面向开发与排障的「边读边澄清、再归档成日志」的工作台。
 
