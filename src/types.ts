@@ -99,6 +99,11 @@ export interface ChatSession {
    * write target is available. Project-bound packs live on disk under memoryDir.
    */
   contextMemory?: ContextMemoryPack | null;
+  /**
+   * Per-note session memory layer (short summary / working notes).
+   * Separately injectable from the project pack and user preferences.
+   */
+  sessionMemory?: SessionMemory | null;
   /** Bound local project absolute path for this session (via sidecar), or null */
   projectRoot?: string | null;
   /**
@@ -152,7 +157,26 @@ export interface SessionStore {
   activeSessionId: NodeId | null;
 }
 
-export type SettingsTab = "general" | "api" | "data" | "project" | "about";
+export type SettingsTab =
+  | "general"
+  | "api"
+  | "memory"
+  | "data"
+  | "project"
+  | "about";
+
+/** User-wide preference entry (localStorage; injected as the preferences layer). */
+export interface UserPreferenceEntry {
+  id: string;
+  text: string;
+  updatedAt: number;
+}
+
+/** Per-note session memory layer. */
+export interface SessionMemory {
+  summary: string;
+  updatedAt: number;
+}
 
 export interface ApiSettings {
   baseUrl: string;
@@ -162,8 +186,18 @@ export interface ApiSettings {
   /**
    * Inject SUMMARY/TASKS/DECISIONS from the local memory pack into askMain.
    * Default true — no-op until a pack exists.
+   * Alias of {@link memoryLayerProject}; kept for P0 settings compatibility.
    */
   contextMemoryEnabled?: boolean;
+  /** Inject user preferences layer. Default true. */
+  memoryLayerPreferences?: boolean;
+  /**
+   * Inject project memory pack (SUMMARY/TASKS/DECISIONS). Default true.
+   * When unset, falls back to {@link contextMemoryEnabled}.
+   */
+  memoryLayerProject?: boolean;
+  /** Inject per-note session summary. Default true. */
+  memoryLayerSession?: boolean;
   /** After Archive succeeds, also run context compression. Default false. */
   compressAfterArchive?: boolean;
   /** Project-relative folder for the three MD files. Default `.forknote/memory` */

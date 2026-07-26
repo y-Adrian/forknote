@@ -21,6 +21,7 @@ import { useTheme, type ThemePreference } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
 import type { ApiSettings, SettingsTab } from "../types";
 import { ApiConnectionFields } from "./ApiConnectionFields";
+import { MemorySettingsPanel } from "./MemoryPanel";
 
 interface Props {
   settings: ApiSettings;
@@ -90,24 +91,26 @@ const NAV_ICONS: Record<SettingsTab, ReactNode> = {
       />
     </svg>
   ),
+  memory: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M6 7h12v10H6z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M9 12h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  ),
   about: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
-      <path
-        d="M12 11v6M12 8h.01"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
+      <path d="M12 11v6M12 8h.01" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   ),
 };
 
-const NAV_TABS: SettingsTab[] = ["general", "api", "data", "project", "about"];
+const NAV_TABS: SettingsTab[] = ["general", "api", "memory", "data", "project", "about"];
 
 const NAV_LABEL_KEYS = {
   general: "settings.nav.general",
   api: "settings.nav.api",
+  memory: "settings.nav.memory",
   data: "settings.nav.data",
   project: "settings.nav.project",
   about: "settings.nav.about",
@@ -298,13 +301,22 @@ function ApiPanel({
       <label className="checkbox-row">
         <input
           type="checkbox"
-          checked={draft.contextMemoryEnabled !== false}
+          checked={
+            draft.memoryLayerProject != null
+              ? draft.memoryLayerProject !== false
+              : draft.contextMemoryEnabled !== false
+          }
           onChange={(e) =>
-            setDraft({ ...draft, contextMemoryEnabled: e.target.checked })
+            setDraft({
+              ...draft,
+              memoryLayerProject: e.target.checked,
+              contextMemoryEnabled: e.target.checked,
+            })
           }
         />
         {t("api.memoryPack.inject")}
       </label>
+      <p className="ss-panel-lead ss-panel-hint">{t("api.memoryPack.layersHint")}</p>
 
       <label className="checkbox-row">
         <input
@@ -475,6 +487,12 @@ function DataPanel() {
         <ul className="ss-key-list">
           <li>
             <code>{LOCAL_STORAGE_KEYS.settings}</code> — {t("data.key.settings")}
+          </li>
+          <li>
+            <code>{LOCAL_STORAGE_KEYS.userPreferences}</code> — {t("data.key.userPreferences")}
+          </li>
+          <li>
+            <code>{LOCAL_STORAGE_KEYS.recentFiles}</code> — {t("data.key.recentFiles")}
           </li>
           <li>
             <code>{LOCAL_STORAGE_KEYS.project}</code> — {t("data.key.project")}
@@ -803,6 +821,9 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
                 onSave={onSave}
                 onClose={onClose}
               />
+            )}
+            {settingsTab === "memory" && (
+              <MemorySettingsPanel draft={draft} setDraft={setDraft} onSave={onSave} />
             )}
             {settingsTab === "data" && <DataPanel />}
             {settingsTab === "project" && <ProjectSettingsPanel />}

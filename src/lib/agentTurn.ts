@@ -88,6 +88,7 @@ export type RunAgentTurnOptions = {
   signal: AbortSignal;
   /** Appended after buildConversationMessages (e.g. clarify selection addendum). */
   extraMessages?: ApiChatMessage[];
+  includeFiles?: string[];
   isOwned: () => boolean;
   patchContent: (patch: AgentContentPatch) => void;
   onAgentActivity: (activity: AgentActivity) => void;
@@ -179,6 +180,7 @@ export async function runAgentTurn(
     projectRoot,
     sidecarUrl,
     signal,
+    includeFiles: options.includeFiles,
   });
 
   if (signal.aborted || !isOwned()) {

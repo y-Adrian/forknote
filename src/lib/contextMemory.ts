@@ -10,8 +10,28 @@
 import { buildArchiveSource, lastNonEmptyMessageId } from "./archive";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
+import {
+  buildIncludedFilesAddendum,
+  extractAtFileMentions,
+  mergeIncludePaths,
+} from "./repoContext";
+import {
+  isMemoryLayerPreferencesEnabled,
+  isMemoryLayerProjectEnabled,
+  isMemoryLayerSessionEnabled,
+} from "./settings";
 import { mkdir, readFile, writeFile } from "./sidecar";
-import type { ApiSettings, ChatSession, ContextMemoryPack, ThreadRoot } from "../types";
+import {
+  formatPreferencesAddendum,
+  loadUserPreferences,
+} from "./userPreferences";
+import type {
+  ApiSettings,
+  ChatSession,
+  ContextMemoryPack,
+  SessionMemory,
+  ThreadRoot,
+} from "../types";
 
 export const MEMORY_FILES = ["SUMMARY.md", "TASKS.md", "DECISIONS.md"] as const;
 export type MemoryFileName = (typeof MEMORY_FILES)[number];
@@ -30,8 +50,20 @@ export function resolveMemoryDir(settings: ApiSettings): string {
 }
 
 export function isContextMemoryInjectEnabled(settings: ApiSettings): boolean {
-  // Default ON: harmless when no pack exists
-  return settings.contextMemoryEnabled !== false;
+  return isMemoryLayerProjectEnabled(settings);
+}
+
+export function formatSessionMemoryAddendum(
+  memory: SessionMemory | null | undefined,
+): string | null {
+  const summary = memory?.summary?.trim();
+  if (!summary) return null;
+  return [
+    "【本笔记会话记忆 · Session】",
+    "- 仅当前笔记的工作摘要；与项目记忆包 / 用户偏好冲突时以当前会话消息为准。",
+    "",
+    summary.length > 1800 ? `${summary.slice(0, 1800)}…` : summary,
+  ].join("\n");
 }
 
 export function isCompressAfterArchiveEnabled(settings: ApiSettings): boolean {
@@ -386,7 +418,7 @@ export function formatLocalMemoryAddendum(
 }
 
 /**
- * Load local MD pack (+ BM25 chunk filter) for askMain injection.
+ * Compose injectable memory layers for askMain.
  */
 export async function buildAgentMemoryAddendum(options: {
   settings: ApiSettings;
@@ -395,19 +427,40 @@ export async function buildAgentMemoryAddendum(options: {
   projectRoot?: string | null;
   sidecarUrl: string;
   signal?: AbortSignal;
+  includeFiles?: string[];
 }): Promise<string | null> {
-  const { settings, query, session, projectRoot, sidecarUrl, signal } = options;
-  if (!isContextMemoryInjectEnabled(settings)) return null;
-
-  const pack = await loadContextMemoryPack({
-    settings,
-    session,
-    projectRoot,
-    sidecarUrl,
-    signal,
-  });
-  if (!pack) return null;
-  return formatLocalMemoryAddendum(pack, query);
+  const {
+    settings, query, session, projectRoot, sidecarUrl, signal, includeFiles = [],
+  } = options;
+  const blocks: string[] = [];
+  if (isMemoryLayerPreferencesEnabled(settings)) {
+    const prefs = formatPreferencesAddendum(loadUserPreferences());
+    if (prefs) blocks.push(prefs);
+  }
+  if (isMemoryLayerProjectEnabled(settings)) {
+    const pack = await loadContextMemoryPack({
+      settings, session, projectRoot, sidecarUrl, signal,
+    });
+    if (pack) {
+      const project = formatLocalMemoryAddendum(pack, query);
+      if (project) blocks.push(project);
+    }
+  }
+  if (isMemoryLayerSessionEnabled(settings)) {
+    const sessionBlock = formatSessionMemoryAddendum(session?.sessionMemory);
+    if (sessionBlock) blocks.push(sessionBlock);
+  }
+  if (projectRoot) {
+    const paths = mergeIncludePaths(includeFiles, extractAtFileMentions(query));
+    if (paths.length > 0) {
+      const files = await buildIncludedFilesAddendum({
+        paths, projectRoot, sidecarUrl, signal,
+      });
+      if (files) blocks.push(files);
+    }
+  }
+  if (blocks.length === 0) return null;
+  return blocks.join("\n\n");
 }
 
 export function compressChatMessages(

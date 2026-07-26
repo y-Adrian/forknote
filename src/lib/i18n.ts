@@ -94,6 +94,7 @@ const en = {
   "settings.navAria": "Settings categories",
   "settings.nav.general": "General",
   "settings.nav.api": "Default API",
+  "settings.nav.memory": "Memory",
   "settings.nav.data": "Data",
   "settings.nav.project": "Project",
   "settings.nav.about": "About",
@@ -153,7 +154,9 @@ const en = {
   "api.memoryPack.title": "Context memory pack",
   "api.memoryPack.lead":
     "Chat → LLM compress → SUMMARY.md + TASKS.md + DECISIONS.md → inject on next ask. Prefer writing into the bound project; otherwise keep a draft on the note.",
-  "api.memoryPack.inject": "Inject memory pack into main chat",
+  "api.memoryPack.inject": "Inject project memory pack into main chat",
+  "api.memoryPack.layersHint":
+    "Preferences / session layers and the editable Memory UI live under Settings → Memory.",
   "api.memoryPack.afterArchive": "Also compress after Archive",
   "api.memoryPack.afterArchiveHint":
     "Off by default — turn on here so Archive also runs Compress. Or use the Compress button when a long thread suggestion appears.",
@@ -165,6 +168,31 @@ const en = {
   "api.memoryPack.autoSummary": "Auto-summarize older live turns",
   "api.memoryPack.autoSummaryHint":
     "When off, live mode re-sends the full thread (costly on long chats).",
+
+  "memory.title": "Memory",
+  "memory.lead": "Three local layers — preferences, project pack, and per-note session — inject separately. Edit entries here; nothing leaves this device.",
+  "memory.layersTitle": "Inject layers",
+  "memory.layersLead": "Toggle which layers are appended on the next main ask.",
+  "memory.layer.preferences": "User preferences",
+  "memory.layer.project": "Project pack (SUMMARY / TASKS / DECISIONS)",
+  "memory.layer.session": "Session summary (this note)",
+  "memory.saveLayers": "Save layer toggles",
+  "memory.prefsTitle": "Preferences",
+  "memory.prefsLead": "Cross-note habits and standing instructions (localStorage).",
+  "memory.prefsEmpty": "No preferences yet.",
+  "memory.prefsPlaceholder": "e.g. Prefer concise answers; use TypeScript",
+  "memory.prefsAdd": "Add preference",
+  "memory.edit": "Edit",
+  "memory.projectTitle": "Project memory pack",
+  "memory.projectLeadBound": "Editing files under {dir}/ on the bound project (also mirrored on this note).",
+  "memory.projectLeadLocal": "No project bound — editing the draft pack stored on this note.",
+  "memory.projectSave": "Save pack",
+  "memory.saveFailed": "Could not save memory pack.",
+  "memory.sessionTitle": "Session memory",
+  "memory.sessionLead": "Working notes for the active note only. Compress also refreshes this from SUMMARY when possible.",
+  "memory.sessionNone": "Open a note to edit session memory.",
+  "memory.sessionPlaceholder": "Short summary of goals / status for this note…",
+  "memory.sessionClear": "Clear",
 
   "data.title": "Data",
   "data.lead":
@@ -184,6 +212,8 @@ const en = {
   "data.cleared": "All notes cleared.",
   "data.alsoStored": "Also stored locally",
   "data.key.settings": "API settings",
+  "data.key.userPreferences": "user preference memory",
+  "data.key.recentFiles": "recent @file paths per project",
   "data.key.project": "project / sidecar prefs",
   "data.key.theme": "theme preference",
   "data.key.locale": "interface language",
@@ -366,6 +396,8 @@ const en = {
   "main.compressing": "Compressing…",
   "main.compressTitle":
     "Summarize this thread into SUMMARY.md, TASKS.md, and DECISIONS.md for next-turn restore",
+  "main.memory": "Memory",
+  "main.memoryTitle": "Open Memory settings (layers, preferences, pack)",
   "main.compressDoneProject":
     "Memory written under the project memory folder and saved on this note",
   "main.compressDoneSession":
@@ -385,6 +417,10 @@ const en = {
   "composer.hintHero":
     "Drag-select text in answers to clarify · Enter to send",
   "composer.hintCompact": "Enter to send · Shift+Enter for a new line",
+  "composer.hintHeroProject": "Type @ to attach a project file · Drag-select to clarify · Enter to send",
+  "composer.hintCompactProject": "@file to include · Enter to send · Shift+Enter for a new line",
+  "composer.includesAria": "Files included in the next ask",
+  "composer.removeInclude": "Remove {path}",
   "composer.newQuestion": "New question",
   "composer.continue": "Continue main thread",
   "composer.stopAria": "Stop generating",
@@ -561,6 +597,7 @@ const zh: Record<MessageKey, string> = {
   "settings.navAria": "设置分类",
   "settings.nav.general": "通用",
   "settings.nav.api": "默认 API",
+  "settings.nav.memory": "记忆",
   "settings.nav.data": "数据",
   "settings.nav.project": "项目",
   "settings.nav.about": "关于",
@@ -618,7 +655,8 @@ const zh: Record<MessageKey, string> = {
   "api.memoryPack.title": "上下文记忆包",
   "api.memoryPack.lead":
     "聊天 → LLM 压缩 → SUMMARY.md + TASKS.md + DECISIONS.md → 下次提问注入。优先写入已绑定项目；否则保存在本笔记草稿中。",
-  "api.memoryPack.inject": "主对话注入记忆包",
+  "api.memoryPack.inject": "主对话注入项目记忆包",
+  "api.memoryPack.layersHint": "偏好 / 会话层与可编辑记忆界面在「设置 → 记忆」。",
   "api.memoryPack.afterArchive": "归档后自动压缩",
   "api.memoryPack.afterArchiveHint":
     "默认关闭。可在此开启，使「归档」成功后同时压缩；或在长对话提示出现时点「压缩上下文」。",
@@ -630,6 +668,31 @@ const zh: Record<MessageKey, string> = {
   "api.memoryPack.autoSummary": "自动摘要较早实时对话",
   "api.memoryPack.autoSummaryHint":
     "关闭后，实时模式会整线程重发（长对话更贵、更易糊）。",
+
+  "memory.title": "记忆",
+  "memory.lead": "三层本地记忆——用户偏好、项目记忆包、本笔记会话——可分别注入。在此编辑；不离开本机。",
+  "memory.layersTitle": "注入层",
+  "memory.layersLead": "选择下次主对话发送时附加哪些层。",
+  "memory.layer.preferences": "用户偏好",
+  "memory.layer.project": "项目记忆包（SUMMARY / TASKS / DECISIONS）",
+  "memory.layer.session": "会话摘要（本笔记）",
+  "memory.saveLayers": "保存注入开关",
+  "memory.prefsTitle": "偏好",
+  "memory.prefsLead": "跨笔记的习惯与长期指令（localStorage）。",
+  "memory.prefsEmpty": "暂无偏好。",
+  "memory.prefsPlaceholder": "例如：回答尽量简洁；优先 TypeScript",
+  "memory.prefsAdd": "添加偏好",
+  "memory.edit": "编辑",
+  "memory.projectTitle": "项目记忆包",
+  "memory.projectLeadBound": "编辑已绑定项目下 {dir}/ 中的文件（同时镜像到本笔记）。",
+  "memory.projectLeadLocal": "未绑定项目——编辑保存在本笔记的草稿记忆包。",
+  "memory.projectSave": "保存记忆包",
+  "memory.saveFailed": "无法保存记忆包。",
+  "memory.sessionTitle": "会话记忆",
+  "memory.sessionLead": "仅当前笔记的工作备注。压缩上下文时也会尽量用 SUMMARY 刷新此处。",
+  "memory.sessionNone": "打开笔记后即可编辑会话记忆。",
+  "memory.sessionPlaceholder": "本笔记目标 / 现状的简短摘要…",
+  "memory.sessionClear": "清空",
 
   "data.title": "数据",
   "data.lead":
@@ -647,6 +710,8 @@ const zh: Record<MessageKey, string> = {
   "data.cleared": "已清空全部笔记。",
   "data.alsoStored": "本机还存储了",
   "data.key.settings": "API 设置",
+  "data.key.userPreferences": "用户偏好记忆",
+  "data.key.recentFiles": "各项目最近 @file 路径",
   "data.key.project": "项目 / sidecar 偏好",
   "data.key.theme": "主题偏好",
   "data.key.locale": "界面语言",
@@ -823,6 +888,8 @@ const zh: Record<MessageKey, string> = {
   "main.compressing": "压缩中…",
   "main.compressTitle":
     "将本线程总结为 SUMMARY.md、TASKS.md、DECISIONS.md，供下次自动恢复",
+  "main.memory": "记忆",
+  "main.memoryTitle": "打开记忆设置（注入层、偏好、记忆包）",
   "main.compressDoneProject":
     "记忆已写入项目记忆目录，并保存在本笔记中",
   "main.compressDoneSession":
@@ -841,6 +908,10 @@ const zh: Record<MessageKey, string> = {
 
   "composer.hintHero": "在回答中拖选文字即可澄清 · Enter 发送",
   "composer.hintCompact": "Enter 发送 · Shift+Enter 换行",
+  "composer.hintHeroProject": "输入 @ 附带项目文件 · 拖选文字澄清 · Enter 发送",
+  "composer.hintCompactProject": "@file 附带文件 · Enter 发送 · Shift+Enter 换行",
+  "composer.includesAria": "将注入下次提问的文件",
+  "composer.removeInclude": "移除 {path}",
   "composer.newQuestion": "新问题",
   "composer.continue": "继续主线",
   "composer.stopAria": "停止生成",

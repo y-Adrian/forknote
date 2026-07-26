@@ -271,11 +271,12 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 2. **已绑定项目**：写入 `{memoryDir}/`（默认 `.forknote/memory/`）三份 Markdown  
    **未绑定项目**：草稿保存在当前笔记的 `contextMemory`（localStorage）
 3. 下次主对话发送前，会把相关摘录（本地分块 + BM25 排序）注入上下文
-4. Settings → API → **Context memory pack**：注入开关、归档后压缩、滑动窗口轮数、自动摘要、记忆目录
+4. Settings → **Memory**：三层注入开关（用户偏好 / 项目包 / 本笔记会话）+ 可编辑偏好与记忆包；Settings → API 仍管滑动窗口与压缩选项
+5. 绑定项目后，在输入框输入 `@` 可附带项目文件（浅层路径提示 + 最近文件），内容注入下一次提问
 
-实现：`src/lib/contextMemory.ts` + `contextBuilder.ts`（滑动窗口）+ `compressContext`（store）。压缩提示与归档类似，复用 `streamChat`。
+实现：`src/lib/contextMemory.ts`（分层注入）+ `userPreferences.ts` + `repoContext.ts`（@file）+ `contextBuilder.ts`（滑动窗口）+ `MemoryPanel.tsx`。
 
-长期记忆统一走上述本地三文件；不使用云端 mem0。实时上下文默认保留最近 **12** 轮原文，更早轮次压成本地摘要；工具结果写入 `apiMessages` 时截断，多轮循环中会进一步收缩较早结果。
+长期记忆统一走本地三文件 + 用户偏好 + 会话摘要；不使用云端 mem0。实时上下文默认保留最近 **12** 轮原文，更早轮次压成本地摘要；工具结果写入 `apiMessages` 时截断，多轮循环中会进一步收缩较早结果。
 
 ---
 
@@ -347,7 +348,7 @@ flowchart TD
 | 分支导航 | `BranchRail.tsx`、`BranchFloatLayer.tsx` | git-graph 轨与浮动 Fork |
 | 上下文 | `conversationContext.ts`、`contextBuilder.ts`、`points.ts` | live vs archive；system + 历史；裁决注入 |
 | 归档 | `archive.ts`、`ArchivePanel.tsx` | 开发日志草稿与面板 |
-| 记忆包 | `contextMemory.ts` | Compress → 三 MD；分块 BM25 摘录注入 `askMain`；滑动窗口见 `contextBuilder.ts` |
+| 记忆包 | `contextMemory.ts`、`userPreferences.ts`、`repoContext.ts`、`MemoryPanel.tsx` | 三层注入；可编辑 UI；@file 附带 |
 | 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
 | Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / `run_terminal` / …；多轮循环 + 计划批准门控 |
 | 计划审核 | `AgentPlanReview.tsx` | 绑定项目且开启批准时，工具执行前的计划审阅栏 |
@@ -358,8 +359,10 @@ flowchart TD
 
 | 键 / 位置 | 内容 |
 |-----------|------|
-| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory、每会话 `projectRoot` / 可选 `api` 覆盖 |
-| `forknote-settings` 等 | API、代理、本地记忆包开关 |
+| `forknote-sessions-v1` | 多笔记、thread、archives、contextMemory、sessionMemory、每会话 `projectRoot` / 可选 `api` 覆盖 |
+| `forknote-settings` 等 | API、代理、本地记忆包与分层注入开关 |
+| `forknote-user-preferences` | 用户偏好记忆条目 |
+| `forknote-recent-files` | 各项目最近 @file 路径 |
 | `forknote-theme` / `forknote-locale` | 主题与界面语言 |
 | 项目偏好 | 上次项目路径、sidecar URL |
 | 磁盘 `.forknote/memory/` | 绑定项目后的 SUMMARY / TASKS / DECISIONS |

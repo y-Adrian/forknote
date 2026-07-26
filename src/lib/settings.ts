@@ -26,6 +26,9 @@ const APP_DEFAULTS: ApiSettings = {
   model: "",
   useProxy: true,
   contextMemoryEnabled: true,
+  memoryLayerPreferences: true,
+  memoryLayerProject: true,
+  memoryLayerSession: true,
   compressAfterArchive: false,
   memoryDir: ".forknote/memory",
   contextWindowTurns: DEFAULT_CONTEXT_WINDOW_TURNS,
@@ -65,6 +68,21 @@ export function isContextAutoSummaryEnabled(settings: ApiSettings): boolean {
   return settings.contextAutoSummary !== false;
 }
 
+export function isMemoryLayerPreferencesEnabled(settings: ApiSettings): boolean {
+  return settings.memoryLayerPreferences !== false;
+}
+
+export function isMemoryLayerProjectEnabled(settings: ApiSettings): boolean {
+  if (settings.memoryLayerProject != null) {
+    return settings.memoryLayerProject !== false;
+  }
+  return settings.contextMemoryEnabled !== false;
+}
+
+export function isMemoryLayerSessionEnabled(settings: ApiSettings): boolean {
+  return settings.memoryLayerSession !== false;
+}
+
 /** Ensure Base URL has an explicit http(s) scheme (Settings UI / localStorage). */
 export function coerceApiBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim();
@@ -102,7 +120,17 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     apiKey: (raw.apiKey ?? APP_DEFAULTS.apiKey).trim(),
     useProxy: raw.useProxy ?? APP_DEFAULTS.useProxy,
     contextMemoryEnabled:
-      raw.contextMemoryEnabled ?? APP_DEFAULTS.contextMemoryEnabled,
+      raw.memoryLayerProject ??
+      raw.contextMemoryEnabled ??
+      APP_DEFAULTS.contextMemoryEnabled,
+    memoryLayerPreferences:
+      raw.memoryLayerPreferences ?? APP_DEFAULTS.memoryLayerPreferences,
+    memoryLayerProject:
+      raw.memoryLayerProject ??
+      raw.contextMemoryEnabled ??
+      APP_DEFAULTS.memoryLayerProject,
+    memoryLayerSession:
+      raw.memoryLayerSession ?? APP_DEFAULTS.memoryLayerSession,
     compressAfterArchive:
       raw.compressAfterArchive ?? APP_DEFAULTS.compressAfterArchive,
     memoryDir:
