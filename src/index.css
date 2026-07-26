@@ -1427,6 +1427,8 @@ body {
   background: transparent;
   overflow: visible;
   min-width: min-content;
+  /* Override UA pre monospace so fence body uses JetBrains Mono */
+  font-family: var(--ds-font-mono);
 }
 
 .answer-body .fn-code-pre code {
@@ -1439,7 +1441,7 @@ body {
   font-size: inherit;
   line-height: inherit;
   color: inherit;
-  font-family: inherit;
+  font-family: var(--ds-font-mono);
 }
 
 /* Fallback for any remaining raw <pre> (non-markdown) */

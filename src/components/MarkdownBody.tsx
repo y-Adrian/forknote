@@ -22,16 +22,27 @@ function languageFromClass(className?: string): string | null {
   return m?.[1] ?? null;
 }
 
+function fenceChildrenToText(children: ReactNode): string {
+  if (children == null || typeof children === "boolean") return "";
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(fenceChildrenToText).join("");
+  }
+  return "";
+}
+
 function FencedCodeBlock({
   className,
   children,
 }: {
   className?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const { t } = useLocale();
   const [copied, setCopied] = useState(false);
-  const text = String(children).replace(/\n$/, "");
+  const text = fenceChildrenToText(children).replace(/\n$/, "");
   const lines = text.length === 0 ? [""] : text.split("\n");
   const language = languageFromClass(className);
 
@@ -48,7 +59,7 @@ function FencedCodeBlock({
   return (
     <div className="fn-code-block">
       <div className="fn-code-toolbar">
-        <span className="fn-code-lang">{language ?? "text"}</span>
+        <span className="fn-code-lang">{language ?? ""}</span>
         <button
           type="button"
           className="fn-code-copy"
