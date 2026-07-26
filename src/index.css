@@ -2948,41 +2948,125 @@ mark.branch-highlight:hover {
 
 
 /* ── Responsive ───────────────────────────────────────────── */
+/* Keep 768px in sync with SIDEBAR_NARROW_MAX_PX in src/lib/layout.ts */
 
 @media (max-width: 768px) {
   .ds-app {
-    flex-direction: column;
     gap: 0;
     padding: 0;
   }
 
-  .ds-sidebar:not(.collapsed) {
+  .ds-app.is-narrow-sidebar .ds-sidebar {
     position: fixed;
-    z-index: 30;
-    left: var(--ds-shell-gap);
-    top: var(--ds-shell-gap);
-    bottom: var(--ds-shell-gap);
+    z-index: 40;
+    left: 0;
+    top: 0;
+    bottom: 0;
     height: auto;
     max-height: none;
+    width: min(var(--ds-sidebar-w), 86vw);
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-top: none;
+    border-bottom: none;
     box-shadow: var(--ds-shadow-lg);
+    transform: translateX(-105%);
+    pointer-events: none;
+    visibility: hidden;
+    transition:
+      transform var(--dur-slow) var(--ease-out),
+      visibility 0s linear var(--dur-slow);
   }
 
-  .ds-sidebar.collapsed {
-    width: 52px;
-    height: auto;
-    max-height: none;
-    flex-shrink: 0;
-    margin: var(--ds-shell-gap) 0 0 var(--ds-shell-gap);
-    border-radius: var(--ds-radius-xl);
+  .ds-app.is-narrow-sidebar .ds-sidebar.is-drawer-open {
+    transform: translateX(0);
+    pointer-events: auto;
+    visibility: visible;
+    transition:
+      transform var(--dur-slow) var(--ease-out),
+      visibility 0s linear 0s;
+  }
+
+  /* No icon-rail on narrow — full hide only. */
+  .ds-app.is-narrow-sidebar .ds-sidebar.collapsed {
+    width: min(var(--ds-sidebar-w), 86vw);
   }
 
   .ds-main {
     border-radius: 0;
+    border: none;
+    box-shadow: none;
   }
 
   .fn-msg-user {
     max-width: 92%;
   }
+}
+
+.fn-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  margin: 0;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  background: var(--ds-overlay);
+  animation: backdropIn var(--dur-base) var(--ease-out);
+}
+
+.fn-sidebar-menu-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ds-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.fn-sidebar-menu-btn .fn-sidebar-menu-logo {
+  width: auto;
+  pointer-events: none;
+}
+
+.fn-sidebar-menu-btn .fn-sidebar-menu-logo .fn-brand-icon {
+  height: 22px;
+}
+
+.fn-sidebar-menu-btn:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text);
+}
+
+.fn-sidebar-menu-btn:active {
+  transform: scale(0.96);
+}
+
+.fn-main-topbar {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 2;
+}
+
+.fn-main-empty {
+  position: relative;
+}
+
+.fn-chat-header .fn-sidebar-menu-btn {
+  margin-right: 2px;
 }
 
 

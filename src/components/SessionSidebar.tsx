@@ -29,7 +29,11 @@ type MenuPos = { top: number; right: number };
 
 interface Props {
   collapsed: boolean;
+  /** True below the 768px shell breakpoint — drawer overlay, not icon rail. */
+  narrowViewport: boolean;
+  mobileNavOpen: boolean;
   onToggleCollapse: () => void;
+  onCloseMobileNav: () => void;
   onOpenSettings: () => void;
 }
 
@@ -180,7 +184,10 @@ function ThemeToggleButton({
 
 export function SessionSidebar({
   collapsed,
+  narrowViewport,
+  mobileNavOpen,
   onToggleCollapse,
+  onCloseMobileNav,
   onOpenSettings,
 }: Props) {
   const { t } = useLocale();
@@ -217,6 +224,20 @@ export function SessionSidebar({
       }),
     [sessions, t],
   );
+
+  const closeNarrowDrawer = () => {
+    if (narrowViewport) onCloseMobileNav();
+  };
+
+  const openSession = (id: NodeId) => {
+    switchSession(id);
+    closeNarrowDrawer();
+  };
+
+  const handleNewNote = () => {
+    createSession();
+    closeNarrowDrawer();
+  };
 
   const menuSession = useMemo(
     () => (menuId ? sessions.find((s) => s.id === menuId) : undefined),
@@ -437,8 +458,12 @@ export function SessionSidebar({
 
   return (
     <aside
-      className={`ds-sidebar fn-sidebar${collapsed ? " collapsed" : ""}`}
+      className={`ds-sidebar fn-sidebar${collapsed ? " collapsed" : ""}${
+        narrowViewport && mobileNavOpen ? " is-drawer-open" : ""
+      }`}
       aria-label={t("sidebar.notesAria")}
+      aria-hidden={narrowViewport && !mobileNavOpen ? true : undefined}
+      {...(narrowViewport && !mobileNavOpen ? { inert: true } : {})}
     >
       <div className="ds-sidebar-top">
         {collapsed ? (
@@ -463,8 +488,12 @@ export function SessionSidebar({
               type="button"
               className="ds-icon-btn"
               onClick={onToggleCollapse}
-              aria-label={t("sidebar.collapse")}
-              title={t("sidebar.collapse")}
+              aria-label={
+                narrowViewport ? t("sidebar.closeList") : t("sidebar.collapse")
+              }
+              title={
+                narrowViewport ? t("sidebar.closeList") : t("sidebar.collapse")
+              }
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
@@ -484,7 +513,7 @@ export function SessionSidebar({
           <button
             type="button"
             className="fn-new-note"
-            onClick={() => createSession()}
+            onClick={handleNewNote}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
@@ -533,7 +562,7 @@ export function SessionSidebar({
                           <button
                             type="button"
                             className={`ds-session-item${active ? " active" : ""}`}
-                            onClick={() => switchSession(session.id)}
+                            onClick={() => openSession(session.id)}
                             onDoubleClick={(e) => {
                               e.preventDefault();
                               startRename(session.id, session.title);

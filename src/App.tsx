@@ -6,6 +6,11 @@ import { ProjectPanel } from "./components/ProjectPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ShareViewer } from "./components/ShareViewer";
+import { useLocale } from "./lib/i18n";
+import {
+  isSidebarNarrowViewport,
+  SIDEBAR_NARROW_MQ,
+} from "./lib/layout";
 import { parseShareHash } from "./lib/sessionShare";
 import { useAppStore } from "./store/useAppStore";
 
@@ -15,6 +20,7 @@ function readShareToken(): string | null {
 }
 
 export default function App() {
+  const { t } = useLocale();
   const init = useAppStore((s) => s.init);
   const settings = useAppStore((s) => s.settings);
   const settingsOpen = useAppStore((s) => s.settingsOpen);
@@ -23,12 +29,39 @@ export default function App() {
   const projectOpen = useAppStore((s) => s.projectOpen);
   const setProjectOpen = useAppStore((s) => s.setProjectOpen);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [narrowViewport, setNarrowViewport] = useState(
+    isSidebarNarrowViewport,
+  );
+  /** Desktop-only icon rail; ignored while the narrow drawer mode is active. */
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  /** Narrow-only session list drawer (DeepSeek-style overlay). */
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(readShareToken);
 
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    const mq = window.matchMedia(SIDEBAR_NARROW_MQ);
+    const sync = () => {
+      setNarrowViewport(mq.matches);
+      // Close the drawer whenever the breakpoint flips; never leave overlay open on desktop.
+      setMobileNavOpen(false);
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!narrowViewport || !mobileNavOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [narrowViewport, mobileNavOpen]);
 
   useEffect(() => {
     const onHash = () => setShareToken(readShareToken());
@@ -42,18 +75,51 @@ export default function App() {
     setShareToken(null);
   }, []);
 
+  const openMobileNav = useCallback(() => setMobileNavOpen(true), []);
+  const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
+
+  const onToggleCollapse = useCallback(() => {
+    if (narrowViewport) {
+      setMobileNavOpen((open) => !open);
+      return;
+    }
+    setDesktopCollapsed((v) => !v);
+  }, [narrowViewport]);
+
   if (shareToken) {
     return <ShareViewer token={shareToken} onExit={exitShare} />;
   }
 
+  const sidebarCollapsed = narrowViewport ? false : desktopCollapsed;
+
   return (
-    <div className="app ds-app">
+    <div
+      className={`app ds-app${narrowViewport ? " is-narrow-sidebar" : ""}${
+        narrowViewport && mobileNavOpen ? " is-mobile-nav-open" : ""
+      }`}
+    >
+      {narrowViewport && mobileNavOpen ? (
+        <button
+          type="button"
+          className="fn-sidebar-backdrop"
+          aria-label={t("sidebar.closeList")}
+          onClick={closeMobileNav}
+        />
+      ) : null}
+
       <SessionSidebar
         collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+        narrowViewport={narrowViewport}
+        mobileNavOpen={mobileNavOpen}
+        onToggleCollapse={onToggleCollapse}
+        onCloseMobileNav={closeMobileNav}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <MainPanel onOpenProject={() => setProjectOpen(true)} />
+      <MainPanel
+        onOpenProject={() => setProjectOpen(true)}
+        showSidebarMenu={narrowViewport}
+        onOpenSidebar={openMobileNav}
+      />
       <BranchFloatLayer />
 
       <SettingsPanel
