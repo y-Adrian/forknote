@@ -17,9 +17,39 @@ import { ThinkingBlock } from "./ThinkingBlock";
 
 interface Props {
   onOpenProject: () => void;
+  showSidebarMenu?: boolean;
+  onOpenSidebar?: () => void;
 }
 
-export function MainPanel({ onOpenProject }: Props) {
+function SidebarMenuButton({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="fn-sidebar-menu-btn"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+    >
+      <ForkNoteLogo
+        iconOnly
+        iconHeight={22}
+        className="fn-sidebar-menu-logo"
+      />
+    </button>
+  );
+}
+
+export function MainPanel({
+  onOpenProject,
+  showSidebarMenu = false,
+  onOpenSidebar,
+}: Props) {
   const { t } = useLocale();
   const thread = useAppStore((s) => s.thread);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
@@ -274,6 +304,14 @@ export function MainPanel({ onOpenProject }: Props) {
   if (!thread) {
     return (
       <main className="ds-main ds-main-empty fn-main-empty">
+        {showSidebarMenu && onOpenSidebar ? (
+          <div className="fn-main-topbar">
+            <SidebarMenuButton
+              onClick={onOpenSidebar}
+              label={t("sidebar.openList")}
+            />
+          </div>
+        ) : null}
         <div className="fn-empty">
           <div className="fn-empty-brand">
             <ForkNoteLogo showWordmark className="fn-empty-logo" iconHeight={48} />
@@ -321,6 +359,12 @@ export function MainPanel({ onOpenProject }: Props) {
   return (
     <main className="ds-main ds-main-chat">
       <header className="fn-chat-header">
+        {showSidebarMenu && onOpenSidebar ? (
+          <SidebarMenuButton
+            onClick={onOpenSidebar}
+            label={t("sidebar.openList")}
+          />
+        ) : null}
         <div className="fn-chat-header-main">
           <span className="fn-chat-kicker">{t("main.notesKicker")}</span>
           <h1 className="fn-chat-title" title={title}>
