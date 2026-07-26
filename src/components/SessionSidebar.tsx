@@ -16,6 +16,7 @@ import {
 } from "../lib/sessionApi";
 import { groupSessionsByDate } from "../lib/sessionGroups";
 import {
+  displaySessionTitle,
   getSkipSessionDeleteConfirm,
   setSkipSessionDeleteConfirm,
 } from "../lib/storage";
@@ -336,7 +337,7 @@ export function SessionSidebar({
     closeMenu();
     closeConfirmDelete();
     setRenamingId(id);
-    setDraftTitle(current);
+    setDraftTitle(displaySessionTitle(current));
   };
 
   const cancelRename = () => {
@@ -540,16 +541,16 @@ export function SessionSidebar({
                             title={
                               modelLabel
                                 ? t("sidebar.sessionHint", {
-                                    title: session.title,
+                                    title: displaySessionTitle(session.title),
                                     model: modelLabel,
                                   })
                                 : t("sidebar.renameHint", {
-                                    title: session.title,
+                                    title: displaySessionTitle(session.title),
                                   })
                             }
                           >
                             <span className="fn-session-item-title">
-                              {session.title}
+                              {displaySessionTitle(session.title)}
                               {session.titleLocked && (
                                 <span className="fn-title-locked" aria-hidden>
                                   ·
