@@ -8,7 +8,12 @@ import {
   conversationBaseSystem,
   PROJECT_CHAT_SYSTEM,
 } from "../src/lib/contextBuilder.ts";
-import { inferExploreIntent } from "../src/lib/agentTools.ts";
+import {
+  inferCreateFilePath,
+  inferExploreIntent,
+  isAnswerOnlySampleCodeRequest,
+  looksLikeAnswerOnlyRequest,
+} from "../src/lib/agentTools.ts";
 import type { ThreadRoot } from "../src/types.ts";
 
 for (const q of [
@@ -24,6 +29,13 @@ for (const q of [
   );
 }
 
+assert.equal(inferCreateFilePath("随便给我写一段代码"), null);
+assert.ok(isAnswerOnlySampleCodeRequest("随便给我写一段代码"));
+assert.ok(looksLikeAnswerOnlyRequest("随便给我写一段代码"));
+assert.equal(inferCreateFilePath("写一个 hello.py"), "hello.py");
+assert.equal(isAnswerOnlySampleCodeRequest("写一个 hello.py"), false);
+assert.equal(looksLikeAnswerOnlyRequest("写一个 hello.py"), false);
+
 const unboundSystem = conversationBaseSystem({
   projectRoot: null,
   codingToolsSystem: null,
@@ -31,6 +43,12 @@ const unboundSystem = conversationBaseSystem({
 assert.ok(unboundSystem.includes("无本地项目工具"));
 assert.ok(!unboundSystem.includes("必须使用函数工具"));
 assert.ok(CHAT_SYSTEM.includes("无本地项目工具"));
+
+assert.ok(
+  PROJECT_CHAT_SYSTEM.includes("写一段") ||
+    PROJECT_CHAT_SYSTEM.includes("示例代码"),
+  "bound system must prefer chat for sample-code asks",
+);
 
 const boundSystem = conversationBaseSystem({
   projectRoot: "/tmp/demo",

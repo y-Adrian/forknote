@@ -376,6 +376,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 原则（必须遵守）：
 - 严格依据用户【最新一条】原话理解意图；忽略历史中未完成的旧计划/旧文件任务，除非用户明确要求继续。
+- 根据情景判断：示例/解释/「写一段代码」类问答优先直接回答（Markdown 围栏）并写明「无需工具」；仅当目标确需改仓库或跑命令时再起草精简计划。不要编造路径（如 hello.py）或用 run_terminal / echo 代替贴代码。
 - 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
 - 意图明确且需要改磁盘或跑可能改系统的 shell 时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
 - 用户明确要求 shell/终端/执行命令/run … 时：计划里用 run_terminal（写出确切 command），不要改成 list_dir。
@@ -394,6 +395,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 Rules (must follow):
 - Ground everything in the user's LATEST message. Ignore unfinished older plans/file tasks in history unless the user explicitly asks to continue.
+- Judge by situation: for sample/how-to/explanation asks, prefer answering directly (Markdown fences OK) and say no tools are required; only draft a plan when the goal truly needs repo changes or commands. Do not invent paths (e.g. hello.py) or use run_terminal / echo instead of pasting code.
 - If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
 - If intent is clear and needs disk changes or potentially mutating shell: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
 - If the user explicitly asked for shell/terminal/run …: plan run_terminal with the exact command — do not substitute list_dir.
@@ -1028,8 +1030,8 @@ ${terminalBlock}
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
 
 多轮工作流（一次用户消息内可循环多轮）：
-1. 依据用户【最新一条】明确意图决定是否需要工具；意图不清则先回答/澄清，不要擅自改文件或列目录；不要继续执行历史里未完成的旧任务，除非用户明确要求
-2. 需要工具时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行；若要跑命令则立刻 tool_calls run_terminal）
+1. 依据用户【最新一条】明确意图决定是否需要工具；只要示例/「写一段代码」/解释 → 直接 Markdown 回答，不要 write_file；意图不清则先回答/澄清，不要擅自改文件或列目录；不要继续执行历史里未完成的旧任务，除非用户明确要求
+2. 仅当用户明确要求改仓库或跑命令时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行；若要跑命令则立刻 tool_calls run_terminal）
 3. 阅读 tool / 工具结果；若用户任务尚未完成 → 再调下一批必要工具
 4. 全部做完 → 最后一轮用中文总结，不要再调工具
 5. 禁止自行添加用户未要求的验证步骤（如写完再 list_dir、无必要的反复 read）`;
@@ -1751,15 +1753,90 @@ function agentToolCallFromUnknown(obj: unknown): AgentToolCall | null {
   return agentCallFromOpenAI(fake);
 }
 
+/**
+ * Soft signal: phrasing that usually wants a chat sample (Markdown fence),
+ * not a forced write_file. Does **not** hard-block tools in runAgentTurn —
+ * only softens create/shell/mutation heuristics. Explicit create/save/path
+ * phrasing wins via {@link hasExplicitRepoActionSignal}.
+ */
+export function isAnswerOnlySampleCodeRequest(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (hasExplicitRepoActionSignal(t)) return false;
+  // Named file + create/write-into-project verb → not a chat snippet
+  if (
+    /\b[\w./\\-]+\.\w{1,10}\b/.test(t) &&
+    /(?:创建|新建|生成|保存到|保存为|写入|写进|写到|在项目|create\s+(?:a\s+)?file|save\s+(?:it\s+)?to|write\s+(?:it\s+)?to)/i.test(
+      t,
+    )
+  ) {
+    return false;
+  }
+  return /随便(?:给我|帮我)?写|写一段(?:代码)?|写段(?:代码)?|写点(?:代码)?|写个(?:示例|例子|demo)|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例代码|代码示例|sample\s+code|code\s+snippet|show\s+me\s+(?:some\s+|a\s+)?(?:sample\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:python|javascript|typescript|js|ts|go|rust|java)\b/i.test(
+    t,
+  );
+}
+
+/**
+ * Soft signal: sample-code / conceptual Q&A — prefer chat (Markdown fence);
+ * do not treat as create/write-to-disk heuristics. Overridden by
+ * {@link hasExplicitRepoActionSignal}. Not a hard zero-tools gate.
+ */
+export function looksLikeAnswerOnlyRequest(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (hasExplicitRepoActionSignal(t)) return false;
+  if (isAnswerOnlySampleCodeRequest(t)) return true;
+  return /写一段|写段(?:代码)?|写个(?:示例|例子|demo)|写点(?:代码)?|随便(?:给我)?写|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例(?:代码)?|代码示例|举例|怎么(?:写|实现)|如何(?:写|实现)|什么是|解释一下|sample\s+code|an?\s+example|code\s+snippet|show\s+me\s+(?:some\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|\bhow\s+(?:do\s+i|to)\b|\bwhat\s+is\b|\bexplain\b/i.test(
+    t,
+  );
+}
+
+/**
+ * Clear signals the user wants disk/shell/project changes (not a chat sample).
+ */
+export function hasExplicitRepoActionSignal(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (
+    /创建文件|写入|写进|写到|保存到|保存为|放到|在项目(?:里|中)|实现到|改一下|改下|修改|删除|覆盖|新建|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|create\s+(?:a\s+)?(?:new\s+)?file|save\s+(?:it\s+)?to|write\s+(?:it\s+)?to|implement\s+in\b|edit\s+(?:the\s+)?file|delete\s+(?:the\s+)?file|remove\s+(?:the\s+)?file/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // Named file with create/write-into-project phrasing: 创建 hello.py / 写一个 foo.ts
+  if (
+    /(?:创建|新建|生成|写(?:一个|个)?|新增|添加|建立|保存)\s*(?:一个|个)?(?:文件|源文件|代码文件)?\s*[：:\s]*[`"'“”]?[\w./\\-]+\.\w{1,10}/i.test(
+      t,
+    ) ||
+    /(?:create|generate|write|add|make)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?[`"'“”]?[\w./\\-]+\.\w{1,10}/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // Explicit project-relative path (src/foo.ts) usually means repo work
+  if (/(?:^|[\s`'“”])(?:src|lib|app|pages|components|scripts|tests?|docs?)\/[\w./\\-]+\.\w{1,10}\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
 /** Detect Word/Excel creation intents (dedicated tools, not write_file). */
 export function inferOfficeCreateIntent(
   userText: string,
 ): { tool: "write_docx" | "write_xlsx"; path: string } | null {
   const t = userText.trim();
   if (!t) return null;
+  if (isAnswerOnlySampleCodeRequest(t) || looksLikeAnswerOnlyRequest(t)) {
+    return null;
+  }
 
   const wantsCreate =
-    /创建|生成|写|新建|做|导出|保存|create|generate|write|make|export/i.test(t);
+    /创建|生成|新建|做|导出|保存|写入|写进|写到|create|generate|make|export|write\s+to/i.test(
+      t,
+    );
 
   const xlsxNamed = t.match(
     /[`"'“”]?([\w./\\-]+\.xlsx)[`"'“”]?/i,
@@ -1850,6 +1927,7 @@ export function inferExploreIntent(
   | null {
   const t = userText.trim();
   if (!t) return null;
+  if (isAnswerOnlySampleCodeRequest(t)) return null;
 
   // Shell / terminal wording or absolute-path ls → not list_dir of project root.
   if (
@@ -1918,7 +1996,14 @@ export function inferExploreIntent(
 
 /** True when the message also asks for writes / installs / destructive ops. */
 export function looksLikeMutationRequest(userText: string): boolean {
-  return /创建|写入|新建|修改|删除|覆盖|安装|卸载|移动|重命名|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|create|write|edit|delete|remove|install/i.test(
+  if (
+    isAnswerOnlySampleCodeRequest(userText) ||
+    looksLikeAnswerOnlyRequest(userText)
+  ) {
+    return false;
+  }
+  if (hasExplicitRepoActionSignal(userText)) return true;
+  return /安装|卸载|移动|重命名|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|delete|remove|install/i.test(
     userText,
   );
 }
@@ -2089,6 +2174,7 @@ export function resolveShellIntent(
     priorUserTexts?: string[];
   },
 ): ShellIntent | null {
+  if (isAnswerOnlySampleCodeRequest(userText)) return null;
   const projectRoot = options?.projectRoot;
   const direct = inferShellIntent(userText, projectRoot);
   if (direct) return direct;
@@ -2121,6 +2207,7 @@ export function synthesizeExploreToolCall(
 export function inferMultiStepPlan(userText: string): AgentToolCall[] {
   const t = userText.trim();
   if (!t) return [];
+  if (isAnswerOnlySampleCodeRequest(t)) return [];
   const steps: AgentToolCall[] = [];
 
   if (
@@ -2198,15 +2285,34 @@ const CREATE_FILE_EXT =
 /**
  * Detect "帮我生成一个文件 foo.cpp" style intents.
  * Returns a project-relative path (often just the filename at repo root).
+ * Sample-code asks ("写一段代码") are not create intents — see
+ * {@link looksLikeAnswerOnlyRequest}.
  */
 export function inferCreateFilePath(userText: string): string | null {
   const t = userText.trim();
   if (!t) return null;
+  if (isAnswerOnlySampleCodeRequest(t) || looksLikeAnswerOnlyRequest(t)) {
+    return null;
+  }
+
+  // Bare `写` is too broad (matches 写一段代码); require create/save-to-disk
+  // verbs, or 写一个 <file.ext> / 文件 + create verb.
+  const createVerb =
+    /(?:生成|创建|新建|新增|添加|建立|输出|保存|写入|写进|写到|帮我生成|帮我创建|create|generate|add|make)\s*/i.test(
+      t,
+    ) ||
+    /写(?:一个|个)(?:文件|源文件|代码文件)?\s*[：:\s]*[`"'“”]?[\w./\\-]+\./i.test(
+      t,
+    ) ||
+    (/(?:文件|源文件|代码文件)/.test(t) &&
+      /(?:生成|创建|新建|保存|写入)/i.test(t)) ||
+    /(?:write|create|generate|add|make)\s+(?:a\s+)?(?:new\s+)?file\b/i.test(t) ||
+    /(?:write|save)\s+(?:it\s+)?to\b/i.test(t);
 
   const tick = t.match(
     new RegExp(String.raw`\`([\w./\\-]+\.(?:${CREATE_FILE_EXT}))\``, "i"),
   );
-  if (tick?.[1]) return normalizeRelPath(tick[1]);
+  if (tick?.[1] && createVerb) return normalizeRelPath(tick[1]);
 
   const quoted = t.match(
     new RegExp(
@@ -2214,16 +2320,11 @@ export function inferCreateFilePath(userText: string): string | null {
       "i",
     ),
   );
-  if (quoted?.[1]) return normalizeRelPath(quoted[1]);
-
-  const createVerb =
-    /(?:生成|创建|写|新增|添加|建立|输出|保存|帮我写|帮我生成|帮我创建|create|generate|write|add|make)\s*/i.test(
-      t,
-    ) || /文件/.test(t);
+  if (quoted?.[1] && createVerb) return normalizeRelPath(quoted[1]);
 
   const named = t.match(
     new RegExp(
-      String.raw`(?:生成|创建|写(?:一个|个)?|新增|添加|建立|输出|保存)?(?:一个|个)?(?:文件|源文件|代码文件)?\s*[：:\s]*([\w./\\-]+\.(?:${CREATE_FILE_EXT}))`,
+      String.raw`(?:生成|创建|新建|写(?:一个|个)?|新增|添加|建立|输出|保存|写入|写进|写到)(?:一个|个)?(?:文件|源文件|代码文件)?\s*[：:\s]*([\w./\\-]+\.(?:${CREATE_FILE_EXT}))`,
       "i",
     ),
   );
