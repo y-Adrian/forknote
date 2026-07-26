@@ -21,6 +21,8 @@ export const DEFAULT_MEMORY_DIR = ".forknote/memory";
 
 const FILE_MAX_INJECT = 1800;
 const SECTION_MAX = 700;
+const CHUNK_MAX = 420;
+const CHUNK_TOP_K = 5;
 
 export function resolveMemoryDir(settings: ApiSettings): string {
   const dir = (settings.memoryDir ?? "").trim() || DEFAULT_MEMORY_DIR;
@@ -207,54 +209,161 @@ function tokenize(q: string): string[] {
     .filter((t) => t.length >= 2);
 }
 
-/** Local fallback: keyword-rank chunks from the three MD files. */
+type MemoryChunk = {
+  source: string;
+  body: string;
+  tokens: string[];
+};
+
+/** Split a memory MD file into heading / bullet / paragraph chunks. */
+export function chunkMemoryDocument(
+  source: string,
+  body: string,
+): MemoryChunk[] {
+  const text = body.replace(/\r\n/g, "\n").trim();
+  if (!text) return [];
+
+  const rawParts = text
+    .split(/\n(?=#{1,3}\s|\s*[-*+]\s|\s*\d+\.\s)/)
+    .flatMap((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) return [];
+      if (trimmed.length <= CHUNK_MAX) return [trimmed];
+      // Long block without headings: split on blank lines, then hard-wrap.
+      const paras = trimmed.split(/\n{2,}/);
+      const out: string[] = [];
+      for (const p of paras) {
+        const t = p.trim();
+        if (!t) continue;
+        if (t.length <= CHUNK_MAX) {
+          out.push(t);
+          continue;
+        }
+        for (let i = 0; i < t.length; i += CHUNK_MAX) {
+          out.push(t.slice(i, i + CHUNK_MAX));
+        }
+      }
+      return out;
+    });
+
+  return rawParts.map((part) => ({
+    source,
+    body: part,
+    tokens: tokenize(part),
+  }));
+}
+
+function termFreq(tokens: string[], term: string): number {
+  let n = 0;
+  for (const t of tokens) {
+    if (t === term) n += 1;
+    else if (t.includes(term) || term.includes(t)) n += 0.5;
+  }
+  return n;
+}
+
+/**
+ * Lightweight BM25-ish rank over memory chunks (no external deps).
+ * Falls back to a light prior when the query has no tokens.
+ */
+function scoreChunkBm25(
+  chunk: MemoryChunk,
+  queryTokens: string[],
+  df: Map<string, number>,
+  docCount: number,
+  avgdl: number,
+): number {
+  if (queryTokens.length === 0) {
+    // Prefer SUMMARY slightly when no query signal
+    return chunk.source === "SUMMARY.md" ? 1.2 : 1;
+  }
+
+  const k1 = 1.2;
+  const b = 0.75;
+  const dl = Math.max(chunk.tokens.length, 1);
+  let score = 0;
+
+  for (const term of queryTokens) {
+    const tf = termFreq(chunk.tokens, term);
+    if (tf <= 0) continue;
+    const n = df.get(term) ?? 0;
+    const idf = Math.log(1 + (docCount - n + 0.5) / (n + 0.5));
+    const denom = tf + k1 * (1 - b + b * (dl / Math.max(avgdl, 1)));
+    score += idf * ((tf * (k1 + 1)) / denom);
+  }
+
+  // Soft boosts
+  if (chunk.source === "TASKS.md") score *= 1.05;
+  if (chunk.source === "DECISIONS.md") score *= 1.08;
+  return score;
+}
+
+/** Local fallback: chunk + BM25-rank excerpts from the three MD files. */
 export function selectRelevantMemoryExcerpts(
   pack: ContextMemoryPack,
   query: string,
 ): string {
-  const tokens = tokenize(query);
-  const sections: { title: string; body: string; score: number }[] = [
-    { title: "SUMMARY.md", body: pack.summary, score: 0 },
-    { title: "TASKS.md", body: pack.tasks, score: 0 },
-    { title: "DECISIONS.md", body: pack.decisions, score: 0 },
+  const queryTokens = tokenize(query);
+  const sections: { title: string; body: string }[] = [
+    { title: "SUMMARY.md", body: pack.summary },
+    { title: "TASKS.md", body: pack.tasks },
+    { title: "DECISIONS.md", body: pack.decisions },
   ];
 
-  for (const sec of sections) {
-    if (!sec.body.trim()) continue;
-    const lower = sec.body.toLowerCase();
-    if (tokens.length === 0) {
-      sec.score = 1;
-      continue;
-    }
-    for (const t of tokens) {
-      if (lower.includes(t)) sec.score += 2;
-    }
-    // Prefer non-empty files slightly
-    sec.score += 0.5;
-  }
+  const chunks = sections.flatMap((s) =>
+    chunkMemoryDocument(s.title, s.body),
+  );
+  if (chunks.length === 0) return "";
 
-  const ranked = sections
-    .filter((s) => s.body.trim() && s.score > 0)
+  const df = new Map<string, number>();
+  for (const term of new Set(queryTokens)) {
+    let n = 0;
+    for (const c of chunks) {
+      if (termFreq(c.tokens, term) > 0) n += 1;
+    }
+    df.set(term, n);
+  }
+  const avgdl =
+    chunks.reduce((sum, c) => sum + c.tokens.length, 0) /
+    Math.max(chunks.length, 1);
+
+  const ranked = chunks
+    .map((c) => ({
+      ...c,
+      score: scoreChunkBm25(c, queryTokens, df, chunks.length, avgdl),
+    }))
+    .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  // If nothing matched, still inject condensed SUMMARY + TASKS
   const picked =
     ranked.length > 0
-      ? ranked.slice(0, 3)
-      : sections.filter((s) => s.body.trim()).slice(0, 2);
+      ? ranked.slice(0, CHUNK_TOP_K)
+      : chunks.slice(0, Math.min(3, chunks.length)).map((c) => ({
+          ...c,
+          score: 1,
+        }));
 
-  if (picked.length === 0) return "";
+  // Group by source for readable injection
+  const bySource = new Map<string, string[]>();
+  for (const p of picked) {
+    const list = bySource.get(p.source) ?? [];
+    const body =
+      p.body.length > SECTION_MAX
+        ? `${p.body.slice(0, SECTION_MAX)}…`
+        : p.body;
+    list.push(body);
+    bySource.set(p.source, list);
+  }
 
-  return picked
-    .map((s) => {
-      const body =
-        s.body.length > SECTION_MAX
-          ? `${s.body.slice(0, SECTION_MAX)}…`
-          : s.body;
-      return `### ${s.title}\n${body}`;
-    })
-    .join("\n\n")
-    .slice(0, FILE_MAX_INJECT);
+  const order = ["SUMMARY.md", "TASKS.md", "DECISIONS.md"];
+  const blocks: string[] = [];
+  for (const title of order) {
+    const parts = bySource.get(title);
+    if (!parts?.length) continue;
+    blocks.push(`### ${title}\n${parts.join("\n\n")}`);
+  }
+
+  return blocks.join("\n\n").slice(0, FILE_MAX_INJECT);
 }
 
 export function formatLocalMemoryAddendum(
@@ -277,7 +386,7 @@ export function formatLocalMemoryAddendum(
 }
 
 /**
- * Load local MD pack (+ keyword filter) for askMain injection.
+ * Load local MD pack (+ BM25 chunk filter) for askMain injection.
  */
 export async function buildAgentMemoryAddendum(options: {
   settings: ApiSettings;

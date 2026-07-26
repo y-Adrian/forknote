@@ -155,8 +155,16 @@ const en = {
     "Chat → LLM compress → SUMMARY.md + TASKS.md + DECISIONS.md → inject on next ask. Prefer writing into the bound project; otherwise keep a draft on the note.",
   "api.memoryPack.inject": "Inject memory pack into main chat",
   "api.memoryPack.afterArchive": "Also compress after Archive",
+  "api.memoryPack.afterArchiveHint":
+    "Off by default — turn on here so Archive also runs Compress. Or use the Compress button when a long thread suggestion appears.",
   "api.memoryPack.dir": "Memory folder (relative to project)",
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
+  "api.memoryPack.windowTurns": "Live sliding window (turns)",
+  "api.memoryPack.windowTurnsHint":
+    "Keep this many recent user↔assistant turns verbatim; older turns become a compact local summary (default 12).",
+  "api.memoryPack.autoSummary": "Auto-summarize older live turns",
+  "api.memoryPack.autoSummaryHint":
+    "When off, live mode re-sends the full thread (costly on long chats).",
 
   "data.title": "Data",
   "data.lead":
@@ -362,6 +370,10 @@ const en = {
     "Memory written under the project memory folder and saved on this note",
   "main.compressDoneSession":
     "Memory saved on this note (bind a project to also write SUMMARY/TASKS/DECISIONS.md)",
+  "main.compressSuggestText":
+    "This thread is getting long — Compress into SUMMARY / TASKS / DECISIONS to keep later turns cheaper and clearer.",
+  "main.compressSuggestAction": "Compress now",
+  "main.compressSuggestDismiss": "Not now",
   "main.placeholderEmpty": "Ask what you're researching…",
   "main.placeholderProject":
     "Ask about the project — e.g. list the folder, read package.json, or edit the README…",
@@ -608,8 +620,16 @@ const zh: Record<MessageKey, string> = {
     "聊天 → LLM 压缩 → SUMMARY.md + TASKS.md + DECISIONS.md → 下次提问注入。优先写入已绑定项目；否则保存在本笔记草稿中。",
   "api.memoryPack.inject": "主对话注入记忆包",
   "api.memoryPack.afterArchive": "归档后自动压缩",
+  "api.memoryPack.afterArchiveHint":
+    "默认关闭。可在此开启，使「归档」成功后同时压缩；或在长对话提示出现时点「压缩上下文」。",
   "api.memoryPack.dir": "记忆目录（相对项目根）",
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
+  "api.memoryPack.windowTurns": "实时滑动窗口（轮数）",
+  "api.memoryPack.windowTurnsHint":
+    "保留最近若干轮用户↔助手原文；更早轮次压成本地摘要注入（默认 12）。",
+  "api.memoryPack.autoSummary": "自动摘要较早实时对话",
+  "api.memoryPack.autoSummaryHint":
+    "关闭后，实时模式会整线程重发（长对话更贵、更易糊）。",
 
   "data.title": "数据",
   "data.lead":
@@ -807,6 +827,10 @@ const zh: Record<MessageKey, string> = {
     "记忆已写入项目记忆目录，并保存在本笔记中",
   "main.compressDoneSession":
     "记忆已保存在本笔记中（绑定项目后还会写入 SUMMARY/TASKS/DECISIONS.md）",
+  "main.compressSuggestText":
+    "对话已经较长 — 建议压缩为 SUMMARY / TASKS / DECISIONS，让后续轮次更省、更清晰。",
+  "main.compressSuggestAction": "立即压缩",
+  "main.compressSuggestDismiss": "暂不",
   "main.placeholderEmpty": "问你正在研究的问题…",
   "main.placeholderProject":
     "询问项目，例如：列出当前目录、读取 package.json、或修改 README…",

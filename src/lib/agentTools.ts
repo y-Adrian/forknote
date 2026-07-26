@@ -2739,10 +2739,7 @@ export function toolResultMessage(
       : call.tool === "run_terminal"
         ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
         : `${call.tool} path=${JSON.stringify(call.path ?? ".")}`;
-  const truncated =
-    resultText.length > 120_000
-      ? `${resultText.slice(0, 120_000)}\n…(truncated)`
-      : resultText;
+  const truncated = truncateToolResultText(resultText, TOOL_RESULT_MAX_CHARS);
   const status = ok ? "成功" : "失败";
   const followUp = ok
     ? "若任务未完成请继续调用工具；若已完成请给出最终中文总结（不要再输出 tool_call）。禁止声称未成功写入的文件已创建。"
@@ -2759,10 +2756,7 @@ export function nativeToolResultMessage(
   resultText: string,
   ok = !/^Error:/i.test(resultText),
 ): ChatMessage {
-  const truncated =
-    resultText.length > 120_000
-      ? `${resultText.slice(0, 120_000)}\n…(truncated)`
-      : resultText;
+  const truncated = truncateToolResultText(resultText, TOOL_RESULT_MAX_CHARS);
   const statusLine = ok
     ? "[tool status: ok]"
     : "[tool status: FAILED — do not claim the file was created]";
@@ -2775,4 +2769,56 @@ export function nativeToolResultMessage(
     name,
     content: `${statusLine}\n${truncated}${followUp}`,
   };
+}
+
+/** Cap for a single tool result when first appended to apiMessages. */
+export const TOOL_RESULT_MAX_CHARS = 12_000;
+/** Cap for older tool results before re-sending in later rounds. */
+export const OLDER_TOOL_RESULT_MAX_CHARS = 4_000;
+/** Keep this many most-recent tool results at the fresh cap. */
+const RECENT_TOOL_RESULTS_FULL = 2;
+
+export function truncateToolResultText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n…(truncated)`;
+}
+
+function isToolResultMessage(msg: ChatMessage): boolean {
+  if (msg.role === "tool") return true;
+  if (msg.role !== "user" || typeof msg.content !== "string") return false;
+  return (
+    msg.content.startsWith("【工具结果") ||
+    msg.content.startsWith("[tool status:")
+  );
+}
+
+/**
+ * Shrink older tool-result payloads in-place so long agent loops do not
+ * re-send full dumps every round. Keeps the last few results fuller.
+ */
+export function shrinkPriorToolResultsInMessages(
+  messages: ChatMessage[],
+  options?: {
+    recentKeepFull?: number;
+    olderMax?: number;
+  },
+): void {
+  const recentKeep = options?.recentKeepFull ?? RECENT_TOOL_RESULTS_FULL;
+  const olderMax = options?.olderMax ?? OLDER_TOOL_RESULT_MAX_CHARS;
+  const toolIndexes: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (isToolResultMessage(messages[i])) toolIndexes.push(i);
+  }
+  if (toolIndexes.length <= recentKeep) return;
+
+  const shrinkUntil = toolIndexes.length - recentKeep;
+  for (let k = 0; k < shrinkUntil; k++) {
+    const idx = toolIndexes[k];
+    const msg = messages[idx];
+    if (typeof msg.content !== "string") continue;
+    const next = truncateToolResultText(msg.content, olderMax);
+    if (next !== msg.content) {
+      messages[idx] = { ...msg, content: next };
+    }
+  }
 }

@@ -1,6 +1,8 @@
 import type {
   ArchiveSnapshot,
+  ApiSettings,
   BranchNode,
+  ChatMessage,
   ContextMode,
   ThreadRoot,
 } from "../types";
@@ -11,9 +13,16 @@ import {
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import { annotateContentWithVerdicts } from "./points";
+import {
+  DEFAULT_CONTEXT_WINDOW_TURNS,
+  resolveContextWindowTurns,
+} from "./settings";
 
 const ANCESTOR_ANSWER_MAX = 280;
 const ANCESTOR_QUESTION_MAX = 120;
+/** Per-message cap when folding older turns into the sliding-window summary. */
+const WINDOW_SUMMARY_MSG_MAX = 220;
+const WINDOW_SUMMARY_TOTAL_MAX = 3500;
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -128,7 +137,117 @@ export type ConversationOptions = {
   locale?: Locale;
   /** Optional memory block appended to the system prompt */
   memoryAddendum?: string | null;
+  /**
+   * Live-mode sliding window size (user↔assistant turns). When omitted,
+   * uses `settings` or the app default.
+   */
+  contextWindowTurns?: number;
+  /** When false, live mode re-sends the full thread. Default true. */
+  contextAutoSummary?: boolean;
+  /** Preferred source for window / auto-summary defaults. */
+  settings?: ApiSettings | null;
 };
+
+/** Count user messages among non-empty thread messages (= turns). */
+export function countConversationTurns(messages: ChatMessage[]): number {
+  return messages.filter((m) => m.role === "user" && m.content.trim()).length;
+}
+
+/**
+ * Split completed main-line messages into older (to summarize) and recent
+ * (kept full), keeping the last `windowTurns` user turns (+ their answers).
+ */
+export function splitMessagesByWindow(
+  messages: ChatMessage[],
+  windowTurns: number,
+): { older: ChatMessage[]; recent: ChatMessage[] } {
+  const completed = messages.filter((m) => m.content.trim().length > 0);
+  if (windowTurns <= 0 || countConversationTurns(completed) <= windowTurns) {
+    return { older: [], recent: completed };
+  }
+
+  let userTurns = 0;
+  let splitAt = completed.length;
+  for (let i = completed.length - 1; i >= 0; i--) {
+    if (completed[i].role === "user") {
+      userTurns += 1;
+      if (userTurns >= windowTurns) {
+        splitAt = i;
+        break;
+      }
+    }
+  }
+  return {
+    older: completed.slice(0, splitAt),
+    recent: completed.slice(splitAt),
+  };
+}
+
+/** Deterministic compact summary of older live turns (no extra LLM call). */
+export function buildOlderTurnsSummary(
+  older: ChatMessage[],
+  locale: Locale = getLocale(),
+): string {
+  if (older.length === 0) return "";
+
+  const lines: string[] = [];
+  let turn = 0;
+  for (const msg of older) {
+    if (msg.role === "user") {
+      turn += 1;
+      lines.push(
+        locale === "zh"
+          ? `· 用户 ${turn}：${truncate(msg.content, WINDOW_SUMMARY_MSG_MAX)}`
+          : `· User ${turn}: ${truncate(msg.content, WINDOW_SUMMARY_MSG_MAX)}`,
+      );
+      continue;
+    }
+    const annotated = annotateContentWithVerdicts(
+      msg.content,
+      msg.pointVerdicts,
+      msg.pointDoubts,
+    );
+    lines.push(
+      locale === "zh"
+        ? `  助手：${truncate(annotated, WINDOW_SUMMARY_MSG_MAX)}`
+        : `  Assistant: ${truncate(annotated, WINDOW_SUMMARY_MSG_MAX)}`,
+    );
+  }
+
+  let body = lines.join("\n");
+  if (body.length > WINDOW_SUMMARY_TOTAL_MAX) {
+    body = `${body.slice(0, WINDOW_SUMMARY_TOTAL_MAX)}…`;
+  }
+
+  if (locale === "zh") {
+    return [
+      "【较早对话摘要 · 滑动窗口】",
+      "以下为窗口外历史的压缩摘要（非全文）；与最近轮原文冲突时以最近轮为准。",
+      "",
+      body,
+    ].join("\n");
+  }
+  return [
+    "[Earlier conversation summary · sliding window]",
+    "Compact summary of turns outside the recent window (not the full text). Prefer recent messages when they conflict.",
+    "",
+    body,
+  ].join("\n");
+}
+
+function mapThreadMessageToApi(m: ChatMessage): ApiChatMessage {
+  return {
+    role: m.role as "user" | "assistant",
+    content:
+      m.role === "assistant"
+        ? annotateContentWithVerdicts(
+            m.content,
+            m.pointVerdicts,
+            m.pointDoubts,
+          )
+        : m.content,
+  };
+}
 
 /** Same base system string that `buildConversationMessages` uses (incl. coding tools). */
 export function conversationBaseSystem(
@@ -151,6 +270,7 @@ export function buildConversationMessages(
   options?: ConversationOptions,
 ): ApiChatMessage[] {
   const system = conversationBaseSystem(options);
+  const locale = options?.locale ?? getLocale();
 
   // Archive only when a concrete snapshot is supplied (same rule as resolveConversationContext)
   if (options?.contextMode === "archive" && options.activeArchive) {
@@ -159,27 +279,40 @@ export function buildConversationMessages(
       options.activeArchive,
       later,
       system,
-      options.locale ?? getLocale(),
+      locale,
     );
   }
 
-  // Full thread: every non-empty main-line message, with verdict annotations
-  const completed = thread.messages.filter(
-    (m) => m.content.trim().length > 0,
-  );
+  const completed = thread.messages.filter((m) => m.content.trim().length > 0);
+  const autoSummary = options?.contextAutoSummary !== false;
+  const windowTurns =
+    options?.contextWindowTurns ??
+    (options?.settings
+      ? resolveContextWindowTurns(options.settings)
+      : DEFAULT_CONTEXT_WINDOW_TURNS);
+
+  if (autoSummary) {
+    const { older, recent } = splitMessagesByWindow(completed, windowTurns);
+    if (older.length > 0) {
+      const summary = buildOlderTurnsSummary(older, locale);
+      return [
+        { role: "system", content: system },
+        { role: "user", content: summary },
+        {
+          role: "assistant",
+          content:
+            locale === "zh"
+              ? "已记下较早对话摘要；后续以最近轮原文为准。"
+              : "Noted the earlier summary; I will prefer the recent messages below.",
+        },
+        ...recent.map(mapThreadMessageToApi),
+      ];
+    }
+  }
+
   return [
     { role: "system", content: system },
-    ...completed.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content:
-        m.role === "assistant"
-          ? annotateContentWithVerdicts(
-              m.content,
-              m.pointVerdicts,
-              m.pointDoubts,
-            )
-          : m.content,
-    })),
+    ...completed.map(mapThreadMessageToApi),
   ];
 }
 

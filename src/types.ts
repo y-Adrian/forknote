@@ -169,6 +169,16 @@ export interface ApiSettings {
   /** Project-relative folder for the three MD files. Default `.forknote/memory` */
   memoryDir?: string;
   /**
+   * Live-mode sliding window: keep this many recent user↔assistant turns full.
+   * Older turns become a compact local summary. Default 12.
+   */
+  contextWindowTurns?: number;
+  /**
+   * When true (default), live mode injects a compact summary for turns outside
+   * the sliding window instead of re-sending the full older thread.
+   */
+  contextAutoSummary?: boolean;
+  /**
    * Max model↔tool loop rounds per main-turn when a project is bound.
    * Task ends early when the model finishes without calling more tools.
    */

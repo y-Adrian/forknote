@@ -4,8 +4,11 @@ import { applyLocale, useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
   DEFAULT_AGENT_MAX_ROUNDS,
+  DEFAULT_CONTEXT_WINDOW_TURNS,
   MAX_AGENT_MAX_ROUNDS,
+  MAX_CONTEXT_WINDOW_TURNS,
   MIN_AGENT_MAX_ROUNDS,
+  MIN_CONTEXT_WINDOW_TURNS,
   normalizeApiSettings,
   saveSettings,
 } from "../lib/settings";
@@ -313,6 +316,45 @@ function ApiPanel({
         />
         {t("api.memoryPack.afterArchive")}
       </label>
+      <p className="ss-panel-lead ss-panel-hint">
+        {t("api.memoryPack.afterArchiveHint")}
+      </p>
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={draft.contextAutoSummary !== false}
+          onChange={(e) =>
+            setDraft({ ...draft, contextAutoSummary: e.target.checked })
+          }
+        />
+        {t("api.memoryPack.autoSummary")}
+      </label>
+      <p className="ss-panel-lead ss-panel-hint">
+        {t("api.memoryPack.autoSummaryHint")}
+      </p>
+
+      <label>
+        {t("api.memoryPack.windowTurns")}
+        <input
+          type="number"
+          min={MIN_CONTEXT_WINDOW_TURNS}
+          max={MAX_CONTEXT_WINDOW_TURNS}
+          value={draft.contextWindowTurns ?? DEFAULT_CONTEXT_WINDOW_TURNS}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            setDraft({
+              ...draft,
+              contextWindowTurns: Number.isFinite(n)
+                ? n
+                : DEFAULT_CONTEXT_WINDOW_TURNS,
+            });
+          }}
+        />
+      </label>
+      <p className="ss-panel-lead ss-panel-hint">
+        {t("api.memoryPack.windowTurnsHint")}
+      </p>
 
       <label>
         {t("api.memoryPack.dir")}

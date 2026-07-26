@@ -2539,6 +2539,11 @@ mark.branch-highlight:hover {
   line-height: 1.5;
 }
 
+.ss-panel-lead.ss-panel-hint {
+  margin: -12px 0 16px;
+  font-size: 0.8rem;
+}
+
 .ss-row {
   display: flex;
   align-items: flex-start;

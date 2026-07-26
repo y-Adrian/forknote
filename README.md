@@ -259,22 +259,23 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 
 ```
 聊天记录
+  → 实时：滑动窗口（近 N 轮原文 + 较早轮本地摘要）+ 工具结果截断
   → LLM 压缩（Compress / 可选归档后自动）
   → SUMMARY.md + TASKS.md + DECISIONS.md
-  → 下次 askMain 自动注入 system 附加段
+  → 下次 askMain：BM25 分块摘录注入 system 附加段
 ```
 
 ### 怎么用
 
-1. 聊几轮后点输入区上方 **Compress context**（或 Settings → API 勾选 **Also compress after Archive**）
+1. 聊几轮后点输入区上方 **Compress context**（长对话会弹出软提示；或 Settings → API 勾选 **Also compress after Archive**，默认仍关闭）
 2. **已绑定项目**：写入 `{memoryDir}/`（默认 `.forknote/memory/`）三份 Markdown  
    **未绑定项目**：草稿保存在当前笔记的 `contextMemory`（localStorage）
-3. 下次主对话发送前，会把相关摘录（本地关键词筛选）注入上下文
-4. Settings → API → **Context memory pack**：注入开关、归档后压缩、记忆目录
+3. 下次主对话发送前，会把相关摘录（本地分块 + BM25 排序）注入上下文
+4. Settings → API → **Context memory pack**：注入开关、归档后压缩、滑动窗口轮数、自动摘要、记忆目录
 
-实现：`src/lib/contextMemory.ts` + `compressContext`（store）。压缩提示与归档类似，复用 `streamChat`。
+实现：`src/lib/contextMemory.ts` + `contextBuilder.ts`（滑动窗口）+ `compressContext`（store）。压缩提示与归档类似，复用 `streamChat`。
 
-长期记忆统一走上述本地三文件；不使用云端 mem0。当前本地层是三文件 + 关键词摘录（非向量库）。
+长期记忆统一走上述本地三文件；不使用云端 mem0。实时上下文默认保留最近 **12** 轮原文，更早轮次压成本地摘要；工具结果写入 `apiMessages` 时截断，多轮循环中会进一步收缩较早结果。
 
 ---
 
@@ -346,7 +347,7 @@ flowchart TD
 | 分支导航 | `BranchRail.tsx`、`BranchFloatLayer.tsx` | git-graph 轨与浮动 Fork |
 | 上下文 | `conversationContext.ts`、`contextBuilder.ts`、`points.ts` | live vs archive；system + 历史；裁决注入 |
 | 归档 | `archive.ts`、`ArchivePanel.tsx` | 开发日志草稿与面板 |
-| 记忆包 | `contextMemory.ts` | Compress → 三 MD；`askMain` 注入 |
+| 记忆包 | `contextMemory.ts` | Compress → 三 MD；分块 BM25 摘录注入 `askMain`；滑动窗口见 `contextBuilder.ts` |
 | 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
 | Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / `run_terminal` / …；多轮循环 + 计划批准门控 |
 | 计划审核 | `AgentPlanReview.tsx` | 绑定项目且开启批准时，工具执行前的计划审阅栏 |
