@@ -20,7 +20,7 @@
 
 仓库已开启 GitHub **Automatically delete head branches**：PR 合并进 `leading` 后会自动删除远端 head 分枝，避免 `pr/*` 堆积。
 
-合并到 `leading` 的 PR 须：关联 Issue、恰好 1 个 commit、打开时 `## Test plan` 默认为 `- [ ]`（禁止预勾选）、合并前全部勾选为 `- [x]`、评审对话已全部 Resolve（由 CI 自动检测，无需手动勾选 Review gate），以及 **Build**（`npm run build`：typecheck + Vite 生产构建）通过。`## Test plan` 只写人工产品 / UI 验证；不要把 `npx tsc --noEmit` / Build 写成勾选项（已由 CI **Build** 门禁覆盖）。
+合并到 `leading` 的 PR 须：关联 Issue、恰好 1 个 commit、**打开前完成本地测试**、打开时 `## Test plan` 仍为 `- [ ]`（禁止预勾选）但必须附带已填写的 **`## Test report`**（环境、测了什么、怎么测、通过/失败）、打开后立刻按报告将通过项勾为 `- [x]`、评审对话已全部 Resolve（由 CI 自动检测，无需手动勾选 Review gate），以及 **Build**（`npm run build`：typecheck + Vite 生产构建）通过。`## Test plan` 只写人工产品 / UI 验证；不要把 `npx tsc --noEmit` / Build 写成勾选项（已由 CI **Build** 门禁覆盖）。未测过的项不得勾选。
 
 
 ---

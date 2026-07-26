@@ -1,5 +1,5 @@
 ---
-description: PR Test plan must start unchecked; never pre-check on open; no CI Build/tsc items
+description: Test before opening PR; mandatory Test report; Test plan starts unchecked then check after verify; no CI Build/tsc items
 alwaysApply: true
 ---
 
@@ -7,8 +7,23 @@ alwaysApply: true
 
 When opening a PR against `leading`:
 
-- Under `## Test plan`, use **unchecked** boxes only: `- [ ]`.
-- **Do not** open the PR with `- [x]` already selected. CI fails on `opened` if any Test plan item is pre-checked.
+## Test before submit (mandatory)
+
+- **Finish testing before opening the PR.** Do not open a PR with an empty or speculative Test plan and leave it.
+- Every PR body **must** include a filled **`## Test report`** section describing what was tested, how (environment / steps / probes), and pass/fail results. This is the evidence written at open time because testing already happened.
+- Never mark Test plan items `- [x]` without having actually tested them.
+
+## Compatible flow with CI
+
+1. **Before opening PR**: implement and **fully run** the intended Test plan locally (and any automated probes as needed).
+2. **Open PR** with Test plan still entirely `- [ ]` (CI requires unchecked on open/reopen), but include a filled **`## Test report`**.
+3. **Immediately after open** (same session): edit Test plan boxes to `- [x]` for items that passed per the report.
+4. Do not leave a PR open with unchecked boxes that you already verified — check them right after open.
+
+## Test plan CI constraints (keep)
+
+- Under `## Test plan`, use **unchecked** boxes only on open: `- [ ]`.
+- **Do not** open the PR with `- [x]` already selected. CI fails on `opened`/`reopened` if any Test plan item is pre-checked.
 - After real verification, **edit** the PR body to `- [x]`.
 - Do **not** add a manual Review gate checkbox — review threads (and optional Approve) are enforced by CI automatically.
 - Test plan is **manual product/UI verification only**. Do **not** list `npx tsc --noEmit`, `npm run build`, typecheck, or Build as Test plan checkboxes — those are already enforced by the CI **Build** workflow.
