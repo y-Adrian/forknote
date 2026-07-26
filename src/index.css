@@ -4594,7 +4594,7 @@ mark.branch-highlight:hover {
   min-width: 0;
 }
 
-/* Chip row shares the toolbar line; activity/changes wrap below. */
+/* Chip row shares the toolbar line; activity/changes wrap below when shown. */
 .fn-composer-toolbar .fn-project-bar {
   display: contents;
 }

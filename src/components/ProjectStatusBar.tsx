@@ -9,10 +9,22 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
   const agentChanges = useAppStore((s) => s.agentChanges);
   const clearAgentLog = useAppStore((s) => s.clearAgentLog);
   const disconnectProject = useAppStore((s) => s.disconnectProject);
+  /** Tool / agent log is mid-turn only — hide the strip when the session is idle. */
+  const agentExecuting = useAppStore((s) => {
+    const sid = s.activeSessionId;
+    if (!sid) return false;
+    if (s.loadingMainBySession[sid]) return true;
+    if (s.loadingBranchBySession[sid]) return true;
+    if (s.agentPendingPlan?.sessionId === sid) return true;
+    return false;
+  });
 
   const shortRoot = projectRoot
     ? projectRoot.split(/[/\\]/).filter(Boolean).slice(-2).join("/")
     : null;
+
+  const showActivityPanel =
+    agentExecuting && (agentActivity.length > 0 || agentChanges.length > 0);
 
   return (
     <div className="fn-project-bar">
@@ -45,7 +57,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
             {t("common.disconnect")}
           </button>
         )}
-        {(agentActivity.length > 0 || agentChanges.length > 0) && (
+        {showActivityPanel && (
           <button
             type="button"
             className="btn ghost sm"
@@ -56,7 +68,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
         )}
       </div>
 
-      {agentActivity.length > 0 && (
+      {showActivityPanel && agentActivity.length > 0 && (
         <ul className="fn-agent-activity" aria-label={t("projectBar.activityAria")}>
           {agentActivity.slice(-6).map((a) => (
             <li key={a.id} className={`is-${a.kind}`}>
@@ -66,7 +78,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
         </ul>
       )}
 
-      {agentChanges.length > 0 && (
+      {showActivityPanel && agentChanges.length > 0 && (
         <div className="fn-agent-changes">
           <div className="fn-agent-changes-title">{t("projectBar.changes")}</div>
           <ul>
