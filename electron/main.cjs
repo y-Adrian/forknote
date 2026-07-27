@@ -12,9 +12,13 @@ const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { startUiServer } = require("./uiServer.cjs");
 
-/** Sensible floor so the shell stays usable; no artificial max size. */
-const WINDOW_MIN_WIDTH = 800;
-const WINDOW_MIN_HEIGHT = 600;
+/**
+ * Floor must sit below the web shell’s narrow-sidebar breakpoint (768px in
+ * `src/lib/layout.ts` / `src/index.css`) so resizing the .app can trigger the
+ * same session-drawer collapse as the browser — not page zoom.
+ */
+const WINDOW_MIN_WIDTH = 360;
+const WINDOW_MIN_HEIGHT = 480;
 /** Pinch / trackpad visual zoom range (Electron disables this by default). */
 const VISUAL_ZOOM_MIN = 1;
 const VISUAL_ZOOM_MAX = 3;
