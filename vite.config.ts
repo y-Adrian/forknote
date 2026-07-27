@@ -268,6 +268,9 @@ function forwardOpenAi(
 }
 
 export default defineConfig({
+  // Relative asset paths so Electron can load `dist/` via file:// or a
+  // loopback static server without absolute `/assets/...` breakage.
+  base: "./",
   plugins: [react(), openaiDevProxyPlugin(), sidecarDevPlugin()],
   server: {
     host: "127.0.0.1",

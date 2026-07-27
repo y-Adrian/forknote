@@ -2,7 +2,10 @@
   "name": "forknote",
   "private": true,
   "version": "0.1.0",
+  "description": "ForkNote — clarify as you read",
+  "author": "ForkNote",
   "type": "module",
+  "main": "electron/main.cjs",
   "engines": {
     "node": ">=18"
   },
@@ -11,7 +14,9 @@
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "sidecar": "node sidecar/index.js"
+    "sidecar": "node sidecar/index.js",
+    "electron:dev": "ELECTRON_DEV=1 electron .",
+    "electron:build:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -26,8 +31,37 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
+    "electron": "^37.10.3",
+    "electron-builder": "^24.13.3",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
+  },
+  "build": {
+    "appId": "app.forknote.desktop",
+    "productName": "ForkNote",
+    "copyright": "Copyright © ForkNote",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "sidecar/**/*",
+      "shared/**/*",
+      "package.json"
+    ],
+    "asar": false,
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.productivity",
+      "target": [
+        "dir"
+      ]
+    }
   }
 }

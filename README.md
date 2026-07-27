@@ -43,6 +43,36 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 | `npm run sidecar` | 仅 sidecar（`127.0.0.1:8787`）；已在跑且 `/health` 正常时直接退出 0 |
 | `npm run build` | 类型检查 + 生产构建 |
 | `npm run preview` | 预览构建产物 |
+| `npm run electron:dev` | Electron 壳加载 Vite（需另开 `npm run dev` / `dev:web`）；自动拉起或复用 sidecar |
+| `npm run electron:build:mac` | 生产构建 + **未签名** macOS `.app`（`release/mac*/ForkNote.app`） |
+
+### macOS 桌面应用（Electron，未签名）
+
+薄壳：Electron 只负责窗口、拉起 sidecar，以及在生产模式下用本机回环 HTTP 提供 `dist/`，并代理 `/sidecar` → `127.0.0.1:8787` 与 `/openai`（与 Vite 开发代理同约定，相对路径不变）。预加载脚本注入 `window.forknoteDesktop`（`isDesktop` + 绝对 `sidecarUrl`），便于识别桌面环境；默认仍走 `/sidecar` 代理。
+
+```bash
+npm install
+npm run electron:build:mac
+# 产物（架构目录因机器而异，例如 mac / mac-arm64）
+open release/mac-arm64/ForkNote.app   # Apple Silicon 常见路径
+# 或: open release/mac/ForkNote.app
+```
+
+开发调试（两终端）：
+
+```bash
+npm run dev                 # Vite :5173 + sidecar
+npm run electron:dev        # Electron 加载 http://127.0.0.1:5173
+```
+
+构建未签名：`CSC_IDENTITY_AUTO_DISCOVERY=false` 且 `mac.identity: null`。Gatekeeper 可能拦截首次打开，可在「系统设置 → 隐私与安全性」允许，或：`xattr -cr release/mac-arm64/ForkNote.app`。
+
+可选 DMG（仍未签名）：
+
+```bash
+npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dmg
+```
+
 
 若启动失败（常见原因：端口被占用）：
 
