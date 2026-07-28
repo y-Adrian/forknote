@@ -22,6 +22,8 @@ export interface BranchReply {
   createdAt: number;
   reasoning?: string;
   thinkingSeconds?: number;
+  pointVerdicts?: PointVerdictMap;
+  pointDoubts?: PointDoubtMap;
 }
 
 export interface BranchNode {

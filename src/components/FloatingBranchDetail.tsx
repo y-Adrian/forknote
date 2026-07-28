@@ -3,6 +3,7 @@ import type { BranchReply, NodeId } from "../types";
 import { handleComposerEnterKey } from "../lib/composerKeys";
 import { getHighlightRect } from "../lib/domHighlight";
 import { useLocale } from "../lib/i18n";
+import { branchReplyVerdictTargetId } from "../lib/points";
 import {
   findAssistantMessageForBranch,
   findBranchInThread,
@@ -43,24 +44,34 @@ function TurnBlock({
   reasoning?: string;
   thinkingSeconds?: number;
   isLoading: boolean;
+  /** Initial clarify turn vs nested same-window follow-up (visual separator only). */
   showAnswerChrome: boolean;
   children?: ReactNode;
 }) {
   const { t } = useLocale();
+  const questionText = question.trim();
   const hasAnswer = Boolean(answer.trim());
   const hasReasoning = Boolean(reasoning?.trim());
+  const isFollowUp = !showAnswerChrome;
+  const showAssistant = hasReasoning || hasAnswer || isLoading;
 
   return (
-    <>
-      <div className="float-branch-row float-branch-row-inline">
-        <span className="float-branch-label">{t("fork.labelQuestion")}</span>
-        <p className="float-branch-text float-branch-text-wrap">{question}</p>
-      </div>
-      <div className="float-branch-row float-branch-row-answer">
-        <span className="float-branch-label">
-          {showAnswerChrome ? t("fork.labelAnswer") : t("fork.labelFollowUp")}
-        </span>
-        <div className="float-branch-answer-scroll">
+    <div
+      className={
+        isFollowUp
+          ? "float-branch-turn float-branch-turn-nested"
+          : "float-branch-turn"
+      }
+    >
+      {questionText ? (
+        <div className="fn-msg fn-msg-user float-branch-msg">
+          <div className="ds-bubble ds-bubble-user">
+            <p>{questionText}</p>
+          </div>
+        </div>
+      ) : null}
+      {showAssistant ? (
+        <div className="fn-msg fn-msg-assistant float-branch-msg">
           {hasReasoning ? (
             <ThinkingBlock
               reasoning={reasoning!}
@@ -69,13 +80,21 @@ function TurnBlock({
             />
           ) : null}
           {isLoading && !hasAnswer ? (
-            <p className="ds-muted">{t("chat.thinking")}</p>
+            !hasReasoning ? (
+              <div className="ds-typing" aria-label={t("chat.thinking")}>
+                <span />
+                <span />
+                <span />
+              </div>
+            ) : (
+              <p className="ds-muted">{t("chat.thinking")}</p>
+            )
           ) : hasAnswer ? (
-            children
+            <div className="ds-bubble ds-bubble-assistant">{children}</div>
           ) : null}
         </div>
-      </div>
-    </>
+      ) : null}
+    </div>
   );
 }
 
@@ -209,8 +228,9 @@ export function FloatingBranchDetail({
 
   if (!branch || !parentMessage) return null;
 
-  const depthLabel = depth > 0 ? ` · L${depth + 1}` : "";
-  const forkTitle = `${t("fork.title")}${depthLabel}`;
+  const layer = depth + 1;
+  const panelTitle = t("fork.title");
+  const layerLabel = t("fork.layer", { n: layer });
   const settledReplies = loadingLatestReply ? replies.slice(0, -1) : replies;
   const activeReply = loadingLatestReply ? lastReply : undefined;
 
@@ -219,7 +239,7 @@ export function FloatingBranchDetail({
       ref={panelRef}
       className={`float-panel float-panel-detail is-resizable float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}${skipEnterAnimation ? " is-settled" : " float-panel-enter"}`}
       role="dialog"
-      aria-label={forkTitle}
+      aria-label={`${panelTitle} · ${layerLabel}`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -229,10 +249,10 @@ export function FloatingBranchDetail({
         title={t("common.dragToMove")}
       >
         <div className="float-panel-detail-title">
-          <h3>{forkTitle}</h3>
-          {depth > 0 && (
-            <span className="float-panel-depth-badge">{t("fork.nested")}</span>
-          )}
+          <h3>{panelTitle}</h3>
+          <span className="float-panel-depth-badge" title={layerLabel}>
+            {layerLabel}
+          </span>
         </div>
         <button
           type="button"
@@ -305,6 +325,9 @@ export function FloatingBranchDetail({
               overlayZBase={zIndex}
               compact
               className="float-branch-selectable"
+              verdictTargetId={branchReplyVerdictTargetId(branch.id, index)}
+              pointVerdicts={reply.pointVerdicts}
+              pointDoubts={reply.pointDoubts}
               onAsk={(anchor, question) =>
                 askBranch(
                   branch.id,
@@ -336,6 +359,12 @@ export function FloatingBranchDetail({
               overlayZBase={zIndex}
               compact
               className="float-branch-selectable"
+              verdictTargetId={branchReplyVerdictTargetId(
+                branch.id,
+                settledReplies.length,
+              )}
+              pointVerdicts={activeReply.pointVerdicts}
+              pointDoubts={activeReply.pointDoubts}
               onAsk={(anchor, question) =>
                 askBranch(
                   branch.id,

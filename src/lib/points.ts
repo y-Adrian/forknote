@@ -19,11 +19,12 @@ export interface ParsedAnswer {
   points: AnswerPoint[];
 }
 
-const POINT_RE = /^【(\d{1,2})】/;
+const POINT_RE = /^(?:\*{1,2}|[-*]\s+)?【(\d{1,2})】(?:\*{1,2})?/;
 
 /**
  * 把回答按「【N】」行拆分。
- * 支持标记出现在行首（模型被提示词约束为独立行起始）。
+ * 支持标记出现在行首（模型被提示词约束为独立行起始）；
+ * 也容忍常见变体：`**【1】**`、`- 【1】`。
  */
 export function parseAnswerPoints(content: string): ParsedAnswer {
   const lines = content.split("\n");
@@ -62,6 +63,22 @@ export function parseAnswerPoints(content: string): ParsedAnswer {
     preamble: preambleLines.join("\n").trim(),
     points,
   };
+}
+
+/** Encode a same-window reply verdict target for `setPointVerdict`. */
+export function branchReplyVerdictTargetId(
+  branchId: string,
+  replyIndex: number,
+): string {
+  return `${branchId}::r${replyIndex}`;
+}
+
+export function parseBranchReplyVerdictTarget(
+  targetId: string,
+): { branchId: string; replyIndex: number } | null {
+  const m = /^(.+)::r(\d+)$/.exec(targetId);
+  if (!m) return null;
+  return { branchId: m[1], replyIndex: Number(m[2]) };
 }
 
 /** 回答是否是分点格式（至少 2 个分点才值得展示裁决 UI） */

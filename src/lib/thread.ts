@@ -103,21 +103,23 @@ export function patchBranchInThread(
   };
 }
 
-/** Patch the last same-window follow-up reply on a Fork. */
-export function patchBranchLastReplyInThread(
+/** Patch a same-window follow-up reply by index on a Fork branch. */
+export function patchBranchReplyInThread(
   thread: ThreadRoot,
   branchId: string,
+  replyIndex: number,
   patch: Partial<BranchReply>,
 ): ThreadRoot {
   const patchInNodes = (nodes: BranchNode[]): BranchNode[] =>
     nodes.map((node) => {
       if (node.id === branchId) {
         const replies = node.replies ?? [];
-        if (replies.length === 0) return node;
-        const last = replies[replies.length - 1];
+        if (replyIndex < 0 || replyIndex >= replies.length) return node;
         return {
           ...node,
-          replies: [...replies.slice(0, -1), { ...last, ...patch }],
+          replies: replies.map((reply, i) =>
+            i === replyIndex ? { ...reply, ...patch } : reply,
+          ),
         };
       }
       return { ...node, children: patchInNodes(node.children) };
@@ -130,6 +132,23 @@ export function patchBranchLastReplyInThread(
       children: patchInNodes(m.children),
     })),
   };
+}
+
+/** Patch the last same-window follow-up reply on a Fork. */
+export function patchBranchLastReplyInThread(
+  thread: ThreadRoot,
+  branchId: string,
+  patch: Partial<BranchReply>,
+): ThreadRoot {
+  const replies =
+    findBranchInThread(thread, branchId)?.replies ?? [];
+  if (replies.length === 0) return thread;
+  return patchBranchReplyInThread(
+    thread,
+    branchId,
+    replies.length - 1,
+    patch,
+  );
 }
 
 /**
