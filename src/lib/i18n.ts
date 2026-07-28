@@ -118,7 +118,7 @@ const en = {
   "general.font.load": "Load installed fonts",
   "general.font.loading": "Loading fonts…",
   "general.font.filter": "Filter fonts",
-  "general.font.preview": "ForkNote · Clarify as you read · 永字八号",
+  "general.font.preview": "ForkNote · Clarify as you read · 实时澄清",
   "general.font.sourceLocal": "Showing fonts installed on this device.",
   "general.font.sourceFallback":
     "This browser cannot list all installed fonts — showing a common-font list. Chrome / Edge / the desktop app can load the full set.",
@@ -648,7 +648,7 @@ const zh: Record<MessageKey, string> = {
   "general.font.load": "读取已安装字体",
   "general.font.loading": "正在读取字体…",
   "general.font.filter": "筛选字体",
-  "general.font.preview": "ForkNote · 边读边澄清 · 永字八号",
+  "general.font.preview": "ForkNote · 边读边澄清 · 实时澄清",
   "general.font.sourceLocal": "已列出本机安装的字体。",
   "general.font.sourceFallback":
     "当前环境无法枚举全部本机字体，已显示常用字体列表。Chrome / Edge / 桌面端可读取完整列表。",
