@@ -19,6 +19,8 @@ import {
 } from "../lib/storage";
 import { useTheme, type ThemePreference } from "../lib/theme";
 import {
+  listLocalFontFamilies,
+  uiFontPreferenceEquals,
   useUiFont,
   type UiFontPreference,
 } from "../lib/uiFont";
@@ -126,14 +128,6 @@ const THEME_OPTIONS: { value: ThemePreference; labelKey: "general.theme.light" |
   { value: "system", labelKey: "general.theme.system" },
 ];
 
-const FONT_OPTIONS: {
-  value: UiFontPreference;
-  labelKey: "general.font.default" | "general.font.system";
-}[] = [
-  { value: "default", labelKey: "general.font.default" },
-  { value: "system", labelKey: "general.font.system" },
-];
-
 /** Native language names (standard for locale pickers). */
 const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
   { value: "en", label: "English" },
@@ -165,6 +159,13 @@ function GeneralPanel() {
   const { preference: uiFont, setUiFontPreference } = useUiFont();
   const { locale, t } = useLocale();
   const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
+  const [fontFamilies, setFontFamilies] = useState<string[]>([]);
+  const [fontSource, setFontSource] = useState<"local" | "fallback" | null>(
+    null,
+  );
+  const [fontError, setFontError] = useState<string | null>(null);
+  const [fontLoading, setFontLoading] = useState(false);
+  const [fontFilter, setFontFilter] = useState("");
 
   const pendingLabel = pendingLocale
     ? (LOCALE_OPTIONS.find((o) => o.value === pendingLocale)?.label ?? "")
@@ -177,6 +178,68 @@ function GeneralPanel() {
     }
     applyLocale(pendingLocale);
     window.location.reload();
+  };
+
+  const loadInstalledFonts = async () => {
+    setFontLoading(true);
+    setFontError(null);
+    try {
+      const result = await listLocalFontFamilies();
+      setFontFamilies(result.families);
+      setFontSource(result.source);
+      if (
+        result.error &&
+        result.error !== "unsupported" &&
+        result.error !== "empty"
+      ) {
+        setFontError(result.error);
+      }
+    } finally {
+      setFontLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadInstalledFonts();
+  }, []);
+
+  const selectValue =
+    uiFont.kind === "family" ? `family:${uiFont.family}` : uiFont.kind;
+
+  const filteredFamilies = fontFilter.trim()
+    ? fontFamilies.filter((name) =>
+        name.toLowerCase().includes(fontFilter.trim().toLowerCase()),
+      )
+    : fontFamilies;
+
+  const activeFamily = uiFont.kind === "family" ? uiFont.family : null;
+  const familiesForSelect =
+    activeFamily && !filteredFamilies.includes(activeFamily)
+      ? [activeFamily, ...filteredFamilies]
+      : filteredFamilies;
+
+  const previewStyle =
+    uiFont.kind === "family"
+      ? { fontFamily: `"${uiFont.family}", system-ui, sans-serif` }
+      : uiFont.kind === "system"
+        ? {
+            fontFamily:
+              'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          }
+        : undefined;
+
+  const onFontSelect = (value: string) => {
+    let next: UiFontPreference;
+    if (value === "default") next = { kind: "default" };
+    else if (value === "system") next = { kind: "system" };
+    else if (value.startsWith("family:")) {
+      next = { kind: "family", family: value.slice("family:".length) };
+    } else {
+      return;
+    }
+    if (!uiFontPreferenceEquals(uiFont, next)) {
+      setUiFontPreference(next);
+    }
   };
 
   return (
@@ -200,17 +263,63 @@ function GeneralPanel() {
       </SettingsRow>
 
       <SettingsRow title={t("general.font")} description={t("general.fontDesc")}>
-        <div className="ss-segmented" role="group" aria-label={t("general.fontAria")}>
-          {FONT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`ss-segment${uiFont === opt.value ? " is-active" : ""}`}
-              onClick={() => setUiFontPreference(opt.value)}
+        <div className="ss-font-picker">
+          <div className="ss-font-picker-row">
+            <select
+              className="ss-select"
+              aria-label={t("general.fontAria")}
+              value={selectValue}
+              onChange={(e) => onFontSelect(e.target.value)}
             >
-              {t(opt.labelKey)}
+              <option value="default">{t("general.font.default")}</option>
+              <option value="system">{t("general.font.system")}</option>
+              {familiesForSelect.length > 0 ? (
+                <optgroup
+                  label={
+                    fontSource === "local"
+                      ? t("general.font.installedGroup")
+                      : t("general.font.commonGroup")
+                  }
+                >
+                  {familiesForSelect.map((name) => (
+                    <option key={name} value={`family:${name}`}>
+                      {name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={fontLoading}
+              onClick={() => void loadInstalledFonts()}
+            >
+              {fontLoading ? t("general.font.loading") : t("general.font.load")}
             </button>
-          ))}
+          </div>
+          {fontFamilies.length > 12 ? (
+            <input
+              className="ss-font-filter"
+              type="search"
+              value={fontFilter}
+              onChange={(e) => setFontFilter(e.target.value)}
+              placeholder={t("general.font.filter")}
+              aria-label={t("general.font.filter")}
+            />
+          ) : null}
+          <p className="ss-font-preview" style={previewStyle}>
+            {t("general.font.preview")}
+          </p>
+          {fontError ? (
+            <p className="ss-font-hint">
+              {t("general.font.loadError", { error: fontError })}
+            </p>
+          ) : fontSource === "local" ? (
+            <p className="ss-font-hint">{t("general.font.sourceLocal")}</p>
+          ) : fontSource === "fallback" ? (
+            <p className="ss-font-hint">{t("general.font.sourceFallback")}</p>
+          ) : null}
         </div>
       </SettingsRow>
 
