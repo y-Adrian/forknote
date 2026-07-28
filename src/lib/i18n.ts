@@ -109,6 +109,12 @@ const en = {
   "general.theme.light": "Light",
   "general.theme.dark": "Dark",
   "general.theme.system": "System",
+  "general.font": "Interface font",
+  "general.fontDesc":
+    "Default uses DM Sans. System follows the OS display / UI font (e.g. SF Pro, Segoe UI, PingFang).",
+  "general.fontAria": "Interface font",
+  "general.font.default": "Default",
+  "general.font.system": "System",
   "general.language": "Interface language",
   "general.languageDesc":
     "UI chrome and model replies follow this language. Switching reloads the app so everything updates.",
@@ -218,6 +224,7 @@ const en = {
   "data.key.project": "project / sidecar prefs",
   "data.key.theme": "theme preference",
   "data.key.locale": "interface language",
+  "data.key.uiFont": "interface font preference",
 
   "projectSettings.title": "Project",
   "projectSettings.lead":
@@ -621,6 +628,12 @@ const zh: Record<MessageKey, string> = {
   "general.theme.light": "浅色",
   "general.theme.dark": "深色",
   "general.theme.system": "系统",
+  "general.font": "界面字体",
+  "general.fontDesc":
+    "默认使用 DM Sans。系统则跟随操作系统显示 / UI 字体（如 SF Pro、Segoe UI、苹方）。",
+  "general.fontAria": "界面字体",
+  "general.font.default": "默认",
+  "general.font.system": "系统",
   "general.language": "界面语言",
   "general.languageDesc":
     "界面文案与模型回复均跟随此语言。切换后将刷新页面，以便全局生效。",
@@ -725,6 +738,7 @@ const zh: Record<MessageKey, string> = {
   "data.key.project": "项目 / sidecar 偏好",
   "data.key.theme": "主题偏好",
   "data.key.locale": "界面语言",
+  "data.key.uiFont": "界面字体偏好",
 
   "projectSettings.title": "项目",
   "projectSettings.lead":
