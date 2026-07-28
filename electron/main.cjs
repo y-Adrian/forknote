@@ -23,6 +23,18 @@ const WINDOW_MIN_HEIGHT = 480;
 const VISUAL_ZOOM_MIN = 1;
 const VISUAL_ZOOM_MAX = 3;
 
+/** Prefer the brand mark exported into `build/` for Dock / window chrome. */
+function resolveAppIconPath() {
+  const candidates = [
+    path.join(__dirname, "..", "build", "icon.png"),
+    path.join(__dirname, "..", "build", "icon.icns"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 // Never run the shell itself as Node (would make `app` undefined).
 delete process.env.ELECTRON_RUN_AS_NODE;
 
@@ -229,6 +241,7 @@ async function createWindow() {
     console.log(`[forknote-desktop] UI at ${origin}`);
   }
 
+  const appIcon = resolveAppIconPath();
   const win = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -237,6 +250,7 @@ async function createWindow() {
     resizable: true,
     maximizable: true,
     title: "ForkNote",
+    ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -263,6 +277,10 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const appIcon = resolveAppIconPath();
+  if (appIcon && process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(appIcon);
+  }
   buildAppMenu();
   void createWindow();
   app.on("activate", () => {
