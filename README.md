@@ -45,6 +45,7 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 | `npm run preview` | 预览构建产物 |
 | `npm run electron:dev` | Electron 壳加载 Vite（需另开 `npm run dev` / `dev:web`）；自动拉起或复用 sidecar |
 | `npm run electron:build:mac` | 生产构建 + **未签名** macOS `.app`（`release/mac*/ForkNote.app`） |
+| `npm run electron:release:mac` | 生产构建 + **未签名** DMG / ZIP（本机当前架构） |
 
 ### macOS 桌面应用（Electron，未签名）
 
@@ -67,11 +68,36 @@ npm run electron:dev        # Electron 加载 http://127.0.0.1:5173
 
 构建未签名：`CSC_IDENTITY_AUTO_DISCOVERY=false` 且 `mac.identity: null`。Gatekeeper 可能拦截首次打开，可在「系统设置 → 隐私与安全性」允许，或：`xattr -cr release/mac-arm64/ForkNote.app`。
 
-可选 DMG（仍未签名）：
+本地打安装包（仍未签名）：
 
 ```bash
-npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dmg
+npm run electron:release:mac
+# 产物在 release/*.dmg 与 release/*.zip
 ```
+
+### 在 GitHub 上构建并发布
+
+工作流 [`.github/workflows/release-electron-mac.yml`](.github/workflows/release-electron-mac.yml) 会在 **macos-14** 上构建 **arm64 + x64** 的未签名 **DMG / ZIP**，并挂到 GitHub Release。
+
+**推荐：打版本 tag**
+
+```bash
+# package.json 的 version 可与 tag 一致（CI 会按 tag 同步写入）
+git checkout leading
+git pull
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+推送 `v*` tag 后，Actions 中的 **Release Electron Mac** 会创建/更新同名 Release，并上传：
+
+- `ForkNote-*-arm64.dmg` / `.zip`
+- `ForkNote-*-x64.dmg` / `.zip`
+- `latest-mac.yml`（供后续自动更新用）
+
+**手动跑：** GitHub → **Actions** → **Release Electron Mac** → **Run workflow**。不填 tag 时只上传 workflow Artifact；填写 `v0.1.0` 会同时发 Release。
+
+仍未签名 / 未公证；用户首次打开可能需在「隐私与安全性」允许，或 `xattr -cr` 去掉隔离属性。
 
 
 若启动失败（常见原因：端口被占用）：
