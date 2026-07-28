@@ -90,7 +90,8 @@ function PointDoubtEditor({
 }
 
 /**
- * 按「【N】」分点渲染回答，每个分点带 采纳/存疑/不采纳 裁决按钮。
+ * 按「【N】」分点渲染回答；段落间用块区分，不展示编号角标。
+ * 采纳/存疑/不采纳小图标竖排在内容块外侧右侧，尽量不挤占正文版式。
  * 缺省未点击 = 采纳（上下文侧）；UI 保持中性，不强制高亮。
  * 不足 2 个分点时退化为普通 Markdown。
  */
@@ -121,43 +122,42 @@ export function PointizedAnswer({
         return (
           <div
             key={point.index}
-            className={`point-block${verdict ? ` is-${verdict}` : ""}`}
+            className={`point-row${verdict ? ` is-${verdict}` : ""}`}
           >
-            <div className="point-block-head">
-              <span className="point-badge">{point.index}</span>
-              <div
-                className="point-verdict-group"
-                role="group"
-                aria-label={t("verdict.pointAria", { n: point.index })}
-              >
-                {VERDICT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`point-verdict-btn v-${opt.value}${verdict === opt.value ? " active" : ""}`}
-                    title={t(opt.titleKey)}
-                    aria-pressed={verdict === opt.value}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onVerdict(point.index, opt.value);
-                    }}
-                  >
-                    {opt.icon}
-                  </button>
-                ))}
+            <div className={`point-block${verdict ? ` is-${verdict}` : ""}`}>
+              <div className="point-content">
+                <MarkdownBody content={point.content} />
               </div>
+              {verdict === "unsure" && (
+                <PointDoubtEditor
+                  pointIndex={point.index}
+                  initialDoubt={doubts?.[point.index] ?? ""}
+                  onDoubt={onDoubt}
+                />
+              )}
             </div>
-            <div className="point-content">
-              <MarkdownBody content={point.content} />
+            <div
+              className="point-verdict-group"
+              role="group"
+              aria-label={t("verdict.pointAria", { n: point.index })}
+            >
+              {VERDICT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`point-verdict-btn v-${opt.value}${verdict === opt.value ? " active" : ""}`}
+                  title={t(opt.titleKey)}
+                  aria-pressed={verdict === opt.value}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onVerdict(point.index, opt.value);
+                  }}
+                >
+                  {opt.icon}
+                </button>
+              ))}
             </div>
-            {verdict === "unsure" && (
-              <PointDoubtEditor
-                pointIndex={point.index}
-                initialDoubt={doubts?.[point.index] ?? ""}
-                onDoubt={onDoubt}
-              />
-            )}
           </div>
         );
       })}
