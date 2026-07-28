@@ -142,7 +142,7 @@
   background: var(--ds-bg);
 }
 
-/* Settings → General → Interface font → System (OS UI / display font) */
+/* Settings → General → Interface font */
 :root[data-ui-font="system"],
 [data-ui-font="system"] {
   --ds-font-ui:
@@ -160,6 +160,76 @@
   --ds-font-display: var(--ds-font-ui);
   --ds-font: var(--ds-font-ui);
   letter-spacing: normal;
+}
+
+:root[data-ui-font="custom"],
+[data-ui-font="custom"] {
+  --ds-font-ui:
+    var(--fn-ui-font-family),
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  --ds-font-display: var(--ds-font-ui);
+  --ds-font: var(--ds-font-ui);
+  letter-spacing: normal;
+}
+
+.ss-font-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: min(100%, 280px);
+  max-width: 320px;
+}
+
+.ss-font-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ss-font-picker-row .ss-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.ss-font-filter {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.ss-font-filter:focus {
+  outline: none;
+  border-color: var(--ds-focus-border);
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+
+.ss-font-preview {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--ds-border);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.ss-font-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ds-muted);
+  line-height: 1.35;
 }
 
 /* Dark — soft indigo-gray, lavender-blue accent (not harsh charcoal) */
