@@ -60,6 +60,7 @@
     "mac": {
       "identity": null,
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "target": [
         "dir"
       ]
