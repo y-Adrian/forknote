@@ -148,7 +148,8 @@ export function FloatingBranchDetail({
     pendingInline ? "inline" : "",
   ].join(":");
 
-  const { onDragHandlePointerDown } = useDraggableFloat(panelRef, {
+  const { onDragHandlePointerDown, onResizeHandlePointerDown } =
+    useDraggableFloat(panelRef, {
     anchorRect,
     preferBelow: true,
     depth,
@@ -158,6 +159,7 @@ export function FloatingBranchDetail({
     skipEnterAnimation,
     seedLeft,
     seedTop,
+    resizable: true,
   });
 
   useEffect(() => {
@@ -215,7 +217,7 @@ export function FloatingBranchDetail({
   return (
     <div
       ref={panelRef}
-      className={`float-panel float-panel-detail float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}${skipEnterAnimation ? " is-settled" : " float-panel-enter"}`}
+      className={`float-panel float-panel-detail is-resizable float-panel-depth-${Math.min(depth, 4)}${isTopmost ? "" : " is-not-topmost"}${skipEnterAnimation ? " is-settled" : " float-panel-enter"}`}
       role="dialog"
       aria-label={forkTitle}
       onMouseDown={(e) => e.stopPropagation()}
@@ -411,6 +413,16 @@ export function FloatingBranchDetail({
           </>
         )}
       </footer>
+      {onResizeHandlePointerDown ? (
+        <div
+          className="float-panel-resize-handle"
+          onPointerDown={onResizeHandlePointerDown}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t("common.resizePanel")}
+          title={t("common.resizePanel")}
+        />
+      ) : null}
     </div>
   );
 }
