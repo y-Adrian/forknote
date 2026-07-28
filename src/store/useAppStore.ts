@@ -57,8 +57,10 @@ import {
   normalizeThread,
   patchBranchInThread,
   patchBranchLastReplyInThread,
+  patchBranchReplyInThread,
   patchMessage,
 } from "../lib/thread";
+import { parseBranchReplyVerdictTarget } from "../lib/points";
 import {
   nextFloatZIndex,
   popBranchFloat,
@@ -1124,21 +1126,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     let nextThread: ThreadRoot;
-    const msg = thread.messages.find((m) => m.id === targetId);
-    if (msg) {
-      nextThread = patchMessage(
+    const replyTarget = parseBranchReplyVerdictTarget(targetId);
+    if (replyTarget) {
+      const branch = findBranchInThread(thread, replyTarget.branchId);
+      const reply = branch?.replies?.[replyTarget.replyIndex];
+      if (!branch || !reply) return;
+      nextThread = patchBranchReplyInThread(
         thread,
-        targetId,
-        apply(msg.pointVerdicts, msg.pointDoubts),
+        replyTarget.branchId,
+        replyTarget.replyIndex,
+        apply(reply.pointVerdicts, reply.pointDoubts),
       );
     } else {
-      const branch = findBranchInThread(thread, targetId);
-      if (!branch) return;
-      nextThread = patchBranchInThread(
-        thread,
-        targetId,
-        apply(branch.pointVerdicts, branch.pointDoubts),
-      );
+      const msg = thread.messages.find((m) => m.id === targetId);
+      if (msg) {
+        nextThread = patchMessage(
+          thread,
+          targetId,
+          apply(msg.pointVerdicts, msg.pointDoubts),
+        );
+      } else {
+        const branch = findBranchInThread(thread, targetId);
+        if (!branch) return;
+        nextThread = patchBranchInThread(
+          thread,
+          targetId,
+          apply(branch.pointVerdicts, branch.pointDoubts),
+        );
+      }
     }
 
     const nextSessions = upsertActiveSession(
@@ -1173,21 +1188,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     let nextThread: ThreadRoot;
-    const msg = thread.messages.find((m) => m.id === targetId);
-    if (msg) {
-      nextThread = patchMessage(
+    const replyTarget = parseBranchReplyVerdictTarget(targetId);
+    if (replyTarget) {
+      const branch = findBranchInThread(thread, replyTarget.branchId);
+      const reply = branch?.replies?.[replyTarget.replyIndex];
+      if (!branch || !reply) return;
+      nextThread = patchBranchReplyInThread(
         thread,
-        targetId,
-        apply(msg.pointVerdicts, msg.pointDoubts),
+        replyTarget.branchId,
+        replyTarget.replyIndex,
+        apply(reply.pointVerdicts, reply.pointDoubts),
       );
     } else {
-      const branch = findBranchInThread(thread, targetId);
-      if (!branch) return;
-      nextThread = patchBranchInThread(
-        thread,
-        targetId,
-        apply(branch.pointVerdicts, branch.pointDoubts),
-      );
+      const msg = thread.messages.find((m) => m.id === targetId);
+      if (msg) {
+        nextThread = patchMessage(
+          thread,
+          targetId,
+          apply(msg.pointVerdicts, msg.pointDoubts),
+        );
+      } else {
+        const branch = findBranchInThread(thread, targetId);
+        if (!branch) return;
+        nextThread = patchBranchInThread(
+          thread,
+          targetId,
+          apply(branch.pointVerdicts, branch.pointDoubts),
+        );
+      }
     }
 
     const nextSessions = upsertActiveSession(

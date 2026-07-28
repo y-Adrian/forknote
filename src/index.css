@@ -1879,12 +1879,6 @@ mark.branch-highlight:hover {
   white-space: nowrap;
 }
 
-.float-branch-text-wrap {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
-}
-
 .float-panel h3 {
   margin: 0 0 12px;
   font-size: 0.92rem;
@@ -1995,22 +1989,64 @@ mark.branch-highlight:hover {
   font-size: 0.75rem;
 }
 
+.float-branch-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .float-branch-turn-nested {
-  margin-top: 12px;
+  margin-top: 4px;
   padding-top: 12px;
   border-top: 1px dashed var(--ds-border);
 }
 
-.float-branch-turn-nested .float-branch-row-inline .float-branch-text {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
+/* Reuse main-thread msg/bubble chrome; slightly tighter in the Fork float. */
+.float-panel-detail .float-branch-turn {
+  width: 100%;
 }
 
-.float-branch-selectable.answer-body {
+.float-panel-detail .float-branch-msg.fn-msg-user {
+  max-width: min(88%, 420px);
+}
+
+.float-panel-detail .float-branch-msg.fn-msg-assistant {
+  width: 100%;
+  max-width: 100%;
+}
+
+.float-panel-detail .float-branch-msg .ds-bubble-user {
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+
+.float-panel-detail .float-branch-msg .ds-bubble-assistant .answer-body-compact,
+.float-panel-detail .float-branch-selectable.answer-body-compact {
+  margin: 0;
   padding: 0;
-  border: none;
   background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 0.9rem;
+}
+
+.float-panel-detail .float-branch-selectable.answer-body {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Keep point verdict chrome readable inside the compact float. */
+.float-panel-detail .pointized-answer {
+  gap: 8px;
+}
+
+.float-panel-detail .point-block {
+  padding: 8px 10px 8px 12px;
+}
+
+.float-panel-detail .point-verdict-group {
+  opacity: 0.85;
 }
 
 .float-panel .quote-snippet {
@@ -2029,67 +2065,6 @@ mark.branch-highlight:hover {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-}
-
-.float-branch-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.float-branch-row-inline {
-  align-items: center;
-  min-height: 1.5rem;
-}
-
-.float-branch-row-inline .float-branch-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.float-branch-row-answer {
-  align-items: flex-start;
-  margin-bottom: 0;
-}
-
-.float-branch-answer-scroll {
-  flex: 1;
-  min-width: 0;
-}
-
-.float-branch-answer-scroll .answer-body {
-  display: block;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 0.9rem;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.float-branch-row:last-child {
-  margin-bottom: 0;
-}
-
-.float-branch-label {
-  flex-shrink: 0;
-  width: 4.5rem;
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--ds-accent);
-  text-align: left;
-}
-
-.float-branch-text {
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-  font-size: 0.9rem;
-  line-height: 1.4;
-  color: var(--ds-text);
 }
 
 
