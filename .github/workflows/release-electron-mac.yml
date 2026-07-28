@@ -1,0 +1,131 @@
+# Build unsigned macOS Electron installers and attach them to a GitHub Release.
+#
+# Triggers:
+#   - Push a version tag: git tag v0.1.0 && git push origin v0.1.0
+#   - Manual run: Actions → “Release Electron Mac” → Run workflow
+#
+# Artifacts: DMG + ZIP (arm64 + x64). Not signed / notarized — Gatekeeper may warn.
+name: Release Electron Mac
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional release tag to create/update (e.g. v0.1.0). Leave empty to only upload workflow artifacts."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-electron-mac-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-mac:
+    name: Build macOS packages
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync package version from tag
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "::error::Tag '${TAG}' must look like v1.2.3"
+            exit 1
+          fi
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "Package version set to ${VERSION}"
+
+      - name: Build unsigned DMG + ZIP (arm64 + x64)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          set -euo pipefail
+          npm run build
+          npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: forknote-mac-${{ github.sha }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ForkNote ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            Unsigned macOS builds (no Apple notarization).
+
+            First open may be blocked by Gatekeeper — allow in **System Settings → Privacy & Security**, or:
+
+            ```bash
+            xattr -cr /path/to/ForkNote.app
+            ```
+
+            Prefer the **DMG** for install; **ZIP** is the same `.app` archived.
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+
+      - name: Publish GitHub Release (manual tag input)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ForkNote ${{ inputs.tag }}
+          draft: false
+          prerelease: ${{ contains(inputs.tag, '-') }}
+          generate_release_notes: true
+          body: |
+            Unsigned macOS builds (no Apple notarization).
+
+            First open may be blocked by Gatekeeper — allow in **System Settings → Privacy & Security**, or:
+
+            ```bash
+            xattr -cr /path/to/ForkNote.app
+            ```
+
+            Prefer the **DMG** for install; **ZIP** is the same `.app` archived.
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml

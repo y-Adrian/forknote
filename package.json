@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "sidecar": "node sidecar/index.js",
     "electron:dev": "ELECTRON_DEV=1 electron .",
-    "electron:build:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir"
+    "electron:build:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir",
+    "electron:release:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -62,6 +63,9 @@
       "target": [
         "dir"
       ]
+    },
+    "dmg": {
+      "title": "${productName} ${version}"
     }
   }
 }
