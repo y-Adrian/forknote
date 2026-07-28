@@ -18,6 +18,10 @@ import {
   parseSessionStoreImport,
 } from "../lib/storage";
 import { useTheme, type ThemePreference } from "../lib/theme";
+import {
+  useUiFont,
+  type UiFontPreference,
+} from "../lib/uiFont";
 import { useAppStore } from "../store/useAppStore";
 import type { ApiSettings, SettingsTab } from "../types";
 import { ApiConnectionFields } from "./ApiConnectionFields";
@@ -122,6 +126,14 @@ const THEME_OPTIONS: { value: ThemePreference; labelKey: "general.theme.light" |
   { value: "system", labelKey: "general.theme.system" },
 ];
 
+const FONT_OPTIONS: {
+  value: UiFontPreference;
+  labelKey: "general.font.default" | "general.font.system";
+}[] = [
+  { value: "default", labelKey: "general.font.default" },
+  { value: "system", labelKey: "general.font.system" },
+];
+
 /** Native language names (standard for locale pickers). */
 const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
   { value: "en", label: "English" },
@@ -150,6 +162,7 @@ function SettingsRow({
 
 function GeneralPanel() {
   const { preference, setThemePreference } = useTheme();
+  const { preference: uiFont, setUiFontPreference } = useUiFont();
   const { locale, t } = useLocale();
   const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
 
@@ -179,6 +192,21 @@ function GeneralPanel() {
               type="button"
               className={`ss-segment${preference === opt.value ? " is-active" : ""}`}
               onClick={() => setThemePreference(opt.value)}
+            >
+              {t(opt.labelKey)}
+            </button>
+          ))}
+        </div>
+      </SettingsRow>
+
+      <SettingsRow title={t("general.font")} description={t("general.fontDesc")}>
+        <div className="ss-segmented" role="group" aria-label={t("general.fontAria")}>
+          {FONT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`ss-segment${uiFont === opt.value ? " is-active" : ""}`}
+              onClick={() => setUiFontPreference(opt.value)}
             >
               {t(opt.labelKey)}
             </button>
@@ -502,6 +530,9 @@ function DataPanel() {
           </li>
           <li>
             <code>{LOCAL_STORAGE_KEYS.locale}</code> — {t("data.key.locale")}
+          </li>
+          <li>
+            <code>{LOCAL_STORAGE_KEYS.uiFont}</code> — {t("data.key.uiFont")}
           </li>
         </ul>
       </div>

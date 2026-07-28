@@ -164,6 +164,7 @@ export const LOCAL_STORAGE_KEYS = {
   project: "forknote-project",
   theme: "forknote-theme",
   locale: "forknote-locale",
+  uiFont: "forknote-ui-font",
   userPreferences: "forknote-user-preferences",
   recentFiles: "forknote-recent-files",
   skipSessionDeleteConfirm: SKIP_SESSION_DELETE_CONFIRM_KEY,

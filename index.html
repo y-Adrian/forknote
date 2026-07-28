@@ -41,6 +41,15 @@
         } catch (e) {
           /* keep html lang */
         }
+        try {
+          var uiFont = localStorage.getItem("forknote-ui-font");
+          document.documentElement.setAttribute(
+            "data-ui-font",
+            uiFont === "system" ? "system" : "default",
+          );
+        } catch (e) {
+          document.documentElement.setAttribute("data-ui-font", "default");
+        }
       })();
     </script>
   </head>

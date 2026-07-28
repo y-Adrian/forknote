@@ -142,6 +142,26 @@
   background: var(--ds-bg);
 }
 
+/* Settings → General → Interface font → System (OS UI / display font) */
+:root[data-ui-font="system"],
+[data-ui-font="system"] {
+  --ds-font-ui:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    sans-serif;
+  --ds-font-display: var(--ds-font-ui);
+  --ds-font: var(--ds-font-ui);
+  letter-spacing: normal;
+}
+
 /* Dark — soft indigo-gray, lavender-blue accent (not harsh charcoal) */
 :root,
 [data-theme="dark"] {
