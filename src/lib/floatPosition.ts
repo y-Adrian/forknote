@@ -21,6 +21,9 @@ export function getMessagesColumnRect(): DOMRect {
 
 const DEPTH_STAGGER = 28;
 
+export const FLOAT_PANEL_MIN_WIDTH = 280;
+export const FLOAT_PANEL_MIN_HEIGHT = 200;
+
 /** 在父浮窗下方为子批注浮窗生成锚点 */
 export function anchorRectBelowPanel(
   panel: HTMLElement,
@@ -28,6 +31,26 @@ export function anchorRectBelowPanel(
 ): DOMRect {
   const r = panel.getBoundingClientRect();
   return new DOMRect(r.left + DEPTH_STAGGER, r.bottom + gap, r.width, 0);
+}
+
+/** Apply an explicit user-chosen size (width + height). */
+export function applyUserPanelSize(
+  panel: HTMLElement,
+  size: { width: number; height: number },
+  depth = 0,
+  zIndex?: number,
+): void {
+  const maxW = Math.max(FLOAT_PANEL_MIN_WIDTH, window.innerWidth - 16);
+  const maxH = Math.max(FLOAT_PANEL_MIN_HEIGHT, window.innerHeight - 16);
+  const width = Math.min(maxW, Math.max(FLOAT_PANEL_MIN_WIDTH, size.width));
+  const height = Math.min(maxH, Math.max(FLOAT_PANEL_MIN_HEIGHT, size.height));
+
+  panel.style.width = `${width}px`;
+  panel.style.height = `${height}px`;
+  panel.style.maxHeight = `${height}px`;
+  panel.style.setProperty("--float-depth", String(depth));
+  panel.dataset.floatDepth = String(depth);
+  panel.style.zIndex = String(zIndex ?? 220 + depth * 14);
 }
 
 /** Update width / max-height / z-index without moving left/top (avoids blink on resize). */
@@ -38,14 +61,15 @@ export function sizeFloatingPanel(
 ): void {
   const column = getMessagesColumnRect();
   const stagger = depth * DEPTH_STAGGER;
-  const width = Math.max(280, column.width - stagger);
+  const width = Math.max(FLOAT_PANEL_MIN_WIDTH, column.width - stagger);
   const maxHeight = Math.min(
     420 - depth * 20,
     window.innerHeight * (0.55 - depth * 0.04),
   );
 
   panel.style.width = `${width}px`;
-  panel.style.maxHeight = `${Math.max(200, maxHeight)}px`;
+  panel.style.height = "";
+  panel.style.maxHeight = `${Math.max(FLOAT_PANEL_MIN_HEIGHT, maxHeight)}px`;
   panel.style.setProperty("--float-depth", String(depth));
   panel.dataset.floatDepth = String(depth);
   panel.style.zIndex = String(zIndex ?? 220 + depth * 14);
@@ -56,8 +80,8 @@ export function clampPanelPosition(
   left: number,
   top: number,
 ): { left: number; top: number } {
-  const w = panel.offsetWidth || 280;
-  const h = panel.offsetHeight || 200;
+  const w = panel.offsetWidth || FLOAT_PANEL_MIN_WIDTH;
+  const h = panel.offsetHeight || FLOAT_PANEL_MIN_HEIGHT;
   const nextLeft = Math.max(8, Math.min(left, window.innerWidth - w - 8));
   const nextTop = Math.max(8, Math.min(top, window.innerHeight - h - 8));
   panel.style.left = `${nextLeft}px`;

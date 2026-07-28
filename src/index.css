@@ -1778,6 +1778,48 @@ mark.branch-highlight:hover {
   max-height: min(72vh, 560px);
 }
 
+.float-panel.float-panel-detail.is-resizable {
+  /* Inline height/maxHeight from JS win after user resize; keep room for handle. */
+  position: fixed;
+}
+
+.float-panel-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  border-radius: 0 0 12px 0;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 46%,
+      var(--ds-border-strong) 46%,
+      var(--ds-border-strong) 54%,
+      transparent 54%
+    ),
+    linear-gradient(
+      135deg,
+      transparent 64%,
+      var(--ds-muted) 64%,
+      var(--ds-muted) 72%,
+      transparent 72%
+    );
+  opacity: 0.7;
+}
+
+.float-panel-resize-handle:hover,
+.float-panel.is-resizing .float-panel-resize-handle {
+  opacity: 1;
+}
+
+.float-panel.is-resizing {
+  user-select: none;
+}
+
 .float-panel-depth-1 {
   border-color: var(--ds-border-strong);
   box-shadow:

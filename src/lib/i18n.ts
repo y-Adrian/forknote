@@ -88,6 +88,7 @@ const en = {
   "common.expandAll": "Expand all",
   "common.collapseAll": "Collapse all",
   "common.dragToMove": "Drag to move",
+  "common.resizePanel": "Drag to resize",
 
   "settings.title": "System settings",
   "settings.closeAria": "Close settings",
@@ -599,6 +600,7 @@ const zh: Record<MessageKey, string> = {
   "common.expandAll": "全部展开",
   "common.collapseAll": "全部收起",
   "common.dragToMove": "拖动移动",
+  "common.resizePanel": "拖动调整大小",
 
   "settings.title": "系统设置",
   "settings.closeAria": "关闭设置",
