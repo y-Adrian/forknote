@@ -11,6 +11,7 @@ import { useLocale } from "../lib/i18n";
 import {
   applyImportedPreferences,
   buildMemoryTransferBundle,
+  memoryPackHasContent,
   memoryTransferFilename,
   parseMemoryTransferImport,
   serializeMemoryTransferBundle,
@@ -363,6 +364,9 @@ function MemoryTransferPanel({
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const saveContextMemoryFields = useAppStore((s) => s.saveContextMemoryFields);
   const setSessionMemory = useAppStore((s) => s.setSessionMemory);
+  const ensureActiveSessionForImport = useAppStore(
+    (s) => s.ensureActiveSessionForImport,
+  );
   const session = sessions.find((s) => s.id === activeSessionId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -407,22 +411,31 @@ function MemoryTransferPanel({
     try {
       const text = await file.text();
       const parsed = parseMemoryTransferImport(text);
-      if (parsed.preferences) {
-        applyImportedPreferences(parsed.preferences);
+      const hasPack = memoryPackHasContent(parsed);
+      const hasSessionMemory = Boolean(parsed.sessionMemory?.summary?.trim());
+
+      if (hasPack) {
+        const sessionId = activeSessionId ?? ensureActiveSessionForImport();
+        const importSession =
+          sessions.find((s) => s.id === sessionId) ??
+          useAppStore.getState().sessions.find((s) => s.id === sessionId);
+        const existing = await loadContextMemoryPack({
+          settings,
+          session: importSession,
+          projectRoot,
+          sidecarUrl,
+        });
+        if (
+          memoryPackHasContent(existing ?? {}) &&
+          !confirm(t("memory.transfer.confirmOverwrite"))
+        ) {
+          setStatus(t("memory.transfer.importCancelled"));
+          return;
+        }
       }
-      const hasPack =
-        Boolean(parsed.summary.trim()) ||
-        Boolean(parsed.tasks.trim()) ||
-        Boolean(parsed.decisions.trim());
-      if ((hasPack || parsed.sessionMemory) && !activeSessionId) {
-        onImported();
-        setStatus(
-          parsed.preferences
-            ? t("memory.transfer.importedPrefsOnly")
-            : t("memory.transfer.needNote"),
-        );
-        return;
-      }
+
+      const importedPrefs = applyImportedPreferences(parsed.preferences);
+
       if (hasPack) {
         await saveContextMemoryFields({
           summary: parsed.summary,
@@ -430,11 +443,17 @@ function MemoryTransferPanel({
           decisions: parsed.decisions,
         });
       }
-      if (parsed.sessionMemory && activeSessionId) {
-        setSessionMemory(parsed.sessionMemory.summary);
+      if (hasSessionMemory) {
+        if (!activeSessionId) ensureActiveSessionForImport();
+        setSessionMemory(parsed.sessionMemory!.summary);
       }
+
       onImported();
-      setStatus(t("memory.transfer.imported"));
+      setStatus(
+        importedPrefs && !hasPack && !hasSessionMemory
+          ? t("memory.transfer.importedPrefsOnly")
+          : t("memory.transfer.imported"),
+      );
     } catch (e) {
       setStatus(
         e instanceof Error ? e.message : t("memory.transfer.importFailed"),

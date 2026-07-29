@@ -10,8 +10,8 @@ import { parseCompressedOutput } from "./contextMemory";
 import { createId } from "./id";
 import {
   loadUserPreferences,
+  mergeImportedPreferences,
   normalizePreferenceText,
-  saveUserPreferences,
 } from "./userPreferences";
 import type {
   ContextMemoryPack,
@@ -171,10 +171,14 @@ export function parseMemoryTransferImport(
   try {
     parsed = JSON.parse(text);
   } catch {
-    // Plain markdown without delimiters → SUMMARY only
-    if (text.length > 0) {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      throw new Error("Invalid memory JSON");
+    }
+    // Single markdown file without delimiters → SUMMARY only
+    if (trimmed.length > 0) {
       return {
-        summary: text,
+        summary: trimmed,
         tasks: "",
         decisions: "",
         kind: "delimited-markdown",
@@ -236,13 +240,24 @@ export function parseMemoryTransferImport(
   };
 }
 
-/** Apply preferences from an import (replaces local list when provided). */
+/** Apply preferences from an import (merge by text; does not wipe existing). */
 export function applyImportedPreferences(
   preferences: UserPreferenceEntry[] | undefined,
 ): UserPreferenceEntry[] | null {
-  if (!preferences) return null;
-  saveUserPreferences(preferences);
-  return loadUserPreferences();
+  if (!preferences?.length) return null;
+  return mergeImportedPreferences(preferences);
+}
+
+export function memoryPackHasContent(fields: {
+  summary?: string;
+  tasks?: string;
+  decisions?: string;
+}): boolean {
+  return Boolean(
+    fields.summary?.trim() ||
+      fields.tasks?.trim() ||
+      fields.decisions?.trim(),
+  );
 }
 
 export function memoryTransferFilename(date = new Date()): string {

@@ -88,6 +88,27 @@ export function deleteUserPreference(id: string): UserPreferenceEntry[] {
   return next;
 }
 
+/** Merge imported preferences by text (dedupe); existing entries stay unless duplicated. */
+export function mergeImportedPreferences(
+  incoming: UserPreferenceEntry[],
+): UserPreferenceEntry[] {
+  if (!incoming.length) return loadUserPreferences();
+  const seen = new Set<string>();
+  const merged: UserPreferenceEntry[] = [];
+  for (const entry of [...incoming, ...loadUserPreferences()]) {
+    const text = normalizePreferenceText(entry.text);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    merged.push({
+      id: entry.id || createId(),
+      text,
+      updatedAt: entry.updatedAt || Date.now(),
+    });
+  }
+  saveUserPreferences(merged.slice(0, MAX_ENTRIES));
+  return loadUserPreferences();
+}
+
 export function formatPreferencesAddendum(
   entries: UserPreferenceEntry[],
 ): string | null {
