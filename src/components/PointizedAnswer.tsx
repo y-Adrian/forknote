@@ -1,7 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ATTRIBUTION_AGENT_LABEL,
+  REJECT_STREAK_ASK_THRESHOLD,
+  hypothesisText,
+  pickHypothesisAttribution,
+} from "../lib/feedback";
 import { useLocale } from "../lib/i18n";
 import { parseAnswerPoints } from "../lib/points";
 import type {
+  FeedbackAttribution,
+  PointAttributionMap,
   PointDoubtMap,
   PointVerdict,
   PointVerdictMap,
@@ -12,8 +20,18 @@ interface Props {
   content: string;
   verdicts?: PointVerdictMap;
   doubts?: PointDoubtMap;
+  attributions?: PointAttributionMap;
+  /** Recent reject attributions — used to rotate hypotheses. */
+  recentAttributions?: FeedbackAttribution[];
+  /** Consecutive reject streak from feedbackLog. */
+  rejectStreak?: number;
   onVerdict: (pointIndex: number, verdict: PointVerdict) => void;
   onDoubt: (pointIndex: number, doubt: string) => void;
+  onConfirmHypothesis: (
+    pointIndex: number,
+    attribution: FeedbackAttribution,
+  ) => void;
+  onDenyHypothesis: (pointIndex: number) => void;
 }
 
 const VERDICT_OPTIONS: Array<{
@@ -25,6 +43,91 @@ const VERDICT_OPTIONS: Array<{
   { value: "unsure", icon: "?", titleKey: "verdict.doubt" },
   { value: "reject", icon: "✗", titleKey: "verdict.reject" },
 ];
+
+function PointHypothesisConfirm({
+  signal,
+  content,
+  recentAttributions,
+  confirmed,
+  rejectStreak = 0,
+  onConfirm,
+  onDeny,
+}: {
+  signal: "unsure" | "reject";
+  content: string;
+  recentAttributions?: FeedbackAttribution[];
+  confirmed?: FeedbackAttribution;
+  /** Consecutive rejects in feedbackLog — stronger ask when ≥ threshold. */
+  rejectStreak?: number;
+  onConfirm: (attribution: FeedbackAttribution) => void;
+  onDeny: () => void;
+}) {
+  const { locale, t } = useLocale();
+  const guessed = useMemo(
+    () => pickHypothesisAttribution(content, recentAttributions),
+    [content, recentAttributions],
+  );
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    setDismissed(false);
+  }, [signal, content]);
+
+  if (dismissed) return null;
+
+  if (confirmed) {
+    const label =
+      signal === "unsure"
+        ? t("verdict.hypoUnsureConfirmed")
+        : ATTRIBUTION_AGENT_LABEL[confirmed];
+    return (
+      <p className="point-hypo-confirmed">
+        {t("verdict.hypoConfirmed")}：{label}
+      </p>
+    );
+  }
+
+  const question = hypothesisText(signal, guessed, locale === "zh" ? "zh" : "en");
+  const strongAsk = signal === "reject" && rejectStreak >= REJECT_STREAK_ASK_THRESHOLD;
+
+  return (
+    <div
+      className={`point-hypo${strongAsk ? " is-strong" : ""}`}
+      role="group"
+      aria-label={t("verdict.hypoAria")}
+    >
+      {strongAsk ? (
+        <p className="point-hypo-hint">{t("verdict.hypoStreakHint")}</p>
+      ) : null}
+      <p className="point-hypo-text">{question}</p>
+      <div className="point-hypo-actions">
+        <button
+          type="button"
+          className="point-hypo-btn is-yes"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onConfirm(guessed);
+          }}
+        >
+          {t("verdict.hypoYes")}
+        </button>
+        <button
+          type="button"
+          className="point-hypo-btn is-no"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setDismissed(true);
+            onDeny();
+          }}
+        >
+          {t("verdict.hypoNo")}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function PointDoubtEditor({
   pointIndex,
@@ -44,8 +147,8 @@ function PointDoubtEditor({
 
   const commit = () => {
     const trimmed = draft.trim();
-    // 空文案视为取消存疑；非空且未改动则跳过
     if (trimmed && trimmed === initialDoubt.trim()) return;
+    if (!trimmed && !initialDoubt.trim()) return;
     onDoubt(pointIndex, trimmed);
   };
 
@@ -60,7 +163,6 @@ function PointDoubtEditor({
         rows={2}
         placeholder={t("verdict.doubtPlaceholder")}
         value={draft}
-        autoFocus={!initialDoubt.trim()}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onMouseDown={(e) => e.stopPropagation()}
@@ -90,17 +192,20 @@ function PointDoubtEditor({
 }
 
 /**
- * 按「【N】」分点渲染回答；段落间用块区分，不展示编号角标。
- * 采纳/存疑/不采纳小图标竖排在内容块外侧右侧，尽量不挤占正文版式。
- * 缺省未点击 = 采纳（上下文侧）；UI 保持中性，不强制高亮。
- * 不足 2 个分点时退化为普通 Markdown。
+ * 分点反馈 UI（优化版闭环）：
+ * 三态按钮可选；存疑/不采纳后用「Agent 假设 + 对/不对」二元确认，而非多选归因。
  */
 export function PointizedAnswer({
   content,
   verdicts,
   doubts,
+  attributions,
+  recentAttributions,
+  rejectStreak = 0,
   onVerdict,
   onDoubt,
+  onConfirmHypothesis,
+  onDenyHypothesis,
 }: Props) {
   const { t } = useLocale();
   const parsed = parseAnswerPoints(content);
@@ -119,6 +224,7 @@ export function PointizedAnswer({
 
       {parsed.points.map((point) => {
         const verdict = verdicts?.[point.index];
+        const needsHypo = verdict === "unsure" || verdict === "reject";
         return (
           <div
             key={point.index}
@@ -128,6 +234,17 @@ export function PointizedAnswer({
               <div className="point-content">
                 <MarkdownBody content={point.content} />
               </div>
+              {needsHypo && (
+                <PointHypothesisConfirm
+                  signal={verdict}
+                  content={point.content}
+                  recentAttributions={recentAttributions}
+                  confirmed={attributions?.[point.index]}
+                  rejectStreak={rejectStreak}
+                  onConfirm={(attr) => onConfirmHypothesis(point.index, attr)}
+                  onDeny={() => onDenyHypothesis(point.index)}
+                />
+              )}
               {verdict === "unsure" && (
                 <PointDoubtEditor
                   pointIndex={point.index}

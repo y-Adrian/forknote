@@ -1,5 +1,12 @@
 import { useRef } from "react";
-import type { Anchor, BranchNode, NodeId, PointDoubtMap, PointVerdictMap } from "../types";
+import type {
+  Anchor,
+  BranchNode,
+  NodeId,
+  PointAttributionMap,
+  PointDoubtMap,
+  PointVerdictMap,
+} from "../types";
 import { getHighlightRect } from "../lib/domHighlight";
 import { useAppStore } from "../store/useAppStore";
 import { SelectableMarkdown } from "./SelectableMarkdown";
@@ -21,6 +28,7 @@ interface Props {
   compact?: boolean;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
+  pointAttributions?: PointAttributionMap;
 }
 
 export function SelectableAnswer({
@@ -35,6 +43,7 @@ export function SelectableAnswer({
   compact = false,
   pointVerdicts,
   pointDoubts,
+  pointAttributions,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
@@ -68,6 +77,7 @@ export function SelectableAnswer({
         verdictTargetId={parentId}
         pointVerdicts={pointVerdicts}
         pointDoubts={pointDoubts}
+        pointAttributions={pointAttributions}
         onAsk={(anchor, question) =>
           onAskBranch(parentId, parentContent, anchor, question)
         }

@@ -20,6 +20,7 @@ function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
       node.assistantMessage,
       node.pointVerdicts,
       node.pointDoubts,
+      node.pointAttributions,
     );
     if (answer.trim()) {
       lines.push(
@@ -50,6 +51,7 @@ export function buildArchiveSource(thread: ThreadRoot): string {
       msg.content,
       msg.pointVerdicts,
       msg.pointDoubts,
+      msg.pointAttributions,
     );
     blocks.push(`## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${truncate(annotated, MSG_MAX)}`);
     const clarifications: string[] = [];
@@ -66,8 +68,8 @@ export const ARCHIVE_SYSTEM = `你是开发日志编辑。用户会提供一段�
 请整理成一篇可继续迭代的**开发日志草稿**（Markdown）。
 
 要求：
-1. 保留已校准、已采纳的结论；丢掉被拒绝的错误方向；存疑点单独列出待验证。
-2. 结构建议：背景 / 关键结论 / 实践要点（路径、命令、配置若材料里有则保留）/ 未决问题。
+1. 分点反馈是校准信号：区分「主动采纳」「默认沉默」「被动使用（复制）」；「存疑」写成待验证/置信度缺口；「不采纳」按已确认归因（目标/约束/路线/专业判断/表达）写成对照教训，勿当作仍可行方案。
+2. 结构建议：背景 / 对该用户有效的决策方式 / 实践要点（路径、命令、配置若材料里有则保留） / 可信度缺口与未决问题 / 不适合该用户的策略（简要）。
 3. 简明、可当作后续对话的上下文底座；不要写「你可以继续问我…」类客套。
 4. 不要编造材料中没有的事实。
 5. 第一行用短标题（不要用 # 以外的装饰），随后正文。`;
@@ -162,6 +164,7 @@ ${modeNote}`;
               m.content,
               m.pointVerdicts,
               m.pointDoubts,
+              m.pointAttributions,
             )
           : m.content,
     })),

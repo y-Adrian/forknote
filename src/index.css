@@ -1724,6 +1724,80 @@ body {
   font-size: inherit;
 }
 
+.point-hypo {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.04));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.point-hypo.is-strong {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.point-hypo-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ds-text-dim, var(--ds-muted));
+}
+
+.point-hypo-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ds-text-dim, var(--ds-muted));
+  font-style: italic;
+}
+
+.point-hypo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.point-hypo-btn {
+  border: 1px solid var(--ds-border);
+  background: transparent;
+  color: var(--ds-text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+
+.point-hypo-btn:hover {
+  border-color: var(--ds-focus-border);
+}
+
+.point-hypo-btn.is-yes {
+  border-color: var(--ds-focus-border);
+  background: var(--ds-accent-soft);
+  color: var(--ds-accent);
+}
+
+.point-hypo-btn.is-no {
+  color: var(--ds-text-dim, var(--ds-muted));
+}
+
+.point-hypo-confirmed {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--ds-muted);
+}
+
 .point-doubt {
   margin-top: 8px;
   padding: 8px 10px;

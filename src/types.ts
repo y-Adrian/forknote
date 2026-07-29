@@ -6,14 +6,61 @@ export interface Anchor {
   quotedText: string;
 }
 
-/** 用户对回答中某个分点的裁决；缺省（未点击）视为采纳 */
+/** 用户对回答中某个分点的裁决；缺省（未点击）= 沉默弱正信号，≠ 主动采纳 */
 export type PointVerdict = "accept" | "unsure" | "reject";
 
 /** key = 分点编号（回答中的 N） */
 export type PointVerdictMap = Record<number, PointVerdict>;
 
-/** 存疑分点的用户疑问文案；key = 分点编号 */
+/** 存疑分点的可选自由备注；key = 分点编号 */
 export type PointDoubtMap = Record<number, string>;
+
+/**
+ * 不采纳 / 存疑经二元确认后的归因（Agent 假设 + 用户确认）。
+ * 与 Agent反馈信号闭环设计-优化版.md 对齐。
+ */
+export type FeedbackAttribution =
+  | "goal_mismatch"
+  | "constraint_conflict"
+  | "unfamiliar_approach"
+  | "user_expertise"
+  | "style_dislike";
+
+export type PointAttributionMap = Record<number, FeedbackAttribution>;
+
+/** 结构化反馈事件（原始事件流，用于回溯与后续聚合） */
+export interface FeedbackEvent {
+  id: string;
+  targetId: string;
+  pointIndex: number;
+  signal: PointVerdict;
+  /** 仅主动点击 / 假设确认为 true；沉默默认不写事件 */
+  explicit: boolean;
+  weight: number;
+  attribution?: FeedbackAttribution;
+  note?: string;
+  /** Content-class strategy id used for bandit updates. */
+  strategyId?: string;
+  /** How the event was produced (optimized closed-loop layers). */
+  source?:
+    | "explicit"
+    | "hypothesis_confirm"
+    | "hypothesis_deny"
+    | "passive_copy";
+  at: number;
+}
+
+/**
+ * Session-scoped User Model subset: fast-updating policy weights + confidence.
+ * (stable_profile / active_constraints can land later.)
+ */
+export interface SessionFeedbackPolicy {
+  /** strategy_id → score in ~[0.05, 0.95], default 0.5 */
+  weights: Record<string, number>;
+  /** strategy/topic → confidence delta (negative = need verification) */
+  confidence: Record<string, number>;
+  updatedAt: number;
+}
 
 /** Follow-up turn on the same Fork (same float window), not a nested Clarify. */
 export interface BranchReply {
@@ -24,6 +71,7 @@ export interface BranchReply {
   thinkingSeconds?: number;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
+  pointAttributions?: PointAttributionMap;
 }
 
 export interface BranchNode {
@@ -36,6 +84,7 @@ export interface BranchNode {
   createdAt: number;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
+  pointAttributions?: PointAttributionMap;
   /** Chain-of-thought / reasoning channel, not shown as the answer body */
   reasoning?: string;
   /** Seconds from request start until first visible answer token */
@@ -56,6 +105,7 @@ export interface ChatMessage {
   createdAt: number;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
+  pointAttributions?: PointAttributionMap;
   /** Chain-of-thought / reasoning channel, not shown as the answer body */
   reasoning?: string;
   /** Seconds from request start until first visible answer token */
@@ -118,6 +168,10 @@ export interface ChatSession {
    * @deprecated Legacy model-only field; migrated into `api.model` on load.
    */
   model?: string | null;
+  /** Structured point-feedback event stream. */
+  feedbackLog?: FeedbackEvent[];
+  /** Learned policy weights from feedbackLog (simple bandit). */
+  feedbackPolicy?: SessionFeedbackPolicy;
 }
 
 /** Connection/model fields a note may override (subset of ApiSettings). */

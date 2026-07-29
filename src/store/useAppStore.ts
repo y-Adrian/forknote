@@ -60,7 +60,9 @@ import {
   patchBranchReplyInThread,
   patchMessage,
 } from "../lib/thread";
-import { parseBranchReplyVerdictTarget } from "../lib/points";
+import { parseAnswerPoints, parseBranchReplyVerdictTarget } from "../lib/points";
+import { createFeedbackEvent } from "../lib/feedback";
+import { commitFeedbackEvent, inferStrategyId } from "../lib/policy";
 import {
   nextFloatZIndex,
   popBranchFloat,
@@ -77,9 +79,11 @@ import type {
   ChatSession,
   ContextMemoryPack,
   ContextMode,
+  FeedbackAttribution,
   FocusTarget,
   NodeId,
   AgentPendingPlan,
+  PointAttributionMap,
   PointDoubtMap,
   PointVerdict,
   PointVerdictMap,
@@ -154,8 +158,8 @@ interface AppState {
   setViewingArchiveId: (id: NodeId | null) => void;
   deleteArchive: (archiveId: NodeId) => void;
   /**
-   * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认采纳）。
-   * 切换离开存疑时会清掉对应 doubt。
+   * 对主消息或分支回答中的某个分点设置裁决；再次点击同一裁决则清除（回到默认沉默）。
+   * 主动采纳 ≠ 沉默；切换离开存疑/不采纳时清掉备注与归因。
    */
   setPointVerdict: (
     targetId: NodeId,
@@ -163,13 +167,23 @@ interface AppState {
     verdict: PointVerdict,
   ) => void;
   /**
-   * 写入存疑文案。非空 → 保持/设为 unsure；空串 → 取消存疑（回到默认采纳）。
+   * 写入存疑可选备注。非空 → 保持/设为 unsure；空串仅清备注（保留 unsure + 归因）。
    */
   setPointDoubt: (
     targetId: NodeId,
     pointIndex: number,
     doubt: string,
   ) => void;
+  /** 为存疑/不采纳确认 Agent 假设归因（对）。 */
+  setPointAttribution: (
+    targetId: NodeId,
+    pointIndex: number,
+    attribution: FeedbackAttribution,
+  ) => void;
+  /** 用户否认假设（不对）——记事件，不写归因，勿当轮自我合理化。 */
+  denyPointHypothesis: (targetId: NodeId, pointIndex: number) => void;
+  /** 被动使用信号：复制回答等（零成本强正信号）。 */
+  recordPassiveCopy: (targetId: NodeId) => void;
 
   openBranchFloat: (
     branchId: NodeId,
@@ -228,6 +242,54 @@ function persistSessions(
   activeSessionId: NodeId | null,
 ): void {
   saveSessionStore({ sessions, activeSessionId });
+}
+
+function resolvePointContent(
+  thread: ThreadRoot,
+  targetId: NodeId,
+  pointIndex: number,
+): string {
+  const replyTarget = parseBranchReplyVerdictTarget(targetId);
+  let content = "";
+  if (replyTarget) {
+    content =
+      findBranchInThread(thread, replyTarget.branchId)?.replies?.[
+        replyTarget.replyIndex
+      ]?.assistantMessage ?? "";
+  } else {
+    content =
+      thread.messages.find((m) => m.id === targetId)?.content ??
+      findBranchInThread(thread, targetId)?.assistantMessage ??
+      "";
+  }
+  const point = parseAnswerPoints(content).points.find(
+    (p) => p.index === pointIndex,
+  );
+  return point?.content ?? content;
+}
+
+function applySessionFeedback(
+  sessions: ChatSession[],
+  activeSessionId: NodeId,
+  event: ReturnType<typeof createFeedbackEvent>,
+  strategyContent?: string,
+): ChatSession[] {
+  const strategyId = inferStrategyId(strategyContent ?? "");
+  return sessions.map((s) => {
+    if (s.id !== activeSessionId) return s;
+    const next = commitFeedbackEvent(
+      s.feedbackLog,
+      s.feedbackPolicy,
+      event,
+      strategyId,
+    );
+    return {
+      ...s,
+      feedbackLog: next.feedbackLog,
+      feedbackPolicy: next.feedbackPolicy,
+      updatedAt: Date.now(),
+    };
+  });
 }
 
 function upsertActiveSession(
@@ -1107,22 +1169,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { thread, sessions, activeSessionId } = get();
     if (!thread) return;
 
+    type Maps = {
+      pointVerdicts: PointVerdictMap;
+      pointDoubts: PointDoubtMap;
+      pointAttributions: PointAttributionMap;
+    };
+
+    let cleared = false;
+    let nextSignal: PointVerdict | null = verdict;
+
     const apply = (
       currentVerdicts: PointVerdictMap | undefined,
       currentDoubts: PointDoubtMap | undefined,
-    ): { pointVerdicts: PointVerdictMap; pointDoubts: PointDoubtMap } => {
+      currentAttrs: PointAttributionMap | undefined,
+    ): Maps => {
       const nextVerdicts = { ...(currentVerdicts ?? {}) };
       const nextDoubts = { ...(currentDoubts ?? {}) };
+      const nextAttrs = { ...(currentAttrs ?? {}) };
       if (nextVerdicts[pointIndex] === verdict) {
         delete nextVerdicts[pointIndex];
         delete nextDoubts[pointIndex];
+        delete nextAttrs[pointIndex];
+        cleared = true;
+        nextSignal = null;
       } else {
         nextVerdicts[pointIndex] = verdict;
-        if (verdict !== "unsure") {
+        if (verdict === "accept") {
+          delete nextDoubts[pointIndex];
+          delete nextAttrs[pointIndex];
+        } else if (verdict !== "unsure") {
           delete nextDoubts[pointIndex];
         }
       }
-      return { pointVerdicts: nextVerdicts, pointDoubts: nextDoubts };
+      return {
+        pointVerdicts: nextVerdicts,
+        pointDoubts: nextDoubts,
+        pointAttributions: nextAttrs,
+      };
     };
 
     let nextThread: ThreadRoot;
@@ -1135,7 +1218,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         thread,
         replyTarget.branchId,
         replyTarget.replyIndex,
-        apply(reply.pointVerdicts, reply.pointDoubts),
+        apply(reply.pointVerdicts, reply.pointDoubts, reply.pointAttributions),
       );
     } else {
       const msg = thread.messages.find((m) => m.id === targetId);
@@ -1143,7 +1226,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         nextThread = patchMessage(
           thread,
           targetId,
-          apply(msg.pointVerdicts, msg.pointDoubts),
+          apply(msg.pointVerdicts, msg.pointDoubts, msg.pointAttributions),
         );
       } else {
         const branch = findBranchInThread(thread, targetId);
@@ -1151,16 +1234,34 @@ export const useAppStore = create<AppState>((set, get) => ({
         nextThread = patchBranchInThread(
           thread,
           targetId,
-          apply(branch.pointVerdicts, branch.pointDoubts),
+          apply(
+            branch.pointVerdicts,
+            branch.pointDoubts,
+            branch.pointAttributions,
+          ),
         );
       }
     }
 
-    const nextSessions = upsertActiveSession(
+    let nextSessions = upsertActiveSession(
       sessions,
       activeSessionId,
       nextThread,
     );
+    if (!cleared && nextSignal && activeSessionId) {
+      const event = createFeedbackEvent({
+        targetId,
+        pointIndex,
+        signal: nextSignal,
+      });
+      const content = resolvePointContent(nextThread, targetId, pointIndex);
+      nextSessions = applySessionFeedback(
+        nextSessions,
+        activeSessionId,
+        event,
+        content,
+      );
+    }
     persistSessions(nextSessions, activeSessionId);
     set({ thread: nextThread, sessions: nextSessions });
   },
@@ -1174,17 +1275,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     const apply = (
       currentVerdicts: PointVerdictMap | undefined,
       currentDoubts: PointDoubtMap | undefined,
-    ): { pointVerdicts: PointVerdictMap; pointDoubts: PointDoubtMap } => {
+      currentAttrs: PointAttributionMap | undefined,
+    ) => {
       const nextVerdicts = { ...(currentVerdicts ?? {}) };
       const nextDoubts = { ...(currentDoubts ?? {}) };
+      const nextAttrs = { ...(currentAttrs ?? {}) };
       if (trimmed) {
         nextVerdicts[pointIndex] = "unsure";
         nextDoubts[pointIndex] = trimmed;
       } else {
-        delete nextVerdicts[pointIndex];
         delete nextDoubts[pointIndex];
+        // Keep unsure + attribution if still marked unsure
       }
-      return { pointVerdicts: nextVerdicts, pointDoubts: nextDoubts };
+      return {
+        pointVerdicts: nextVerdicts,
+        pointDoubts: nextDoubts,
+        pointAttributions: nextAttrs,
+      };
     };
 
     let nextThread: ThreadRoot;
@@ -1197,7 +1304,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         thread,
         replyTarget.branchId,
         replyTarget.replyIndex,
-        apply(reply.pointVerdicts, reply.pointDoubts),
+        apply(reply.pointVerdicts, reply.pointDoubts, reply.pointAttributions),
       );
     } else {
       const msg = thread.messages.find((m) => m.id === targetId);
@@ -1205,7 +1312,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         nextThread = patchMessage(
           thread,
           targetId,
-          apply(msg.pointVerdicts, msg.pointDoubts),
+          apply(msg.pointVerdicts, msg.pointDoubts, msg.pointAttributions),
         );
       } else {
         const branch = findBranchInThread(thread, targetId);
@@ -1213,18 +1320,190 @@ export const useAppStore = create<AppState>((set, get) => ({
         nextThread = patchBranchInThread(
           thread,
           targetId,
-          apply(branch.pointVerdicts, branch.pointDoubts),
+          apply(
+            branch.pointVerdicts,
+            branch.pointDoubts,
+            branch.pointAttributions,
+          ),
         );
       }
     }
 
-    const nextSessions = upsertActiveSession(
+    let nextSessions = upsertActiveSession(
       sessions,
       activeSessionId,
       nextThread,
     );
+    if (trimmed && activeSessionId) {
+      const event = createFeedbackEvent({
+        targetId,
+        pointIndex,
+        signal: "unsure",
+        note: trimmed,
+      });
+      const content = resolvePointContent(nextThread, targetId, pointIndex);
+      nextSessions = applySessionFeedback(
+        nextSessions,
+        activeSessionId,
+        event,
+        content,
+      );
+    }
     persistSessions(nextSessions, activeSessionId);
     set({ thread: nextThread, sessions: nextSessions });
+  },
+
+  setPointAttribution: (targetId, pointIndex, attribution) => {
+    const { thread, sessions, activeSessionId } = get();
+    if (!thread) return;
+
+    let signal: PointVerdict | undefined;
+    let note: string | undefined;
+
+    const apply = (
+      currentVerdicts: PointVerdictMap | undefined,
+      currentDoubts: PointDoubtMap | undefined,
+      currentAttrs: PointAttributionMap | undefined,
+    ) => {
+      const nextVerdicts = { ...(currentVerdicts ?? {}) };
+      const nextDoubts = { ...(currentDoubts ?? {}) };
+      const nextAttrs = { ...(currentAttrs ?? {}) };
+      signal = nextVerdicts[pointIndex];
+      note = nextDoubts[pointIndex];
+      if (!signal || (signal !== "unsure" && signal !== "reject")) {
+        return {
+          pointVerdicts: nextVerdicts,
+          pointDoubts: nextDoubts,
+          pointAttributions: nextAttrs,
+        };
+      }
+      nextAttrs[pointIndex] = attribution;
+      return {
+        pointVerdicts: nextVerdicts,
+        pointDoubts: nextDoubts,
+        pointAttributions: nextAttrs,
+      };
+    };
+
+    let nextThread: ThreadRoot;
+    const replyTarget = parseBranchReplyVerdictTarget(targetId);
+    if (replyTarget) {
+      const branch = findBranchInThread(thread, replyTarget.branchId);
+      const reply = branch?.replies?.[replyTarget.replyIndex];
+      if (!branch || !reply) return;
+      nextThread = patchBranchReplyInThread(
+        thread,
+        replyTarget.branchId,
+        replyTarget.replyIndex,
+        apply(reply.pointVerdicts, reply.pointDoubts, reply.pointAttributions),
+      );
+    } else {
+      const msg = thread.messages.find((m) => m.id === targetId);
+      if (msg) {
+        nextThread = patchMessage(
+          thread,
+          targetId,
+          apply(msg.pointVerdicts, msg.pointDoubts, msg.pointAttributions),
+        );
+      } else {
+        const branch = findBranchInThread(thread, targetId);
+        if (!branch) return;
+        nextThread = patchBranchInThread(
+          thread,
+          targetId,
+          apply(
+            branch.pointVerdicts,
+            branch.pointDoubts,
+            branch.pointAttributions,
+          ),
+        );
+      }
+    }
+
+    let nextSessions = upsertActiveSession(
+      sessions,
+      activeSessionId,
+      nextThread,
+    );
+    if (signal && (signal === "unsure" || signal === "reject") && activeSessionId) {
+      const event = createFeedbackEvent({
+        targetId,
+        pointIndex,
+        signal,
+        attribution,
+        note,
+        source: "hypothesis_confirm",
+      });
+      const content = resolvePointContent(nextThread, targetId, pointIndex);
+      nextSessions = applySessionFeedback(
+        nextSessions,
+        activeSessionId,
+        event,
+        content,
+      );
+    }
+    persistSessions(nextSessions, activeSessionId);
+    set({ thread: nextThread, sessions: nextSessions });
+  },
+
+  denyPointHypothesis: (targetId, pointIndex) => {
+    const { thread, sessions, activeSessionId } = get();
+    if (!thread || !activeSessionId) return;
+
+    let signal: PointVerdict | undefined;
+    const replyTarget = parseBranchReplyVerdictTarget(targetId);
+    if (replyTarget) {
+      const branch = findBranchInThread(thread, replyTarget.branchId);
+      signal = branch?.replies?.[replyTarget.replyIndex]?.pointVerdicts?.[pointIndex];
+    } else {
+      const msg = thread.messages.find((m) => m.id === targetId);
+      signal =
+        msg?.pointVerdicts?.[pointIndex] ??
+        findBranchInThread(thread, targetId)?.pointVerdicts?.[pointIndex];
+    }
+    if (signal !== "unsure" && signal !== "reject") return;
+
+    const event = createFeedbackEvent({
+      targetId,
+      pointIndex,
+      signal,
+      source: "hypothesis_deny",
+      note: "hypothesis_denied",
+      weight: 0,
+    });
+    const content = resolvePointContent(thread, targetId, pointIndex);
+    const nextSessions = applySessionFeedback(
+      sessions,
+      activeSessionId,
+      event,
+      content,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
+  recordPassiveCopy: (targetId) => {
+    const { thread, sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const event = createFeedbackEvent({
+      targetId,
+      pointIndex: 0,
+      signal: "accept",
+      source: "passive_copy",
+      note: "copied_answer",
+    });
+    const content =
+      thread?.messages.find((m) => m.id === targetId)?.content ??
+      (thread ? findBranchInThread(thread, targetId)?.assistantMessage : "") ??
+      "";
+    const nextSessions = applySessionFeedback(
+      sessions,
+      activeSessionId,
+      event,
+      content,
+    );
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
   },
 
   openBranchFloat: (branchId, rect, parentBranchId = null, opts) => {
@@ -1254,10 +1533,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   closeAllBranchFloats: () =>
-    set((state) => ({
-      branchFloatStack: [],
-      floatOverlayDismissToken: state.floatOverlayDismissToken + 1,
-    })),
+    set((state) => {
+      if (state.branchFloatStack.length === 0) return state;
+      return {
+        branchFloatStack: [],
+        floatOverlayDismissToken: state.floatOverlayDismissToken + 1,
+      };
+    }),
 
   createSession: () => {
     const { sessions, activeSessionId, thread, projectRoot, sidecarUrl } =

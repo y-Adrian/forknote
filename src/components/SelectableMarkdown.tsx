@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -12,7 +13,17 @@ import {
   FLOAT_Z_BASE,
   FLOAT_Z_TOOLBAR_OFFSET,
 } from "../lib/branchFloat";
-import type { Anchor, BranchNode, PointDoubtMap, PointVerdictMap } from "../types";
+import {
+  countRecentRejectStreak,
+  recentRejectAttributions,
+} from "../lib/feedback";
+import type {
+  Anchor,
+  BranchNode,
+  PointAttributionMap,
+  PointDoubtMap,
+  PointVerdictMap,
+} from "../types";
 import {
   applyBranchHighlights,
   clearHighlights,
@@ -50,6 +61,7 @@ interface Props {
   verdictTargetId?: string;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
+  pointAttributions?: PointAttributionMap;
 }
 
 export function SelectableMarkdown({
@@ -67,9 +79,26 @@ export function SelectableMarkdown({
   verdictTargetId,
   pointVerdicts,
   pointDoubts,
+  pointAttributions,
 }: Props) {
   const setPointVerdict = useAppStore((s) => s.setPointVerdict);
   const setPointDoubt = useAppStore((s) => s.setPointDoubt);
+  const setPointAttribution = useAppStore((s) => s.setPointAttribution);
+  const denyPointHypothesis = useAppStore((s) => s.denyPointHypothesis);
+  // Select the log reference (stable until feedback changes). Deriving a fresh
+  // array inside the Zustand selector caused Maximum update depth exceeded.
+  const feedbackLog = useAppStore((s) => {
+    const session = s.sessions.find((x) => x.id === s.activeSessionId);
+    return session?.feedbackLog;
+  });
+  const recentAttributions = useMemo(
+    () => recentRejectAttributions(feedbackLog),
+    [feedbackLog],
+  );
+  const rejectStreak = useMemo(
+    () => countRecentRejectStreak(feedbackLog),
+    [feedbackLog],
+  );
   const stackTopZ = useAppStore((s) =>
     s.branchFloatStack.length > 0
       ? Math.max(...s.branchFloatStack.map((e) => e.zIndex))
@@ -235,8 +264,17 @@ export function SelectableMarkdown({
             content={content}
             verdicts={pointVerdicts}
             doubts={pointDoubts}
+            attributions={pointAttributions}
+            recentAttributions={recentAttributions}
+            rejectStreak={rejectStreak}
             onVerdict={(idx, v) => setPointVerdict(verdictTargetId, idx, v)}
             onDoubt={(idx, doubt) => setPointDoubt(verdictTargetId, idx, doubt)}
+            onConfirmHypothesis={(idx, attr) =>
+              setPointAttribution(verdictTargetId, idx, attr)
+            }
+            onDenyHypothesis={(idx) =>
+              denyPointHypothesis(verdictTargetId, idx)
+            }
           />
         ) : (
           <MarkdownBody content={content} />
