@@ -3,21 +3,24 @@ import type { ApiSettings } from "../types";
 const STORAGE_KEY = "forknote-settings";
 const LEGACY_STORAGE_KEY = "branch-chat-settings";
 
-/** Default max tool loop rounds per main chat turn (project bound). */
-export const DEFAULT_AGENT_MAX_ROUNDS = 20;
+/** Default max tool loop rounds per main chat turn (project bound).
+ * Mainstream agents (Claude Code / Cursor) often run uncapped or very high;
+ * we keep a finite default with a higher safety ceiling. */
+export const DEFAULT_AGENT_MAX_ROUNDS = 50;
 export const MIN_AGENT_MAX_ROUNDS = 1;
-export const MAX_AGENT_MAX_ROUNDS = 64;
+export const MAX_AGENT_MAX_ROUNDS = 128;
 
-/** Live-mode sliding window: recent user↔assistant turns kept verbatim. */
-export const DEFAULT_CONTEXT_WINDOW_TURNS = 12;
+/** Live-mode sliding window: recent user↔assistant turns kept verbatim.
+ * Default 64 matches longer IDE-agent sessions; max allows multi-hour notes. */
+export const DEFAULT_CONTEXT_WINDOW_TURNS = 64;
 export const MIN_CONTEXT_WINDOW_TURNS = 4;
-export const MAX_CONTEXT_WINDOW_TURNS = 48;
+export const MAX_CONTEXT_WINDOW_TURNS = 256;
 
 /**
  * Soft UI hint: suggest Compress when the main thread has at least this many
  * non-empty messages (~half that many turns).
  */
-export const COMPRESS_SUGGEST_MESSAGE_THRESHOLD = 24;
+export const COMPRESS_SUGGEST_MESSAGE_THRESHOLD = 80;
 
 /** First-run defaults when nothing is saved in localStorage. */
 const APP_DEFAULTS: ApiSettings = {

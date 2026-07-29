@@ -15,12 +15,17 @@ import {
   type SearchHit,
 } from "./sidecar";
 import { isDeniedTerminalCommand } from "./terminalDenyList";
+import {
+  DEFAULT_AGENT_MAX_ROUNDS,
+  MAX_AGENT_MAX_ROUNDS,
+  MIN_AGENT_MAX_ROUNDS,
+} from "./settings";
 
-/** Default max tool loop rounds per main chat turn (project bound). */
-export const DEFAULT_AGENT_MAX_ROUNDS = 20;
-
-export const MIN_AGENT_MAX_ROUNDS = 1;
-export const MAX_AGENT_MAX_ROUNDS = 64;
+export {
+  DEFAULT_AGENT_MAX_ROUNDS,
+  MAX_AGENT_MAX_ROUNDS,
+  MIN_AGENT_MAX_ROUNDS,
+};
 
 /** @deprecated use DEFAULT_AGENT_MAX_ROUNDS / resolveAgentMaxRounds */
 export const MAX_AGENT_ROUNDS = DEFAULT_AGENT_MAX_ROUNDS;

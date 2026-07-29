@@ -181,7 +181,7 @@ const en = {
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
   "api.memoryPack.windowTurns": "Live sliding window (turns)",
   "api.memoryPack.windowTurnsHint":
-    "Keep this many recent user↔assistant turns verbatim; older turns become a compact local summary (default 12).",
+    "Keep this many recent user↔assistant turns verbatim; older turns become a compact local summary (default 64, max 256).",
   "api.memoryPack.autoSummary": "Auto-summarize older live turns",
   "api.memoryPack.autoSummaryHint":
     "When off, live mode re-sends the full thread (costly on long chats).",
@@ -260,7 +260,7 @@ const en = {
   "projectPanel.connecting": "Connecting…",
   "projectSettings.agentMaxRounds": "Agent tool rounds (per message)",
   "projectSettings.agentMaxRoundsHint":
-    "Max model↔tool loops when a project is bound (1–64). Default 20. Ends early when the task is done.",
+    "Max model↔tool loops when a project is bound (1–128). Default 50. Ends early when the task is done.",
   "projectSettings.agentRequireApproval": "Require plan approval before tools",
   "projectSettings.agentRequireApprovalHint":
     "When a project is connected, the agent drafts a plan first. Tools run only after you approve.",
@@ -714,7 +714,7 @@ const zh: Record<MessageKey, string> = {
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
   "api.memoryPack.windowTurns": "实时滑动窗口（轮数）",
   "api.memoryPack.windowTurnsHint":
-    "保留最近若干轮用户↔助手原文；更早轮次压成本地摘要注入（默认 12）。",
+    "保留最近若干轮用户↔助手原文；更早轮次压成本地摘要注入（默认 64，上限 256）。",
   "api.memoryPack.autoSummary": "自动摘要较早实时对话",
   "api.memoryPack.autoSummaryHint":
     "关闭后，实时模式会整线程重发（长对话更贵、更易糊）。",
@@ -791,7 +791,7 @@ const zh: Record<MessageKey, string> = {
   "projectPanel.connecting": "连接中…",
   "projectSettings.agentMaxRounds": "Agent 工具循环轮数（每条消息）",
   "projectSettings.agentMaxRoundsHint":
-    "绑定项目后，单次发送最多允许的模型↔工具往返次数（1–64，默认 20）。任务完成会提前结束。",
+    "绑定项目后，单次发送最多允许的模型↔工具往返次数（1–128，默认 50）。任务完成会提前结束。",
   "projectSettings.agentRequireApproval": "执行工具前需批准计划",
   "projectSettings.agentRequireApprovalHint":
     "连接项目后，Agent 会先输出计划；你点击「批准并执行」后才会读写文件。",
