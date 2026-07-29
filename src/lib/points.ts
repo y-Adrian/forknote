@@ -1,4 +1,9 @@
-import type { PointDoubtMap, PointVerdictMap } from "../types";
+import type {
+  PointAttributionMap,
+  PointDoubtMap,
+  PointVerdictMap,
+} from "../types";
+import { describePointFeedbackForAgent } from "./feedback";
 
 /**
  * 分点回答协议：
@@ -87,17 +92,14 @@ export function hasPoints(content: string): boolean {
 }
 
 /**
- * 构建带裁决标注的回答文本，用于发给模型的上下文：
- * - 缺省 / 采纳 → 视为已采纳（含正文）
- * - 不采纳 → 剔除正文，仅留拒绝标记
- * - 存疑 → 保留正文，并附上用户疑问
- *
- * 若没有任何裁决记录，直接返回原文（全部隐含采纳）。
+ * 构建带裁决标注的回答文本，用于发给模型的上下文。
+ * 对齐反馈闭环：主动采纳 ≠ 默认沉默；不采纳/存疑可带归因标签。
  */
 export function annotateContentWithVerdicts(
   content: string,
   verdicts: PointVerdictMap | undefined,
   doubts?: PointDoubtMap,
+  attributions?: PointAttributionMap,
 ): string {
   if (!verdicts || Object.keys(verdicts).length === 0) return content;
 
@@ -108,22 +110,15 @@ export function annotateContentWithVerdicts(
   if (parsed.preamble) parts.push(parsed.preamble);
 
   for (const p of parsed.points) {
-    const v = verdicts[p.index];
-    if (v === "reject") {
-      parts.push(
-        `【${p.index}】（用户已拒绝此点，内容已省略，请勿再基于此点展开）`,
-      );
-    } else if (v === "unsure") {
-      const doubt = doubts?.[p.index]?.trim();
-      if (doubt) {
-        parts.push(`【${p.index}】（用户存疑：${doubt}）${p.content}`);
-      } else {
-        parts.push(`【${p.index}】（用户存疑）${p.content}`);
-      }
-    } else {
-      // accept 或未标记 → 默认采纳
-      parts.push(`【${p.index}】（用户已采纳✅）${p.content}`);
-    }
+    parts.push(
+      describePointFeedbackForAgent({
+        index: p.index,
+        content: p.content,
+        verdict: verdicts[p.index],
+        doubt: doubts?.[p.index],
+        attribution: attributions?.[p.index],
+      }),
+    );
   }
 
   return parts.join("\n\n");

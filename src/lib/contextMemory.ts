@@ -25,6 +25,7 @@ import {
   formatPreferencesAddendum,
   loadUserPreferences,
 } from "./userPreferences";
+import { formatPolicyForAgent } from "./policy";
 import type {
   ApiSettings,
   ChatSession,
@@ -450,6 +451,8 @@ export async function buildAgentMemoryAddendum(options: {
     const sessionBlock = formatSessionMemoryAddendum(session?.sessionMemory);
     if (sessionBlock) blocks.push(sessionBlock);
   }
+  const policyBlock = formatPolicyForAgent(session?.feedbackPolicy);
+  if (policyBlock) blocks.push(policyBlock);
   if (projectRoot) {
     const paths = mergeIncludePaths(includeFiles, extractAtFileMentions(query));
     if (paths.length > 0) {

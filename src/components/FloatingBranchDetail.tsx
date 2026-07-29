@@ -292,6 +292,7 @@ export function FloatingBranchDetail({
               verdictTargetId={branch.id}
               pointVerdicts={branch.pointVerdicts}
               pointDoubts={branch.pointDoubts}
+              pointAttributions={branch.pointAttributions}
               onAsk={(anchor, question) =>
                 askBranch(
                   branch.id,
@@ -328,6 +329,7 @@ export function FloatingBranchDetail({
               verdictTargetId={branchReplyVerdictTargetId(branch.id, index)}
               pointVerdicts={reply.pointVerdicts}
               pointDoubts={reply.pointDoubts}
+              pointAttributions={reply.pointAttributions}
               onAsk={(anchor, question) =>
                 askBranch(
                   branch.id,
@@ -365,6 +367,7 @@ export function FloatingBranchDetail({
               )}
               pointVerdicts={activeReply.pointVerdicts}
               pointDoubts={activeReply.pointDoubts}
+              pointAttributions={activeReply.pointAttributions}
               onAsk={(anchor, question) =>
                 askBranch(
                   branch.id,

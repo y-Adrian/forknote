@@ -51,6 +51,7 @@ function formatBranchTurns(node: BranchNode, answerMax = ANCESTOR_ANSWER_MAX): s
         node.assistantMessage,
         node.pointVerdicts,
         node.pointDoubts,
+        node.pointAttributions,
       ),
       answerMax,
     )}`,
@@ -64,6 +65,7 @@ function formatBranchTurns(node: BranchNode, answerMax = ANCESTOR_ANSWER_MAX): s
           reply.assistantMessage,
           reply.pointVerdicts,
           reply.pointDoubts,
+          reply.pointAttributions,
         ),
         answerMax,
       )}`,
@@ -96,10 +98,15 @@ export const HISTORY_CONTEXT_RULE = `会话上下文（重要）：
 /** Point / step format shared by main chat and Clarify floats. */
 export const POINT_ANSWER_FORMAT = `回答格式要求（重要）：
 1. 将回答拆分为若干个可独立判断的观点或步骤，每个观点/步骤以「【N】」开头（N 为从 1 开始的编号），且【N】必须位于行首（不要写成 **【N】** 或夹在句中）。
-2. 每个分点应自成一体：一个结论、一个步骤或一个判断，便于用户逐点采纳或拒绝。
+2. 每个分点应自成一体：一个结论、一个步骤或一个判断，便于用户逐点反馈。
 3. 分点前可以有 1～2 句简短引导；不要在分点之外添加大段结论。
 4. 分点数量按内容定，一般 3～8 个；简单问题可以少于 3 个。若用户主要只要一段示例代码，可用 1～2 个分点，或先给代码再简短分点说明。
-5. 若用户在上下文中标记了「已拒绝」的分点，不要再基于该点展开；「已采纳✅」的分点视为已确认的事实；「用户存疑」的分点请重点回应括号内的疑问。
+5. 用户分点反馈是结构化校准信号（主动采纳 ≠ 默认沉默）。目标不是最大化满意度，而是逼近该用户真正需要的决策方式：
+   - 「主动采纳」(权重高)：该策略在当前场景有效 → 后续同类问题优先沿用。
+   - 「默认沉默」(权重低)：未主动确认 → 勿当作强正反馈。
+   - 「被动使用」(如复制回答，权重高)：零成本强正信号，勿要求用户再点采纳。
+   - 「存疑」：降低该主题置信度并触发验证（补证据 / 列出假设 / 标明不确定）；用户点存疑后 UI 会以追问形式给出 Agent 假设，用户只需「对/不对」确认归因。
+   - 「不采纳」：强负信号；用户点不采纳后同样用 Agent 假设 + 二元确认收集归因。无确认归因时勿在当轮自我合理化，优先依据用户后续行为推断。
 
 示例格式：
 下面从三个方面分析这个问题。
@@ -220,6 +227,7 @@ export function buildOlderTurnsSummary(
       msg.content,
       msg.pointVerdicts,
       msg.pointDoubts,
+      msg.pointAttributions,
     );
     lines.push(
       locale === "zh"
@@ -258,6 +266,7 @@ function mapThreadMessageToApi(m: ChatMessage): ApiChatMessage {
             m.content,
             m.pointVerdicts,
             m.pointDoubts,
+            m.pointAttributions,
           )
         : m.content,
   };
@@ -341,6 +350,7 @@ export function resolveBranchAttachContext(
       msg.content,
       msg.pointVerdicts,
       msg.pointDoubts,
+      msg.pointAttributions,
     );
     if (msg.id === attachParentId) {
       return { assistantContent: annotated, ancestors: [] };
@@ -379,7 +389,7 @@ export function buildClarifyAddendumMessages(
 - 优先解释选中片段与当前子问题；可引用上级澄清结论，勿整段复述主回答。
 - 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度（list_dir、read_file、write_file、run_terminal 等），勿因「澄清」而拒绝工具或缩短任务。
 - 纯概念澄清时保持简洁；项目任务则按任务需要完成（含计划批准后的多轮工具调用）。
-- 上下文里「已拒绝」的点勿再展开；「已采纳✅」视为已确认；「用户存疑」请重点回应括号内疑问。
+- 上下文里的用户分点反馈是结构化校准信号（主动采纳 ≠ 默认沉默；不采纳看已确认归因；存疑要验证）：目标是逼近该用户真正需要的决策方式，而非讨好。归因来自 Agent 假设 + 用户「对/不对」确认，不是多选表单。
 
 ${POINT_ANSWER_FORMAT}`,
     locale,

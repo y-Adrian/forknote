@@ -80,6 +80,7 @@ export function MainPanel({
   const { pending: pendingInline, assistantId: pendingInlineAssistantId } =
     usePendingInlineApproval({ kind: "main" });
   const error = useAppStore((s) => s.error);
+  const recordPassiveCopy = useAppStore((s) => s.recordPassiveCopy);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const sidecarUrl = useAppStore((s) => s.sidecarUrl);
   const pendingFileIncludes = useAppStore((s) => s.pendingFileIncludes);
@@ -467,9 +468,14 @@ export function MainPanel({
                             compact
                             pointVerdicts={msg.pointVerdicts}
                             pointDoubts={msg.pointDoubts}
+                            pointAttributions={msg.pointAttributions}
                           />
                         </div>
-                        <MessageActions text={msg.content} align="start" />
+                        <MessageActions
+                          text={msg.content}
+                          align="start"
+                          onCopy={() => recordPassiveCopy(msg.id)}
+                        />
                       </>
                     ) : loadingMain && index === thread.messages.length - 1 ? (
                       !msg.reasoning?.trim() ? (

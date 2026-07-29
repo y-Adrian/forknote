@@ -4,16 +4,19 @@ import { useLocale } from "../lib/i18n";
 interface Props {
   text: string;
   onEdit?: () => void;
+  /** Fired after a successful copy (e.g. passive-use feedback signal). */
+  onCopy?: () => void;
   align?: "start" | "end";
 }
 
-export function MessageActions({ text, onEdit, align = "end" }: Props) {
+export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
   const { t } = useLocale();
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      onCopy?.();
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
