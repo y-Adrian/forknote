@@ -210,6 +210,18 @@ const en = {
   "memory.sessionNone": "Open a note to edit session memory.",
   "memory.sessionPlaceholder": "Short summary of goals / status for this note…",
   "memory.sessionClear": "Clear",
+  "memory.transferTitle": "Import / export",
+  "memory.transferLead":
+    "Download a portable forknote-memory-v1 JSON (SUMMARY / TASKS / DECISIONS + optional preferences & session). Other agents can reuse the markdown fields or the three .md files under .forknote/memory/. Import accepts that JSON, loose {summary,tasks,decisions} JSON, or ===SUMMARY.md=== delimited markdown.",
+  "memory.transfer.export": "Export memory",
+  "memory.transfer.import": "Import memory",
+  "memory.transfer.exported": "Memory exported.",
+  "memory.transfer.imported": "Memory imported.",
+  "memory.transfer.exportFailed": "Could not export memory.",
+  "memory.transfer.importFailed": "Could not import memory.",
+  "memory.transfer.needNote": "Open a note before importing the project pack or session memory.",
+  "memory.transfer.importedPrefsOnly":
+    "Preferences imported. Open a note to import the project pack / session summary.",
 
   "data.title": "Data",
   "data.lead":
@@ -743,6 +755,18 @@ const zh: Record<MessageKey, string> = {
   "memory.sessionNone": "打开笔记后即可编辑会话记忆。",
   "memory.sessionPlaceholder": "本笔记目标 / 现状的简短摘要…",
   "memory.sessionClear": "清空",
+  "memory.transferTitle": "导入 / 导出",
+  "memory.transferLead":
+    "导出可移植的 forknote-memory-v1 JSON（SUMMARY / TASKS / DECISIONS，可选偏好与会话摘要）。其他 Agent 可直接使用其中的 Markdown 字段，或写入 .forknote/memory/ 下三个 .md。导入支持该 JSON、宽松 {summary,tasks,decisions}，或 ===SUMMARY.md=== 分隔的 Markdown。",
+  "memory.transfer.export": "导出记忆",
+  "memory.transfer.import": "导入记忆",
+  "memory.transfer.exported": "记忆已导出。",
+  "memory.transfer.imported": "记忆已导入。",
+  "memory.transfer.exportFailed": "无法导出记忆。",
+  "memory.transfer.importFailed": "无法导入记忆。",
+  "memory.transfer.needNote": "请先打开一条笔记，再导入项目记忆包或会话摘要。",
+  "memory.transfer.importedPrefsOnly":
+    "已导入偏好。打开笔记后可继续导入项目记忆包 / 会话摘要。",
 
   "data.title": "数据",
   "data.lead":

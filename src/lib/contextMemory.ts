@@ -119,8 +119,10 @@ export function compressUserPrompt(
 export function parseCompressedOutput(raw: string): ContextMemoryPack {
   const text = raw.replace(/\r\n/g, "\n").trim();
   const extract = (name: MemoryFileName): string => {
+    // Lookahead must use four "=" after "(?" so the engine sees "(?=" + "==="
+    // (three delimiter equals). Three equals would be parsed as "(?=" + "==".
     const re = new RegExp(
-      `===\\s*${name.replace(".", "\\.")}\\s*===\\s*([\\s\\S]*?)(?===\\s*\\w+\\.md\\s*===|$)`,
+      `===\\s*${name.replace(".", "\\.")}\\s*===\\s*([\\s\\S]*?)(?====\\s*\\w+\\.md\\s*===|$)`,
       "i",
     );
     const m = text.match(re);
