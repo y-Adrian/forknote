@@ -199,6 +199,8 @@ interface AppState {
   closeAllBranchFloats: () => void;
 
   createSession: () => void;
+  /** Ensure a note exists so memory pack / session import can persist (creates empty note if needed). */
+  ensureActiveSessionForImport: () => NodeId;
   switchSession: (sessionId: NodeId) => void;
   deleteSession: (sessionId: NodeId) => void;
   /** Replace all notes with a single empty session (localStorage). */
@@ -1570,6 +1572,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       agentChanges: [],
     });
     restoreSessionProject(get, set, session.id, null, sidecarUrl);
+  },
+
+  ensureActiveSessionForImport: () => {
+    const { sessions, activeSessionId } = get();
+    if (activeSessionId && sessions.some((s) => s.id === activeSessionId)) {
+      return activeSessionId;
+    }
+    const session = createEmptySession();
+    const nextSessions = [session, ...sessions];
+    persistSessions(nextSessions, session.id);
+    set({
+      sessions: nextSessions,
+      activeSessionId: session.id,
+      thread: null,
+      focus: { type: "root" },
+    });
+    return session.id;
   },
 
   switchSession: (sessionId) => {

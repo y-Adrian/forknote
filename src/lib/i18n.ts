@@ -220,8 +220,10 @@ const en = {
   "memory.transfer.exportFailed": "Could not export memory.",
   "memory.transfer.importFailed": "Could not import memory.",
   "memory.transfer.needNote": "Open a note before importing the project pack or session memory.",
-  "memory.transfer.importedPrefsOnly":
-    "Preferences imported. Open a note to import the project pack / session summary.",
+  "memory.transfer.importedPrefsOnly": "Preferences imported.",
+  "memory.transfer.confirmOverwrite":
+    "Replace the existing project memory pack (SUMMARY / TASKS / DECISIONS)?",
+  "memory.transfer.importCancelled": "Import cancelled — existing memory pack kept.",
 
   "data.title": "Data",
   "data.lead":
@@ -765,8 +767,10 @@ const zh: Record<MessageKey, string> = {
   "memory.transfer.exportFailed": "无法导出记忆。",
   "memory.transfer.importFailed": "无法导入记忆。",
   "memory.transfer.needNote": "请先打开一条笔记，再导入项目记忆包或会话摘要。",
-  "memory.transfer.importedPrefsOnly":
-    "已导入偏好。打开笔记后可继续导入项目记忆包 / 会话摘要。",
+  "memory.transfer.importedPrefsOnly": "偏好已导入。",
+  "memory.transfer.confirmOverwrite":
+    "将覆盖当前项目记忆包（SUMMARY / TASKS / DECISIONS），是否继续？",
+  "memory.transfer.importCancelled": "已取消导入，现有记忆包未改动。",
 
   "data.title": "数据",
   "data.lead":

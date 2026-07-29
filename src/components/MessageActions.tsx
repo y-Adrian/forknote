@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { useLocale } from "../lib/i18n";
 
 interface Props {
@@ -14,14 +15,11 @@ export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      onCopy?.();
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
+    onCopy?.();
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
   };
 
   return (
