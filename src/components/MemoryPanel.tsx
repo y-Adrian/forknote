@@ -1,13 +1,20 @@
 /**
  * Settings → Memory: layer toggles + editable preferences / project pack / session.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   loadContextMemoryPack,
   MEMORY_FILES,
   type MemoryFileName,
 } from "../lib/contextMemory";
 import { useLocale } from "../lib/i18n";
+import {
+  applyImportedPreferences,
+  buildMemoryTransferBundle,
+  memoryTransferFilename,
+  parseMemoryTransferImport,
+  serializeMemoryTransferBundle,
+} from "../lib/memoryTransfer";
 import { normalizeApiSettings, saveSettings } from "../lib/settings";
 import {
   addUserPreference,
@@ -74,7 +81,7 @@ function LayerToggles({
   );
 }
 
-function PreferencesEditor() {
+function PreferencesEditor({ reloadToken = 0 }: { reloadToken?: number }) {
   const { t } = useLocale();
   const [entries, setEntries] = useState<UserPreferenceEntry[]>(() =>
     loadUserPreferences(),
@@ -82,6 +89,11 @@ function PreferencesEditor() {
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  useEffect(() => {
+    setEntries(loadUserPreferences());
+    setEditingId(null);
+    setEditText("");
+  }, [reloadToken]);
   return (
     <div className="fn-memory-section">
       <h4 className="ss-subhead">{t("memory.prefsTitle")}</h4>
@@ -174,7 +186,7 @@ function PreferencesEditor() {
   );
 }
 
-function ProjectPackEditor() {
+function ProjectPackEditor({ reloadToken = 0 }: { reloadToken?: number }) {
   const { t } = useLocale();
   const settings = useAppStore((s) => s.settings);
   const projectRoot = useAppStore((s) => s.projectRoot);
@@ -201,7 +213,7 @@ function ProjectPackEditor() {
     return () => {
       cancelled = true;
     };
-  }, [settings, session, projectRoot, sidecarUrl, activeSessionId]);
+  }, [settings, session, projectRoot, sidecarUrl, activeSessionId, reloadToken]);
 
   const setField = (file: MemoryFileName, value: string) => {
     setPack((prev) => {
@@ -338,6 +350,138 @@ function SessionMemoryEditor() {
   );
 }
 
+function MemoryTransferPanel({
+  onImported,
+}: {
+  onImported: () => void;
+}) {
+  const { t } = useLocale();
+  const settings = useAppStore((s) => s.settings);
+  const projectRoot = useAppStore((s) => s.projectRoot);
+  const sidecarUrl = useAppStore((s) => s.sidecarUrl);
+  const sessions = useAppStore((s) => s.sessions);
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const saveContextMemoryFields = useAppStore((s) => s.saveContextMemoryFields);
+  const setSessionMemory = useAppStore((s) => s.setSessionMemory);
+  const session = sessions.find((s) => s.id === activeSessionId);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const onExport = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const pack = await loadContextMemoryPack({
+        settings,
+        session,
+        projectRoot,
+        sidecarUrl,
+      });
+      const bundle = buildMemoryTransferBundle({
+        pack,
+        preferences: loadUserPreferences(),
+        sessionMemory: session?.sessionMemory,
+      });
+      const json = serializeMemoryTransferBundle(bundle);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = memoryTransferFilename();
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(t("memory.transfer.exported"));
+    } catch (e) {
+      setStatus(
+        e instanceof Error ? e.message : t("memory.transfer.exportFailed"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onImportFile = async (file: File) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const text = await file.text();
+      const parsed = parseMemoryTransferImport(text);
+      if (parsed.preferences) {
+        applyImportedPreferences(parsed.preferences);
+      }
+      const hasPack =
+        Boolean(parsed.summary.trim()) ||
+        Boolean(parsed.tasks.trim()) ||
+        Boolean(parsed.decisions.trim());
+      if ((hasPack || parsed.sessionMemory) && !activeSessionId) {
+        onImported();
+        setStatus(
+          parsed.preferences
+            ? t("memory.transfer.importedPrefsOnly")
+            : t("memory.transfer.needNote"),
+        );
+        return;
+      }
+      if (hasPack) {
+        await saveContextMemoryFields({
+          summary: parsed.summary,
+          tasks: parsed.tasks,
+          decisions: parsed.decisions,
+        });
+      }
+      if (parsed.sessionMemory && activeSessionId) {
+        setSessionMemory(parsed.sessionMemory.summary);
+      }
+      onImported();
+      setStatus(t("memory.transfer.imported"));
+    } catch (e) {
+      setStatus(
+        e instanceof Error ? e.message : t("memory.transfer.importFailed"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fn-memory-section">
+      <h4 className="ss-subhead">{t("memory.transferTitle")}</h4>
+      <p className="ss-panel-lead ss-panel-hint">{t("memory.transferLead")}</p>
+      <div className="ss-action-stack">
+        <button
+          type="button"
+          className="btn ghost ss-action-btn"
+          disabled={busy}
+          onClick={() => void onExport()}
+        >
+          {t("memory.transfer.export")}
+        </button>
+        <button
+          type="button"
+          className="btn ghost ss-action-btn"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {t("memory.transfer.import")}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json,.md,text/markdown,text/plain"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void onImportFile(file);
+          }}
+        />
+      </div>
+      {status ? <p className="hint local-hint">{status}</p> : null}
+    </div>
+  );
+}
+
 export function MemorySettingsPanel({
   draft,
   setDraft,
@@ -348,6 +492,7 @@ export function MemorySettingsPanel({
   onSave: (settings: ApiSettings) => void;
 }) {
   const { t } = useLocale();
+  const [reloadToken, setReloadToken] = useState(0);
   return (
     <div className="ss-panel fn-memory-panel">
       <h3 className="ss-panel-title">{t("memory.title")}</h3>
@@ -367,9 +512,11 @@ export function MemorySettingsPanel({
         </button>
       </div>
       <hr className="ss-divider" />
-      <PreferencesEditor />
+      <MemoryTransferPanel onImported={() => setReloadToken((n) => n + 1)} />
       <hr className="ss-divider" />
-      <ProjectPackEditor />
+      <PreferencesEditor reloadToken={reloadToken} />
+      <hr className="ss-divider" />
+      <ProjectPackEditor reloadToken={reloadToken} />
       <hr className="ss-divider" />
       <SessionMemoryEditor />
     </div>
