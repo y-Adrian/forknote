@@ -416,6 +416,65 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
+type ThinkingTimingState = {
+  requestStartedAt: number;
+  firstReasoningAt: number | null;
+  lastReasoningAt: number | null;
+  firstAnswerAt: number | null;
+};
+
+const THINKING_PLACEHOLDER_RE =
+  /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/;
+
+function updateThinkingTiming(
+  timing: ThinkingTimingState,
+  patch: {
+    content?: string;
+    reasoning?: string;
+  },
+): number | undefined {
+  const now = Date.now();
+
+  if (patch.reasoning !== undefined && patch.reasoning.trim()) {
+    if (timing.firstReasoningAt == null) timing.firstReasoningAt = now;
+    timing.lastReasoningAt = now;
+  }
+
+  if (
+    patch.content !== undefined &&
+    patch.content.trim() &&
+    timing.firstAnswerAt == null &&
+    !THINKING_PLACEHOLDER_RE.test(patch.content.trim())
+  ) {
+    timing.firstAnswerAt = now;
+  }
+
+  if (patch.reasoning === undefined && timing.firstReasoningAt == null) {
+    return undefined;
+  }
+
+  if (timing.firstReasoningAt != null) {
+    const endAt = Math.max(
+      timing.firstReasoningAt,
+      timing.lastReasoningAt ?? 0,
+      timing.firstAnswerAt ?? 0,
+    );
+    return Math.max(
+      1,
+      Math.round((endAt - timing.firstReasoningAt) / 1000),
+    );
+  }
+
+  if (timing.firstAnswerAt != null) {
+    return Math.max(
+      1,
+      Math.round((timing.firstAnswerAt - timing.requestStartedAt) / 1000),
+    );
+  }
+
+  return undefined;
+}
+
 /** Resume tool execution after the user approves a pending plan (per session). */
 const pendingAgentContinuations = new Map<NodeId, () => Promise<void>>();
 
@@ -1992,8 +2051,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     const signal = ctrl.signal;
 
-    const requestStartedAt = Date.now();
-    let firstAnswerAt: number | null = null;
+    const timing: ThinkingTimingState = {
+      requestStartedAt: Date.now(),
+      firstReasoningAt: null,
+      lastReasoningAt: null,
+      firstAnswerAt: null,
+    };
     let apiReasoning = "";
 
     const isOwned = () => {
@@ -2004,18 +2067,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const patchAssistantState = (patch: {
       content?: string;
       reasoning?: string;
+        thinkingSeconds?: number;
     }) => {
       if (!isOwned()) return;
       const current = getSessionThread(get, sessionId);
       if (!current) return;
-      if (patch.content !== undefined && patch.content.trim() && firstAnswerAt == null) {
-        // Prefer real answer tokens over tool placeholders for Thought timing
-        const placeholder =
-          /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/.test(
-            patch.content.trim(),
-          );
-        if (!placeholder) firstAnswerAt = Date.now();
-      }
       const reasoningText =
         patch.reasoning !== undefined
           ? patch.reasoning.trim()
@@ -2024,9 +2080,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         apiReasoning = patch.reasoning;
       }
       const thinkingSeconds =
-        reasoningText && firstAnswerAt != null
-          ? Math.max(1, Math.round((firstAnswerAt - requestStartedAt) / 1000))
-          : undefined;
+        patch.thinkingSeconds ??
+        (reasoningText
+          ? updateThinkingTiming(timing, {
+              ...patch,
+              reasoning: reasoningText,
+            })
+          : undefined);
       const next = patchMessage(current, assistantId, {
         ...patch,
         ...(patch.reasoning !== undefined
@@ -2207,8 +2267,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     branchAbortBySession.set(sessionId, { ctrl: branchCtrl, branchId });
     const branchSignal = branchCtrl.signal;
 
-    const requestStartedAt = Date.now();
-    let firstAnswerAt: number | null = null;
+    const timing: ThinkingTimingState = {
+      requestStartedAt: Date.now(),
+      firstReasoningAt: null,
+      lastReasoningAt: null,
+      firstAnswerAt: null,
+    };
     let apiReasoning = "";
 
     void (async () => {
@@ -2222,21 +2286,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const patchBranchState = (patch: {
         content?: string;
         reasoning?: string;
+        thinkingSeconds?: number;
       }) => {
         if (!isOwned()) return;
         const current = getSessionThread(get, sessionId);
         if (!current) return;
-        if (
-          patch.content !== undefined &&
-          patch.content.trim() &&
-          firstAnswerAt == null
-        ) {
-          const placeholder =
-            /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/.test(
-              patch.content.trim(),
-            );
-          if (!placeholder) firstAnswerAt = Date.now();
-        }
         const reasoningText =
           patch.reasoning !== undefined
             ? patch.reasoning.trim()
@@ -2245,9 +2299,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           apiReasoning = patch.reasoning;
         }
         const thinkingSeconds =
-          reasoningText && firstAnswerAt != null
-            ? Math.max(1, Math.round((firstAnswerAt - requestStartedAt) / 1000))
-            : undefined;
+          patch.thinkingSeconds ??
+          (reasoningText
+            ? updateThinkingTiming(timing, {
+                ...patch,
+                reasoning: reasoningText,
+              })
+            : undefined);
         const updated = patchBranchInThread(current, branchId, {
           ...(patch.content !== undefined
             ? { assistantMessage: patch.content }
@@ -2419,8 +2477,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     branchAbortBySession.set(sessionId, { ctrl: branchCtrl, branchId });
     const branchSignal = branchCtrl.signal;
 
-    const requestStartedAt = Date.now();
-    let firstAnswerAt: number | null = null;
+    const timing: ThinkingTimingState = {
+      requestStartedAt: Date.now(),
+      firstReasoningAt: null,
+      lastReasoningAt: null,
+      firstAnswerAt: null,
+    };
     let apiReasoning = "";
 
     void (async () => {
@@ -2434,21 +2496,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const patchReplyState = (patch: {
         content?: string;
         reasoning?: string;
+        thinkingSeconds?: number;
       }) => {
         if (!isOwned()) return;
         const current = getSessionThread(get, sessionId);
         if (!current) return;
-        if (
-          patch.content !== undefined &&
-          patch.content.trim() &&
-          firstAnswerAt == null
-        ) {
-          const placeholder =
-            /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/.test(
-              patch.content.trim(),
-            );
-          if (!placeholder) firstAnswerAt = Date.now();
-        }
         const reasoningText =
           patch.reasoning !== undefined
             ? patch.reasoning.trim()
@@ -2457,9 +2509,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           apiReasoning = patch.reasoning;
         }
         const thinkingSeconds =
-          reasoningText && firstAnswerAt != null
-            ? Math.max(1, Math.round((firstAnswerAt - requestStartedAt) / 1000))
-            : undefined;
+          patch.thinkingSeconds ??
+          (reasoningText
+            ? updateThinkingTiming(timing, {
+                ...patch,
+                reasoning: reasoningText,
+              })
+            : undefined);
         const updated = patchBranchLastReplyInThread(current, branchId, {
           ...(patch.content !== undefined
             ? { assistantMessage: patch.content }

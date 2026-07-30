@@ -45,51 +45,90 @@ export type StreamChatOptions = {
   onReasoningDelta?: (text: string) => void;
 };
 
+export type StreamTiming = {
+  startedAt: number;
+  firstReasoningAt: number | null;
+  lastReasoningAt: number | null;
+  firstVisibleContentAt: number | null;
+};
+
 export type StreamChatResult = {
   content: string;
   /** Accumulated reasoning (empty if provider omits it) */
   reasoning: string;
   toolCalls: ToolCall[];
   finishReason: string | null;
+  timing: StreamTiming;
 };
+
+function modelSupportsReasoning(modelRaw: string): boolean {
+  const model = modelRaw.toLowerCase();
+  return /reasoner|thinking|\br1\b|qwen3|qwq|gpt-oss|magistral|distill-r1/.test(
+    model,
+  );
+}
 
 /** Models / hosts that can emit a real reasoning channel when asked. */
 function attachThinkingRequestOptions(
   body: Record<string, unknown>,
   settings: ApiSettings,
-): void {
-  const model = settings.model.toLowerCase();
-  const isLocal = isLikelyLocalEndpoint(settings.baseUrl);
-  // Heuristic: only enable when the model is known to support thinking.
-  // Plain instruct models (e.g. qwen2.5-coder) get nothing — do not invent CoT.
-  const looksThinkingModel =
-    /reasoner|thinking|\br1\b|qwen3|qwq|gpt-oss|magistral|distill-r1/.test(
-      model,
-    );
+): boolean {
+  if (!modelSupportsReasoning(settings.model)) return false;
+  // OpenAI-compatible servers vary: many accept `reasoning_effort`, some reject it.
+  // We attach it for known reasoning models, then auto-retry without it on 4xx.
+  body.reasoning_effort = "medium";
+  return true;
+}
 
-  if (isLocal && looksThinkingModel) {
-    // Ollama `/v1/chat/completions` maps reasoning_effort → native think.
-    // Streamed field is delta.reasoning (native message.thinking), not reasoning_content.
-    body.reasoning_effort = "medium";
+function stripThinkingRequestOptions(body: Record<string, unknown>): void {
+  delete body.reasoning_effort;
+  delete body.reasoning;
+}
+
+function isReasoningUnsupportedResponse(status: number, body: string): boolean {
+  if (status !== 400 && status !== 404 && status !== 422) return false;
+  const text = body.toLowerCase();
+  return (
+    text.includes("reasoning_effort") ||
+    text.includes("unsupported") && text.includes("reasoning") ||
+    text.includes("unknown field") && text.includes("reasoning") ||
+    text.includes("unknown parameter") && text.includes("reasoning")
+  );
+}
+
+function normalizeReasoningChunk(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeReasoningChunk(item))
+      .filter(Boolean)
+      .join("");
   }
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    return (
+      normalizeReasoningChunk(rec.text) ||
+      normalizeReasoningChunk(rec.content) ||
+      normalizeReasoningChunk(rec.value) ||
+      normalizeReasoningChunk(rec.reasoning)
+    );
+  }
+  return "";
 }
 
 function reasoningPieceFromDelta(delta: {
-  reasoning_content?: string | null;
-  reasoning?: string | null;
-  thinking?: string | null;
+  reasoning_content?: unknown;
+  reasoning?: unknown;
+  thinking?: unknown;
+  reasoning_text?: unknown;
 }): string {
   // Field names vary by provider — prefer explicit reasoning channels only.
-  if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
-    return delta.reasoning_content;
-  }
-  if (typeof delta.reasoning === "string" && delta.reasoning) {
-    return delta.reasoning;
-  }
-  if (typeof delta.thinking === "string" && delta.thinking) {
-    return delta.thinking;
-  }
-  return "";
+  return (
+    normalizeReasoningChunk(delta.reasoning_content) ||
+    normalizeReasoningChunk(delta.reasoning) ||
+    normalizeReasoningChunk(delta.thinking) ||
+    normalizeReasoningChunk(delta.reasoning_text)
+  );
 }
 
 export async function streamChat(
@@ -132,14 +171,33 @@ export async function streamChat(
     body.tools = opts.tools;
     body.tool_choice = opts.toolChoice ?? "auto";
   }
-  attachThinkingRequestOptions(body, settings);
+  const attachedThinkingHints = attachThinkingRequestOptions(body, settings);
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    signal: opts.signal,
-    body: JSON.stringify(body),
-  });
+  const doFetch = () =>
+    fetch(url, {
+      method: "POST",
+      headers,
+      signal: opts.signal,
+      body: JSON.stringify(body),
+    });
+
+  let response = await doFetch();
+
+  if (!response.ok) {
+    const errText = await response.text();
+    if (attachedThinkingHints && isReasoningUnsupportedResponse(response.status, errText)) {
+      stripThinkingRequestOptions(body);
+      response = await doFetch();
+    } else {
+      const err = new Error(formatApiError(response.status, errText)) as Error & {
+        status?: number;
+        body?: string;
+      };
+      err.status = response.status;
+      err.body = errText;
+      throw err;
+    }
+  }
 
   if (!response.ok) {
     const errText = await response.text();
@@ -166,6 +224,12 @@ export async function streamChat(
   let reasoningFull = "";
   let finishReason: string | null = null;
   let splitCursor = { contentLen: 0, reasoningLen: 0 };
+  const timing: StreamTiming = {
+    startedAt: Date.now(),
+    firstReasoningAt: null,
+    lastReasoningAt: null,
+    firstVisibleContentAt: null,
+  };
   const toolAcc = new Map<
     number,
     { id: string; name: string; arguments: string }
@@ -186,6 +250,9 @@ export async function streamChat(
 
   const appendApiReasoning = (piece: string) => {
     if (!piece) return;
+    const now = Date.now();
+    if (timing.firstReasoningAt == null) timing.firstReasoningAt = now;
+    timing.lastReasoningAt = now;
     reasoningFull += piece;
     onReasoningDelta?.(piece);
   };
@@ -202,6 +269,9 @@ export async function streamChat(
       onReasoningDelta?.(diff.reasoningDelta);
     }
     if (diff.contentDelta) {
+      if (timing.firstVisibleContentAt == null) {
+        timing.firstVisibleContentAt = Date.now();
+      }
       onDelta(diff.contentDelta);
     }
   };
@@ -230,9 +300,10 @@ export async function streamChat(
               finish_reason?: string | null;
               delta?: {
                 content?: string | null;
-                reasoning_content?: string | null;
-                reasoning?: string | null;
-                thinking?: string | null;
+                reasoning_content?: unknown;
+                reasoning?: unknown;
+                thinking?: unknown;
+                reasoning_text?: unknown;
                 tool_calls?: Array<{
                   index?: number;
                   id?: string;
@@ -306,6 +377,7 @@ export async function streamChat(
     reasoning: reasoningFull,
     toolCalls,
     finishReason,
+    timing,
   };
 }
 
