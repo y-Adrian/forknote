@@ -9,10 +9,10 @@
  */
 
 const THINK_BLOCK_RE =
-  /<(?:think|thinking|reasoning)>([\s\S]*?)(?:<\/(?:think|thinking|reasoning)>|$)/gi;
+  /<(?:think|thinking|reasoning)\b[^>]*>([\s\S]*?)(?:<\/(?:think|thinking|reasoning)>|$)/gi;
 
 const THINK_STRIP_RE =
-  /<(?:think|thinking|reasoning)>[\s\S]*?(?:<\/(?:think|thinking|reasoning)>|$)/gi;
+  /<(?:think|thinking|reasoning)\b[^>]*>[\s\S]*?(?:<\/(?:think|thinking|reasoning)>|$)/gi;
 
 /** Trailing incomplete open tag, e.g. `<thi` mid-stream */
 const PARTIAL_OPEN_TAG_RE =

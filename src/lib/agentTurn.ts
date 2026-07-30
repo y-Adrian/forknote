@@ -56,6 +56,7 @@ import {
   isToolsUnsupportedError,
   streamChat,
   type ChatMessage as ApiChatMessage,
+  type StreamTiming,
   type ToolCall,
 } from "./openai";
 import { mergeReasoningChannels } from "./reasoning";
@@ -69,6 +70,7 @@ import type { ApiSettings, ChatSession, ThreadRoot } from "../types";
 export type AgentContentPatch = {
   content?: string;
   reasoning?: string;
+  thinkingSeconds?: number;
 };
 
 export type AgentTurnOutcome =
@@ -132,6 +134,20 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
       },
     );
   });
+}
+
+function thinkingSecondsFromTiming(
+  timing: StreamTiming,
+  reasoningText: string,
+): number | undefined {
+  if (!reasoningText.trim()) return undefined;
+  const startAt = timing.firstReasoningAt ?? timing.startedAt;
+  const endAt = Math.max(
+    startAt,
+    timing.lastReasoningAt ?? 0,
+    timing.firstVisibleContentAt ?? 0,
+  );
+  return Math.max(1, Math.round((endAt - startAt) / 1000));
 }
 
 /** Stream a plain chat reply with tools schema omitted (no plan / write path). */
@@ -199,6 +215,14 @@ async function streamPlainChatAnswer(args: {
   patchAssistantState({
     content: merged.content,
     ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
+    ...(merged.reasoning.trim()
+      ? {
+          thinkingSeconds: thinkingSecondsFromTiming(
+            streamResult.timing,
+            merged.reasoning,
+          ),
+        }
+      : {}),
   });
   return "completed";
 }
@@ -674,6 +698,14 @@ export async function runAgentTurn(
                   content: visibleContent
                     ? `${visibleContent}\n\n${roundText}`.trim()
                     : roundText,
+                }
+              : {}),
+            ...(apiReasoning.trim()
+              ? {
+                  thinkingSeconds: thinkingSecondsFromTiming(
+                    streamResult.timing,
+                    apiReasoning,
+                  ),
                 }
               : {}),
           });

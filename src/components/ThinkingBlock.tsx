@@ -4,7 +4,7 @@ import { useLocale } from "../lib/i18n";
 interface Props {
   /** Real reasoning text only — never call with an empty placeholder */
   reasoning: string;
-  /** Elapsed seconds until first answer token */
+  /** Best-effort reasoning span in seconds */
   seconds?: number;
   /** True while the assistant reply is still streaming */
   streaming?: boolean;
@@ -18,20 +18,34 @@ export function ThinkingBlock({ reasoning, seconds, streaming = false }: Props) 
   const { t } = useLocale();
   const text = reasoning.trim();
   const [open, setOpen] = useState(Boolean(streaming && text));
+  const [liveSeconds, setLiveSeconds] = useState<number | undefined>(seconds);
 
   useEffect(() => {
     if (streaming && text) setOpen(true);
   }, [streaming, text]);
 
   useEffect(() => {
-    if (!streaming && text) setOpen(false);
-  }, [streaming, text]);
+    setLiveSeconds(seconds);
+  }, [seconds]);
+
+  useEffect(() => {
+    if (!streaming || seconds == null) return;
+    const startedAt = Date.now();
+    const base = seconds;
+    const timer = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      setLiveSeconds(Math.max(base, base + elapsed));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [streaming, seconds]);
 
   if (!text) return null;
 
+  const displaySeconds = liveSeconds ?? seconds;
+
   const label =
-    seconds != null && seconds > 0
-      ? t("chat.thoughtSeconds", { n: seconds })
+    displaySeconds != null && displaySeconds > 0
+      ? t("chat.thoughtSeconds", { n: displaySeconds })
       : streaming
         ? t("chat.thinking")
         : t("chat.thought");

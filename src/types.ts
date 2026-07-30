@@ -68,6 +68,7 @@ export interface BranchReply {
   assistantMessage: string;
   createdAt: number;
   reasoning?: string;
+  /** Best-effort reasoning span in seconds (excludes network / placeholder time). */
   thinkingSeconds?: number;
   pointVerdicts?: PointVerdictMap;
   pointDoubts?: PointDoubtMap;
@@ -87,7 +88,7 @@ export interface BranchNode {
   pointAttributions?: PointAttributionMap;
   /** Chain-of-thought / reasoning channel, not shown as the answer body */
   reasoning?: string;
-  /** Seconds from request start until first visible answer token */
+  /** Best-effort reasoning span in seconds (excludes network / placeholder time). */
   thinkingSeconds?: number;
   /**
    * Same-window follow-ups after the initial clarify turn.
@@ -108,7 +109,7 @@ export interface ChatMessage {
   pointAttributions?: PointAttributionMap;
   /** Chain-of-thought / reasoning channel, not shown as the answer body */
   reasoning?: string;
-  /** Seconds from request start until first visible answer token */
+  /** Best-effort reasoning span in seconds (excludes network / placeholder time). */
   thinkingSeconds?: number;
 }
 
