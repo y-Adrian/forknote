@@ -2475,6 +2475,138 @@ export function synthesizeExploreToolCall(
   return { tool: "search_files", query: intent.query };
 }
 
+/**
+ * Parse a single approved-plan step into a concrete tool call when args are
+ * explicit enough. Skips vague "Edit foo.js" lines that lack old/new strings.
+ */
+export function parseApprovedPlanStep(step: string): AgentToolCall | null {
+  const s = step.trim().replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "");
+  if (!s) return null;
+
+  let m = s.match(
+    /run_terminal\b[\s\S]*?\bcommand\s*[=:]\s*[`'“”"']?([^`'“”"'\n)]+)/i,
+  );
+  if (!m?.[1]) {
+    m = s.match(
+      /run_terminal\s*(?:\(|[:：])\s*[`'“”"']?([^`'“”"'\n)]+)/i,
+    );
+  }
+  if (m?.[1]) {
+    const command = normalizeExtractedCommand(m[1]);
+    return command ? { tool: "run_terminal", command } : null;
+  }
+
+  m = s.match(
+    /read_file\b[\s\S]*?\bpath\s*[=:]\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+  );
+  if (!m?.[1]) {
+    m = s.match(
+      /read_file\s*(?:\(|[:：])\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+    );
+  }
+  if (m?.[1]) {
+    return { tool: "read_file", path: normalizeRelPath(m[1].trim()) };
+  }
+
+  m = s.match(
+    /list_dir\b[\s\S]*?\bpath\s*[=:]\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+  );
+  if (!m?.[1]) {
+    m = s.match(
+      /list_dir\s*(?:\(|[:：])\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+    );
+  }
+  if (m?.[1]) {
+    const path = normalizeRelPath(m[1].trim()) || ".";
+    return { tool: "list_dir", path };
+  }
+
+  m = s.match(
+    /search_files\b[\s\S]*?\bquery\s*[=:]\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+  );
+  if (!m?.[1]) {
+    m = s.match(
+      /search_files\s*(?:\(|[:：])\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+    );
+  }
+  if (m?.[1]) {
+    return { tool: "search_files", query: m[1].trim() };
+  }
+
+  m = s.match(
+    /mkdir\b[\s\S]*?\bpath\s*[=:]\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+  );
+  if (!m?.[1]) {
+    m = s.match(/mkdir\s*(?:\(|[:：])\s*[`'“”"']?([^`'“”"'\n),]+)/i);
+  }
+  if (m?.[1]) {
+    return { tool: "mkdir", path: normalizeRelPath(m[1].trim()) };
+  }
+
+  if (/\bsearch_replace\b/i.test(s)) {
+    const path =
+      s.match(/path\s*[=:]\s*[`'“”"']?([^`'“”"'\s,)]+)/i)?.[1]?.trim() ?? null;
+    const old_string =
+      s.match(/old_string\s*[=:]\s*[`'“”"']([^`'“”"']*)[`'“”"']/i)?.[1] ??
+      s.match(/old_string\s*[=:]\s*`([^`]*)`/i)?.[1] ??
+      null;
+    const new_string =
+      s.match(/new_string\s*[=:]\s*[`'“”"']([^`'“”"']*)[`'“”"']/i)?.[1] ??
+      s.match(/new_string\s*[=:]\s*`([^`]*)`/i)?.[1] ??
+      null;
+    if (path && old_string != null && new_string != null) {
+      return {
+        tool: "search_replace",
+        path: normalizeRelPath(path),
+        old_string,
+        new_string,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * After Allow, if the model dumps prose instead of tool_calls, run the
+ * approved steps we can parse. Conservative: only concrete args.
+ */
+export function synthesizeToolCallsFromApprovedPlan(options: {
+  planText: string;
+  steps: string[];
+  commands?: string[] | null;
+}): AgentToolCall[] {
+  const calls: AgentToolCall[] = [];
+  const seen = new Set<string>();
+  const push = (call: AgentToolCall | null) => {
+    if (!call) return;
+    const key = `${call.tool}:${call.path ?? ""}:${call.command ?? ""}:${call.query ?? ""}:${call.old_string ?? ""}:${call.new_string ?? ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    calls.push(call);
+  };
+
+  for (const step of options.steps) {
+    push(parseApprovedPlanStep(step));
+  }
+
+  // Plan prose may encode tools even when steps are short labels.
+  for (const line of options.planText.split("\n")) {
+    push(parseApprovedPlanStep(line));
+  }
+
+  const cmds = resolveTerminalApproveCommands({
+    planText: options.planText,
+    steps: options.steps,
+    explicitCommands: options.commands,
+  });
+  for (const command of cmds) {
+    push({ tool: "run_terminal", command });
+  }
+
+  return calls;
+}
+
 /** Multi-step project tasks like 先列出…再读 package.json…最后改 README */
 export function inferMultiStepPlan(userText: string): AgentToolCall[] {
   const t = userText.trim();
