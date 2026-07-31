@@ -1,10 +1,11 @@
 /**
  * Post-approve: synthesize concrete tool_calls from approved plan steps
- * when the model emits none.
+ * when the model emits none or the wrong tools.
  */
 import assert from "node:assert/strict";
 import {
   parseApprovedPlanStep,
+  pendingCoversPlanTool,
   synthesizeToolCallsFromApprovedPlan,
 } from "../src/lib/agentTools.ts";
 
@@ -34,6 +35,13 @@ assert.equal(vague, null);
 const vagueSr = parseApprovedPlanStep('search_replace(path="math.js")');
 assert.equal(vagueSr, null);
 
+const writeInline = parseApprovedPlanStep(
+  'write_file(path="note.txt", content="hello\\nworld")',
+);
+assert.equal(writeInline?.tool, "write_file");
+assert.equal(writeInline?.path, "note.txt");
+assert.equal(writeInline?.content, "hello\nworld");
+
 const synth = synthesizeToolCallsFromApprovedPlan({
   planText: "1. list root\n2. read math.js\n3. patch add",
   steps: [
@@ -56,5 +64,59 @@ const shellOnly = synthesizeToolCallsFromApprovedPlan({
   commands: ["pwd"],
 });
 assert.ok(shellOnly.some((c) => c.tool === "run_terminal" && c.command === "pwd"));
+
+const writeFence = synthesizeToolCallsFromApprovedPlan({
+  planText: [
+    'Create note with write_file(path="note.txt")',
+    "```",
+    "Capability write OK",
+    "```",
+  ].join("\n"),
+  steps: ['write_file(path="note.txt")'],
+});
+assert.equal(writeFence.length, 1);
+assert.equal(writeFence[0]!.tool, "write_file");
+assert.equal(writeFence[0]!.path, "note.txt");
+assert.equal(writeFence[0]!.content, "Capability write OK");
+
+const noBody = synthesizeToolCallsFromApprovedPlan({
+  planText: "create something",
+  steps: ['write_file(path="empty.txt")'],
+});
+assert.equal(noBody.length, 0);
+
+assert.equal(
+  pendingCoversPlanTool(
+    [{ agent: { tool: "list_dir", path: "." } }],
+    {
+      tool: "search_replace",
+      path: "math.js",
+      old_string: "a",
+      new_string: "b",
+    },
+  ),
+  false,
+);
+assert.equal(
+  pendingCoversPlanTool(
+    [
+      {
+        agent: {
+          tool: "search_replace",
+          path: "math.js",
+          old_string: "x",
+          new_string: "y",
+        },
+      },
+    ],
+    {
+      tool: "search_replace",
+      path: "math.js",
+      old_string: "a",
+      new_string: "b",
+    },
+  ),
+  true,
+);
 
 console.log("smoke-synthesize-from-approved-plan: ok");

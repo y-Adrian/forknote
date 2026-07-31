@@ -707,8 +707,8 @@ export function extractTerminalCommandsFromPlan(blob: string): string[] {
   const promptRe = /(?:^|\n)[ \t]*\$[ \t]+([^\n]+)/g;
   while ((m = promptRe.exec(blob)) !== null) push(m[1]);
 
-  // Fenced bash/sh blocks — one command per non-empty line
-  const fenceRe = /```(?:bash|sh|zsh|shell)?[ \t]*\n([\s\S]*?)```/gi;
+  // Fenced bash/sh blocks only — bare ``` is often write_file content, not shell.
+  const fenceRe = /```(?:bash|sh|zsh|shell)\b[ \t]*\n([\s\S]*?)```/gi;
   while ((m = fenceRe.exec(blob)) !== null) {
     for (const line of m[1]!.split("\n")) {
       const trimmed = line.trim();
@@ -2564,7 +2564,91 @@ export function parseApprovedPlanStep(step: string): AgentToolCall | null {
     }
   }
 
+  if (/\bwrite_file\b/i.test(s)) {
+    const path =
+      s.match(/path\s*[=:]\s*[`'“”"']?([^`'“”"'\s,)]+)/i)?.[1]?.trim() ??
+      s.match(
+        /write_file\s*(?:\(|[:：])\s*[`'“”"']?([^`'“”"'\n),]+)/i,
+      )?.[1]?.trim() ??
+      null;
+    if (!path) return null;
+    const content =
+      s.match(/content\s*[=:]\s*"((?:\\.|[^"\\])*)"/i)?.[1] ??
+      s.match(/content\s*[=:]\s*'((?:\\.|[^'\\])*)'/i)?.[1] ??
+      s.match(/content\s*[=:]\s*`([^`]*)`/i)?.[1] ??
+      null;
+    if (content != null) {
+      return {
+        tool: "write_file",
+        path: normalizeRelPath(path),
+        content: unescapeJsonString(content),
+      };
+    }
+    // Path-only — content may live in a nearby fence; filled in synthesize.
+    return { tool: "write_file", path: normalizeRelPath(path) };
+  }
+
   return null;
+}
+
+/** Pull write_file body from a fenced block near the path in plan prose. */
+export function extractWriteContentFromPlanBlob(
+  planBlob: string,
+  path: string,
+): string | null {
+  const rel = normalizeRelPath(path);
+  const base = rel.split("/").filter(Boolean).pop() || rel;
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const near = new RegExp(
+    `(?:write_file[\\s\\S]{0,240})?(?:path\\s*[=:]\\s*)?[\`"']?${esc(rel)}[\`"']?[\\s\\S]{0,160}?\\\`\\\`\\\`(?:[\\w.+-]*)\\n([\\s\\S]*?)\\\`\\\`\\\``,
+    "i",
+  );
+  let m = planBlob.match(near);
+  if (m?.[1] != null) return m[1].replace(/\n$/, "");
+  if (base !== rel) {
+    const nearBase = new RegExp(
+      `(?:write_file[\\s\\S]{0,240})?[\`"']?${esc(base)}[\`"']?[\\s\\S]{0,160}?\\\`\\\`\\\`(?:[\\w.+-]*)\\n([\\s\\S]*?)\\\`\\\`\\\``,
+      "i",
+    );
+    m = planBlob.match(nearBase);
+    if (m?.[1] != null) return m[1].replace(/\n$/, "");
+  }
+  const inline = planBlob.match(
+    new RegExp(
+      `write_file[\\s\\S]{0,200}?${esc(rel)}[\\s\\S]{0,80}?content\\s*[=:]\\s*"((?:\\\\.|[^"\\\\])*)"`,
+      "i",
+    ),
+  );
+  if (inline?.[1] != null) return unescapeJsonString(inline[1]);
+  return null;
+}
+
+/**
+ * Whether a pending model tool already covers an approved-plan tool target
+ * (same tool + path/command/query). Used to gap-fill wrong explore calls.
+ */
+export function pendingCoversPlanTool(
+  pending: ReadonlyArray<{ agent: AgentToolCall }>,
+  planCall: AgentToolCall,
+): boolean {
+  return pending.some((p) => {
+    if (p.agent.tool !== planCall.tool) return false;
+    if (planCall.tool === "run_terminal") {
+      return (
+        (p.agent.command ?? "").trim() === (planCall.command ?? "").trim()
+      );
+    }
+    if (planCall.tool === "search_files") {
+      return (p.agent.query ?? "").trim() === (planCall.query ?? "").trim();
+    }
+    if (planCall.path) {
+      return (
+        normalizeRelPath(p.agent.path ?? "") ===
+        normalizeRelPath(planCall.path)
+      );
+    }
+    return true;
+  });
 }
 
 /**
@@ -2580,7 +2664,7 @@ export function synthesizeToolCallsFromApprovedPlan(options: {
   const seen = new Set<string>();
   const push = (call: AgentToolCall | null) => {
     if (!call) return;
-    const key = `${call.tool}:${call.path ?? ""}:${call.command ?? ""}:${call.query ?? ""}:${call.old_string ?? ""}:${call.new_string ?? ""}`;
+    const key = `${call.tool}:${call.path ?? ""}:${call.command ?? ""}:${call.query ?? ""}:${call.old_string ?? ""}:${call.new_string ?? ""}:${call.content ?? ""}`;
     if (seen.has(key)) return;
     seen.add(key);
     calls.push(call);
@@ -2595,6 +2679,18 @@ export function synthesizeToolCallsFromApprovedPlan(options: {
     push(parseApprovedPlanStep(line));
   }
 
+  const blob = `${options.planText}\n${options.steps.join("\n")}`;
+  for (const call of calls) {
+    if (
+      call.tool === "write_file" &&
+      call.path &&
+      typeof call.content !== "string"
+    ) {
+      const content = extractWriteContentFromPlanBlob(blob, call.path);
+      if (content != null) call.content = content;
+    }
+  }
+
   const cmds = resolveTerminalApproveCommands({
     planText: options.planText,
     steps: options.steps,
@@ -2604,7 +2700,10 @@ export function synthesizeToolCallsFromApprovedPlan(options: {
     push({ tool: "run_terminal", command });
   }
 
-  return calls;
+  // Skip write_file without a body — cannot invent file contents.
+  return calls.filter(
+    (c) => c.tool !== "write_file" || typeof c.content === "string",
+  );
 }
 
 /** Multi-step project tasks like 先列出…再读 package.json…最后改 README */
