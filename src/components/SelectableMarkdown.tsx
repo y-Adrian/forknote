@@ -28,6 +28,7 @@ import {
   applyBranchHighlights,
   clearHighlights,
 } from "../lib/domHighlight";
+import { parseAnswerPoints } from "../lib/points";
 import { clearSelection, getSelectionInContainer } from "../lib/selection";
 import { useAppStore } from "../store/useAppStore";
 import { FloatingAskPanel } from "./FloatingAskPanel";
@@ -99,6 +100,13 @@ export function SelectableMarkdown({
     () => countRecentRejectStreak(feedbackLog),
     [feedbackLog],
   );
+  /** Remount when list↔prose structure flips so react-markdown doesn't reconcile mutated trees. */
+  const pointStructureKey = useMemo(() => {
+    const parsed = parseAnswerPoints(content);
+    return parsed.points.length < 2
+      ? "flat"
+      : `pts-${parsed.points.length}-${parsed.points.map((p) => p.index).join(".")}`;
+  }, [content]);
   const stackTopZ = useAppStore((s) =>
     s.branchFloatStack.length > 0
       ? Math.max(...s.branchFloatStack.map((e) => e.zIndex))
@@ -177,7 +185,10 @@ export function SelectableMarkdown({
 
   useLayoutEffect(() => {
     const el = containerRef.current;
-    if (!el || !content.trim() || loading) return;
+    if (!el) return;
+    clearHighlights(el);
+    if (!content.trim() || loading) return;
+    if (!branches.some((b) => b.assistantMessage.trim())) return;
     applyBranchHighlights(el, branches);
     return () => clearHighlights(el);
   }, [content, branches, loading]);
@@ -261,6 +272,7 @@ export function SelectableMarkdown({
       >
         {verdictTargetId ? (
           <PointizedAnswer
+            key={pointStructureKey}
             content={content}
             verdicts={pointVerdicts}
             doubts={pointDoubts}

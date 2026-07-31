@@ -211,11 +211,11 @@ export function PointizedAnswer({
   const parsed = parseAnswerPoints(content);
 
   if (parsed.points.length < 2) {
-    return <MarkdownBody content={content} />;
+    return <MarkdownBody key="flat" content={content} />;
   }
 
   return (
-    <div className="pointized-answer">
+    <div key={`points-${parsed.points.length}`} className="pointized-answer">
       {parsed.preamble && (
         <div className="point-preamble">
           <MarkdownBody content={parsed.preamble} />

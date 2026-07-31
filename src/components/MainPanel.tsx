@@ -462,7 +462,10 @@ export function MainPanel({
                             content={msg.content}
                             branches={msg.children}
                             onAskBranch={askBranch}
-                            branchLoading={loadingBranchId !== null}
+                            branchLoading={
+                              loadingBranchId !== null ||
+                              (loadingMain && index === thread.messages.length - 1)
+                            }
                             activeBranchId={openBranchId}
                             onToggleBranch={toggleBranch}
                             compact

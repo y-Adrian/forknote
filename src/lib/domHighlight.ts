@@ -9,9 +9,19 @@ export function clearHighlights(root: HTMLElement): void {
     while (mark.firstChild) {
       parent.insertBefore(mark.firstChild, mark);
     }
-    parent.removeChild(mark);
+    // React may have already detached `mark` while we unwrap — never throw.
+    try {
+      if (mark.parentNode === parent) parent.removeChild(mark);
+      else mark.remove();
+    } catch {
+      /* ignore NotFoundError / HierarchyRequestError */
+    }
   });
-  root.normalize();
+  try {
+    root.normalize();
+  } catch {
+    /* ignore */
+  }
 }
 
 function normalizeWs(text: string): string {

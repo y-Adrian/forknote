@@ -1418,6 +1418,14 @@ body {
 }
 
 /* Fenced code blocks with toolbar + line-number gutter */
+.answer-body pre:has(.fn-code-block) {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
 .answer-body .fn-code-block {
   display: flex;
   flex-direction: column;
