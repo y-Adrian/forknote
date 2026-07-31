@@ -96,9 +96,9 @@ export function BranchRail({ thread, scrollRef }: Props) {
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
-    const measure = () => {
-      setScrollTop(scroll.scrollTop);
-      setTotalH(scroll.scrollHeight);
+    let lastKey = "";
+    let raf = 0;
+    const measureNow = () => {
       const next: RailMsg[] = [];
       for (const msg of thread.messages) {
         if (msg.role !== "assistant") continue;
@@ -106,15 +106,35 @@ export function BranchRail({ thread, scrollRef }: Props) {
         if (!el) continue;
         next.push({ msgId: msg.id, y: el.offsetTop, branches: msg.children });
       }
+      const key = `${scroll.scrollTop}|${scroll.scrollHeight}|${next
+        .map((m) => `${m.msgId}:${m.y}:${m.branches.length}`)
+        .join(",")}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      setScrollTop(scroll.scrollTop);
+      setTotalH(scroll.scrollHeight);
       setMsgs(next);
     };
-    measure();
+    /** Defer out of MutationObserver / React commit to avoid removeChild races. */
+    const measure = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measureNow();
+      });
+    };
+    measureNow();
     scroll.addEventListener("scroll", measure, { passive: true });
     const ro = new ResizeObserver(measure);
     ro.observe(scroll);
-    const mo = new MutationObserver(measure);
-    mo.observe(scroll, { childList: true, subtree: true, characterData: false });
-    return () => { scroll.removeEventListener("scroll", measure); ro.disconnect(); mo.disconnect(); };
+    // Do NOT MutationObserver the scroll tree: React commits mutate those
+    // nodes, and sync measure→setState mid-commit causes removeChild crashes
+    // in react-markdown. Scroll + ResizeObserver are enough for rail layout.
+    return () => {
+      scroll.removeEventListener("scroll", measure);
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [thread, scrollRef]);
 
   const isOpen = (id: string) => branchFloatStack.some((e) => e.branchId === id);

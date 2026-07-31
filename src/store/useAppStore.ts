@@ -243,7 +243,12 @@ function persistSessions(
   sessions: ChatSession[],
   activeSessionId: NodeId | null,
 ): void {
-  saveSessionStore({ sessions, activeSessionId });
+  try {
+    saveSessionStore({ sessions, activeSessionId });
+  } catch (e) {
+    // QuotaExceeded / private-mode write failures must not crash the agent turn.
+    console.warn("[ForkNote] persistSessions failed", e);
+  }
 }
 
 function resolvePointContent(
@@ -809,14 +814,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     } finally {
+      // Mirror askMain: if continueExecution re-presented a plan, keep turn
+      // ownership so patches / the next Allow still work.
+      const waitingPlan =
+        get().agentPendingPlan?.sessionId === sessionId &&
+        pendingAgentContinuations.has(sessionId);
       if (isBranch) {
         const owned = branchAbortBySession.get(sessionId);
         // Only clear if this session still owns the same branch turn
-        if (!owned || owned.branchId === branchId) {
+        if ((!owned || owned.branchId === branchId) && !waitingPlan) {
           branchAbortBySession.delete(sessionId);
           setSessionBranchLoading(set, sessionId, null);
         }
-      } else {
+      } else if (!waitingPlan) {
         mainTurnsBySession.delete(sessionId);
         setSessionMainLoading(set, sessionId, false);
       }
