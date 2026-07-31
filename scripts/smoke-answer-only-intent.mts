@@ -86,4 +86,35 @@ expectCreate("create a file bar.js", "bar.js");
 assert.ok(hasExplicitRepoActionSignal("删除旧文件"));
 assert.ok(looksLikeMutationRequest("改一下 README.md"));
 
+// search_replace / search_files must not be treated as explore "search …"
+const replaceAsk =
+  "请用 search_replace 修改 math.js：把 return a + b; 改成 return a + b + 1; 只改这一处。";
+assert.equal(
+  inferExploreIntent(replaceAsk),
+  null,
+  "search_replace must not become explore search",
+);
+assert.ok(
+  looksLikeMutationRequest(replaceAsk),
+  "search_replace ask is a mutation",
+);
+assert.equal(
+  inferExploreIntent("用 search_files"),
+  null,
+  "bare search_files tool name is not an explore search query",
+);
+assert.equal(
+  inferExploreIntent("call search_replace on math.js"),
+  null,
+  "search_replace tool name is not an explore search query",
+);
+assert.deepEqual(inferExploreIntent("请搜索 foo"), {
+  kind: "search",
+  query: "foo",
+});
+assert.deepEqual(inferExploreIntent("search for math.js"), {
+  kind: "search",
+  query: "math.js",
+});
+
 console.log("smoke-answer-only-intent: ok");

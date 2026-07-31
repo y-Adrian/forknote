@@ -321,7 +321,10 @@ export async function runAgentTurn(
         })
       : null;
   const exploreIntent =
-    !createPath && !officeIntent && !shellIntent
+    !createPath &&
+    !officeIntent &&
+    !shellIntent &&
+    !looksLikeMutationRequest(trimmed)
       ? inferExploreIntent(trimmed)
       : null;
   /**
@@ -647,19 +650,19 @@ export async function runAgentTurn(
                         type: "function",
                         function: { name: "run_terminal" },
                       }
-                  : useNativeTools && forcedExploreTool && round === 0
-                    ? {
-                        type: "function",
-                        function: { name: forcedExploreTool },
-                      }
                     : useNativeTools && forcedPlanTool && round === 0
                       ? {
                           type: "function",
                           function: { name: forcedPlanTool },
                         }
-                      : useNativeTools
-                        ? "auto"
-                        : undefined,
+                      : useNativeTools && forcedExploreTool && round === 0
+                        ? {
+                            type: "function",
+                            function: { name: forcedExploreTool },
+                          }
+                        : useNativeTools
+                          ? "auto"
+                          : undefined,
             onReasoningDelta: (piece) => {
               apiReasoning += piece;
               if (apiReasoning.trim()) {

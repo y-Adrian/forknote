@@ -2235,11 +2235,16 @@ export function inferExploreIntent(
     return { kind: "read", path: normalizeRelPath(tickRead[1]) };
   }
 
+  // Do not let bare English "search" eat tool names like search_replace /
+  // search_files (that produced mangled queries like "_replace 修改 math.js…").
   const searchQ = t.match(
-    /(?:搜索|查找|找一下|全文搜索|search(?:\s+for)?)\s*[：:\s]*[`"'“”]?([^`'“”\n]{2,80})[`"'“”]?/i,
+    /(?:搜索|查找|找一下|全文搜索|(?<![\w])search(?:\s+for)?(?![\w_]))\s*[：:\s]*[`"'“”]?([^`'“”\n]{2,80})[`"'“”]?/i,
   );
-  if (searchQ?.[1] && /搜索|查找|search/i.test(t)) {
-    return { kind: "search", query: searchQ[1].trim() };
+  if (searchQ?.[1] && /搜索|查找|(?<![\w])search(?![\w_])/i.test(t)) {
+    const query = searchQ[1].trim();
+    if (!/^(?:_?(?:replace|files)\b)/i.test(query)) {
+      return { kind: "search", query };
+    }
   }
 
   if (wantsList) {
