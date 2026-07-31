@@ -100,6 +100,41 @@ assert.equal(asciiParsed.length, 1);
 assert.equal(asciiParsed[0]!.tool, "mkdir");
 assert.equal(asciiParsed[0]!.path, "tmp/a");
 
+// Doubled fullwidth pipes (observed from deepseek-v4-flash after plan approve)
+const DFW = "｜｜";
+const doubledTag = (name: string) => `<${DFW}DSML${DFW}${name}>`;
+const doubledEnd = (name: string) => `</${DFW}DSML${DFW}${name}>`;
+const doubled = [
+  doubledTag("tool_calls"),
+  `${doubledTag('invoke name="read_file"')}`,
+  `${doubledTag('parameter name="path" string="true"')}math.js${doubledEnd("parameter")}`,
+  doubledEnd("invoke"),
+  `${doubledTag('invoke name="search_replace"')}`,
+  `${doubledTag('parameter name="path" string="true"')}math.js${doubledEnd("parameter")}`,
+  `${doubledTag('parameter name="old_string" string="true"')}return a + b;${doubledEnd("parameter")}`,
+  `${doubledTag('parameter name="new_string" string="true"')}return a + b + 1;${doubledEnd("parameter")}`,
+  doubledEnd("invoke"),
+  doubledEnd("tool_calls"),
+].join(" ");
+const doubledParsed = parseDsmlToolCalls(
+  `我将立即执行批准计划的第 1 步：读取 math.js 确认原文。\n\n${doubled}`,
+);
+assert.equal(doubledParsed.length, 2);
+assert.equal(doubledParsed[0]!.tool, "read_file");
+assert.equal(doubledParsed[0]!.path, "math.js");
+assert.equal(doubledParsed[1]!.tool, "search_replace");
+assert.equal(doubledParsed[1]!.old_string, "return a + b;");
+assert.equal(doubledParsed[1]!.new_string, "return a + b + 1;");
+assert.ok(
+  !/DSML/i.test(stripToolCalls(`Hi\n${doubled}\nDone.`)),
+  "doubled-pipe DSML must strip from visible text",
+);
+assert.equal(
+  collectToolCalls(`Hi\n${doubled}`).length,
+  2,
+  "collectToolCalls must prefer doubled-pipe DSML",
+);
+
 // DSML in reasoning pool via collectToolCalls
 const fromReasoning = collectToolCalls("ok", "", searchReplaceBlock);
 assert.equal(fromReasoning[0]?.tool, "search_replace");

@@ -1539,7 +1539,9 @@ export function collectToolCalls(
  * </｜DSML｜tool_calls>
  * ```
  */
-const DSML_SEP = String.raw`(?:｜|\|{1,2})`;
+// DeepSeek usually emits a single fullwidth `｜` (U+FF5C). Some streams /
+// gateways double it (`｜｜DSML｜｜…`); also accept ASCII `|` / `||`.
+const DSML_SEP = String.raw`(?:｜{1,4}|\|{1,4})`;
 const DSML_TAG = String.raw`<\/?${DSML_SEP}DSML${DSML_SEP}`;
 
 function stripDsmlMarkup(text: string): string {
