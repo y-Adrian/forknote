@@ -211,6 +211,7 @@ async function streamPlainChatAnswer(args: {
   const merged = mergeReasoningChannels(
     apiReasoning,
     stripToolCalls(roundText),
+    { expectChineseAnswer: locale === "zh" },
   );
   patchAssistantState({
     content: merged.content,
@@ -690,6 +691,7 @@ export async function runAgentTurn(
         const merged = mergeReasoningChannels(
           apiReasoning,
           stripToolCalls(roundText),
+          { expectChineseAnswer: locale === "zh" },
         );
         apiReasoning = merged.reasoning;
         roundText = merged.content;
