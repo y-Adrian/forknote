@@ -2534,6 +2534,21 @@ export function stripToolCalls(text: string): string {
     .replace(TOOL_CALL_RE, "")
     .replace(TOOL_CONTENT_RE, "");
 
+  // Plural / alternate wrappers DeepSeek sometimes dumps into visible content.
+  out = out.replace(
+    /<tool_calls>\s*[\s\S]*?(?:<\/tool_calls>|$)/gi,
+    "",
+  );
+  // Truncated single tool_call (no closing tag) — common mid-stream / failed FC.
+  out = out.replace(/<tool_call>\s*[\s\S]*$/gi, "");
+  // XML-style invoke / parameter leftovers (with or without DSML separators).
+  out = out.replace(/<\/?invoke\b[^>]*>/gi, "");
+  out = out.replace(/<\/?parameter\b[^>]*>/gi, "");
+  out = out.replace(
+    /<invoke\b[^>]*>[\s\S]*?(?:<\/invoke>|$)/gi,
+    "",
+  );
+
   // Strip fenced JSON that is clearly a tool call dump
   out = out.replace(/```(?:json|javascript|js|txt)?\s*\n?([\s\S]*?)```/gi, (block, body) => {
     const inner = String(body ?? "").trim();
@@ -2547,6 +2562,22 @@ export function stripToolCalls(text: string): string {
     }
     return block;
   });
+
+  // Bare JSON tool object on its own line(s) pasted as prose (no fences).
+  out = out
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      if (!t.startsWith("{") || !t.endsWith("}")) return true;
+      try {
+        const obj = JSON.parse(t) as unknown;
+        if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return false;
+      } catch {
+        /* keep */
+      }
+      return true;
+    })
+    .join("\n");
 
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }

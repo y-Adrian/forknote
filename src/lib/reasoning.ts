@@ -6,7 +6,7 @@
  * - Many OpenAI-compat gateways: `delta.reasoning_content`
  * - Ollama OpenAI `/v1`: `delta.reasoning` (from native `message.thinking`)
  * - Some local / older templates: `<think>…</think>` (or thinking/reasoning) inside `content`
- * - DeepSeek (esp. zh UI): untagged English meta-CoT before a Chinese answer
+ * - DeepSeek (esp. zh UI): untagged English or Chinese meta-CoT before the real answer
  */
 
 const THINK_BLOCK_RE =
@@ -25,6 +25,14 @@ const LATIN_LETTER_RE = /[A-Za-z]/;
 /** English meta-reasoning openers DeepSeek often dumps into content on zh turns. */
 const EN_META_OPEN_RE =
   /^(?:The user\b|I need to\b|I should\b|I(?:'ll| will)\b|Let(?:'s| me)\b|Looking at\b|The question is\b|My (?:task|goal|plan)\b|First,\s*I\b|Okay,\s*I\b|Alright,\s*I\b|So\s+I\b|Based on (?:the )?(?:tool|user|request)\b)/i;
+
+/** Chinese meta-CoT openers (planning monologue before the real answer). */
+const ZH_META_OPEN_RE =
+  /^(?:我们需要|用户(?:最新|要求|说)|需要调用|让我们|因此我|所以我|注意[：:]|实际上|计划阶段|严格服从|为了安全|我认为|仔细阅读|看历史|然而|或许|根据规则|系统说|系统提示)/;
+
+/** Chinese answer / status openers that mark the end of meta-CoT. */
+const ZH_ANSWER_OPEN_RE =
+  /^(?:已(?:按要求)?(?:完成|执行|列出|修改|创建)|任务已完成|以下是|完整输出|命令成功|我先(?:运行|执行)|现在(?:开始|执行|调用)|将先执行|需要批准后才能运行)/;
 
 export function splitReasoningFromContent(raw: string): {
   content: string;
@@ -137,8 +145,66 @@ export function peelUntaggedBilingualReasoning(
   return { content, reasoning: enBefore, peeled: true };
 }
 
+/**
+ * Peel leading Chinese meta-CoT when a clearer answer paragraph follows.
+ * Only for zh UI; requires meta openers + a later answer-style opener.
+ */
+export function peelUntaggedChineseMetaReasoning(
+  raw: string,
+  opts?: { expectChineseAnswer?: boolean },
+): { content: string; reasoning: string; peeled: boolean } {
+  if (!opts?.expectChineseAnswer) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  const text = raw;
+  if (!text.trim() || !CJK_RE.test(text)) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  if (/^```/.test(text.trimStart())) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+
+  const head = text.trimStart().slice(0, 80);
+  if (!ZH_META_OPEN_RE.test(head)) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+
+  const paras = text.split(/\n{2,}/);
+  if (paras.length < 2) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+
+  let built = "";
+  let cutAt = -1;
+  for (let i = 0; i < paras.length; i++) {
+    const p = (paras[i] ?? "").trim();
+    if (i > 0 && ZH_ANSWER_OPEN_RE.test(p)) {
+      cutAt = built.length;
+      break;
+    }
+    built += (i === 0 ? "" : "\n\n") + (paras[i] ?? "");
+  }
+
+  if (cutAt < 60) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+
+  const meta = text.slice(0, cutAt).trim();
+  const content = text.slice(cutAt).replace(/^\s*\n+/, "");
+  // Meta must look like a monologue (multiple sentences / substantial length).
+  if (meta.length < 60 || content.length < 8) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  const metaLines = meta.split(/\n+/).filter((l) => l.trim().length > 0);
+  if (metaLines.length < 2 && meta.length < 120) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+
+  return { content, reasoning: meta, peeled: true };
+}
+
 export type MergeReasoningOptions = {
-  /** When true (zh UI / CJK ask), peel untagged English meta-CoT before Chinese answers. */
+  /** When true (zh UI / CJK ask), peel untagged English/Chinese meta-CoT before answers. */
   expectChineseAnswer?: boolean;
 };
 
@@ -154,12 +220,20 @@ export function mergeReasoningChannels(
   let peeledReasoning = "";
 
   if (!fromTags.hadThinkTags && opts?.expectChineseAnswer) {
-    const peeled = peelUntaggedBilingualReasoning(content, {
+    const enPeeled = peelUntaggedBilingualReasoning(content, {
       expectChineseAnswer: true,
     });
-    if (peeled.peeled) {
-      content = peeled.content;
-      peeledReasoning = peeled.reasoning;
+    if (enPeeled.peeled) {
+      content = enPeeled.content;
+      peeledReasoning = enPeeled.reasoning;
+    } else {
+      const zhPeeled = peelUntaggedChineseMetaReasoning(content, {
+        expectChineseAnswer: true,
+      });
+      if (zhPeeled.peeled) {
+        content = zhPeeled.content;
+        peeledReasoning = zhPeeled.reasoning;
+      }
     }
   }
 
