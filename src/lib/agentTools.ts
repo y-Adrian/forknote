@@ -1511,6 +1511,10 @@ export function collectToolCalls(
   const assistantCtx = reasoning.trim()
     ? `${text}\n${reasoning}`
     : text;
+  // DSML may appear in content and/or reasoning (DeepSeek thinking models).
+  const dsmlPool = assistantCtx;
+  const dsml = parseDsmlToolCalls(dsmlPool);
+  if (dsml.length > 0) return dsml;
   const explicit = parseToolCalls(text);
   if (explicit.length > 0) return explicit;
   const jsonStyle = parseJsonStyleToolCalls(text);
@@ -1518,6 +1522,156 @@ export function collectToolCalls(
   const argsOnly = parseArgsOnlyToolCalls(text, userText, assistantCtx);
   if (argsOnly.length > 0) return argsOnly;
   return extractWriteIntentsFromMarkdown(text);
+}
+
+/**
+ * DeepSeek V3.2/V4 DSML tool markup that some APIs emit in assistant *content*
+ * instead of native OpenAI `tool_calls`.
+ *
+ * @example
+ * ```
+ * <｜DSML｜tool_calls>
+ * <｜DSML｜invoke name="search_replace">
+ * <｜DSML｜parameter name="path" string="true">math.js</｜DSML｜parameter>
+ * <｜DSML｜parameter name="old_string" string="true">a + b</｜DSML｜parameter>
+ * <｜DSML｜parameter name="new_string" string="true">a * b</｜DSML｜parameter>
+ * </｜DSML｜invoke>
+ * </｜DSML｜tool_calls>
+ * ```
+ */
+const DSML_SEP = String.raw`(?:｜|\|{1,2})`;
+const DSML_TAG = String.raw`<\/?${DSML_SEP}DSML${DSML_SEP}`;
+
+function stripDsmlMarkup(text: string): string {
+  if (!text || !/DSML/i.test(text)) return text;
+  let out = text;
+  // Complete or truncated wrapper blocks (tool_calls / function_calls).
+  out = out.replace(
+    new RegExp(
+      `${DSML_TAG}(?:tool_calls|function_calls)>\\s*[\\s\\S]*?(?:${DSML_TAG}(?:tool_calls|function_calls)>|$)`,
+      "gi",
+    ),
+    "",
+  );
+  // Orphan invoke / parameter fragments if wrapper strip missed them.
+  out = out.replace(
+    new RegExp(
+      `${DSML_TAG}invoke\\b[\\s\\S]*?(?:${DSML_TAG}invoke>|$)`,
+      "gi",
+    ),
+    "",
+  );
+  out = out.replace(
+    new RegExp(
+      `${DSML_TAG}parameter\\b[\\s\\S]*?(?:${DSML_TAG}parameter>|$)`,
+      "gi",
+    ),
+    "",
+  );
+  out = out.replace(new RegExp(`${DSML_TAG}[^>]*>`, "gi"), "");
+  return out;
+}
+
+function parseDsmlParameterValue(
+  raw: string,
+  isString: boolean,
+): unknown {
+  if (isString) return raw;
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return raw;
+  }
+}
+
+function agentCallFromDsmlInvoke(
+  name: string,
+  args: Record<string, unknown>,
+): AgentToolCall | null {
+  if (!TOOL_NAMES.has(name)) return null;
+  // Nested `{ arguments: {...} }` sometimes appears; unwrap.
+  let shaped = args;
+  const nested = args.arguments ?? args.parameters ?? args.args;
+  if (
+    nested &&
+    typeof nested === "object" &&
+    !Array.isArray(nested) &&
+    Object.keys(args).every((k) =>
+      ["arguments", "parameters", "args"].includes(k),
+    )
+  ) {
+    shaped = nested as Record<string, unknown>;
+  }
+  const fake: ToolCall = {
+    id: "dsml-fallback",
+    type: "function",
+    function: { name, arguments: JSON.stringify(shaped) },
+  };
+  return agentCallFromOpenAI(fake);
+}
+
+/** Parse DeepSeek DSML tool_calls / function_calls blocks into AgentToolCalls. */
+export function parseDsmlToolCalls(text: string): AgentToolCall[] {
+  if (!text || !/DSML/i.test(text)) return [];
+
+  const calls: AgentToolCall[] = [];
+  const seen = new Set<string>();
+
+  const push = (call: AgentToolCall | null) => {
+    if (!call) return;
+    const key = `${call.tool}:${call.path ?? ""}:${call.query ?? ""}:${call.command ?? ""}:${call.old_string ?? ""}:${call.new_string ?? ""}:${typeof call.content === "string" ? call.content.slice(0, 80) : ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    calls.push(call);
+  };
+
+  const invokeRe = new RegExp(
+    `${DSML_TAG}invoke\\s+name="([^"]+)"\\s*>([\\s\\S]*?)(?:${DSML_TAG}invoke>|$)`,
+    "gi",
+  );
+  let im: RegExpExecArray | null;
+  while ((im = invokeRe.exec(text)) !== null) {
+    const name = (im[1] ?? "").trim();
+    const body = im[2] ?? "";
+    if (!name || !TOOL_NAMES.has(name)) continue;
+
+    const args: Record<string, unknown> = {};
+    const paramRe = new RegExp(
+      `${DSML_TAG}parameter\\s+name="([^"]+)"(?:\\s+string="(true|false)")?\\s*>([\\s\\S]*?)${DSML_TAG}parameter>`,
+      "gi",
+    );
+    let pm: RegExpExecArray | null;
+    let foundParam = false;
+    while ((pm = paramRe.exec(body)) !== null) {
+      foundParam = true;
+      const pName = (pm[1] ?? "").trim();
+      if (!pName) continue;
+      const isString = (pm[2] ?? "true").toLowerCase() !== "false";
+      args[pName] = parseDsmlParameterValue(pm[3] ?? "", isString);
+    }
+
+    if (!foundParam) {
+      // Some emitters put a JSON object directly inside invoke.
+      const jsonBody = body
+        .replace(new RegExp(`${DSML_TAG}[^>]*>`, "gi"), "")
+        .trim();
+      if (jsonBody.startsWith("{")) {
+        try {
+          const obj = JSON.parse(jsonBody) as unknown;
+          if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+            Object.assign(args, obj as Record<string, unknown>);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    push(agentCallFromDsmlInvoke(name, args));
+  }
+
+  return calls;
 }
 
 /**
@@ -2369,7 +2523,7 @@ export function multiStepFollowUpHint(userText: string): string | null {
 }
 
 export function stripToolCalls(text: string): string {
-  let out = text
+  let out = stripDsmlMarkup(text)
     .replace(TOOL_CALL_RE, "")
     .replace(TOOL_CONTENT_RE, "");
 
