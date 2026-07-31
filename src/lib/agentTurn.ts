@@ -37,6 +37,7 @@ import {
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
   synthesizeShellToolCall,
+  synthesizeToolCallsFromApprovedPlan,
   nativeToolResultMessage,
   stripToolCalls,
   synthesizeWriteFromReply,
@@ -468,9 +469,17 @@ export async function runAgentTurn(
     requireToolBatch?: boolean;
     /** User approved outside-project terminal access for this batch. */
     allowOutsideProject?: boolean;
+    /** Approved plan text/steps — synthesize concrete tools if the model emits none. */
+    fallbackFromPlan?: {
+      planText: string;
+      steps: string[];
+      commands?: string[] | null;
+    };
   }): Promise<string> => {
     const requireToolBatch = Boolean(opts?.requireToolBatch);
     const allowOutsideProject = Boolean(opts?.allowOutsideProject);
+    /** One plan-synthesis inject per approve/execute phase. */
+    let planFallbackUsed = false;
     // Each approve/execute phase gets a fresh round budget.
     round = 0;
     lastModelToolBatches = 0;
@@ -871,6 +880,25 @@ export async function runAgentTurn(
           agent: synthesizeOfficeFromIntent(officeIntent, trimmed),
         });
         officeFallbackUsed = true;
+      }
+
+      // Post-approve: model often dumps monologue / XML without tool_calls.
+      // Parse concrete steps from the approved plan and run them once.
+      if (
+        requireToolBatch &&
+        projectRoot &&
+        !planFallbackUsed &&
+        pending.length === 0 &&
+        opts?.fallbackFromPlan
+      ) {
+        const synth = synthesizeToolCallsFromApprovedPlan(opts.fallbackFromPlan);
+        for (const agent of synth) {
+          if (agent.tool === "run_terminal" && !allowTerminal) continue;
+          pending.push({ agent });
+        }
+        if (pending.length > 0) {
+          planFallbackUsed = true;
+        }
       }
 
       const cleanedRound = stripToolCalls(roundText);
@@ -1280,6 +1308,11 @@ export async function runAgentTurn(
         await executeTools({
           requireToolBatch: true,
           allowOutsideProject: shellLeavesProject,
+          fallbackFromPlan: {
+            planText: displayPlan,
+            steps,
+            commands: [cmd],
+          },
         });
         forcedShellTool = null;
       },
@@ -1409,6 +1442,11 @@ export async function runAgentTurn(
           await executeTools({
             requireToolBatch: true,
             allowOutsideProject: needsOutside,
+            fallbackFromPlan: {
+              planText: approvedPlanText,
+              steps: drafted.steps,
+              commands: planCommands,
+            },
           });
           forcedPlanTool = null;
 
