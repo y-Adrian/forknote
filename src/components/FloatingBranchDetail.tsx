@@ -122,6 +122,7 @@ export function FloatingBranchDetail({
   const askBranch = useAppStore((s) => s.askBranch);
   const continueBranch = useAppStore((s) => s.continueBranch);
   const adoptBranchIntoMain = useAppStore((s) => s.adoptBranchIntoMain);
+  const unadoptBranchFromMain = useAppStore((s) => s.unadoptBranchFromMain);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
   const pendingPlanForThis = useAppStore((s) => {
@@ -268,23 +269,54 @@ export function FloatingBranchDetail({
           className="float-panel-detail-header-actions"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            className="btn ghost float-panel-adopt-btn"
-            disabled={
-              isLoadingThis || !resolveBranchAdoptSource(branch).trim()
-            }
-            title={t("fork.adoptIntoMainHint")}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              adoptBranchIntoMain(branchId);
-            }}
-          >
-            {branch.adoptedAt
-              ? t("fork.adoptIntoMainAgain")
-              : t("fork.adoptIntoMain")}
-          </button>
+          {branch.adoptedAt ? (
+            <>
+              <button
+                type="button"
+                className="btn ghost float-panel-adopt-btn"
+                disabled={
+                  isLoadingThis || !resolveBranchAdoptSource(branch).trim()
+                }
+                title={t("fork.adoptIntoMainHint")}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  adoptBranchIntoMain(branchId);
+                }}
+              >
+                {t("fork.adoptIntoMainAgain")}
+              </button>
+              <button
+                type="button"
+                className="btn ghost float-panel-adopt-btn"
+                disabled={isLoadingThis}
+                title={t("fork.unadoptFromMainHint")}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  unadoptBranchFromMain(branchId);
+                }}
+              >
+                {t("fork.unadoptFromMain")}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn ghost float-panel-adopt-btn"
+              disabled={
+                isLoadingThis || !resolveBranchAdoptSource(branch).trim()
+              }
+              title={t("fork.adoptIntoMainHint")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                adoptBranchIntoMain(branchId);
+              }}
+            >
+              {t("fork.adoptIntoMain")}
+            </button>
+          )}
           <button
             type="button"
             className="ds-icon-btn"

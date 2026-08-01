@@ -4,6 +4,8 @@
 import assert from "node:assert/strict";
 import {
   applyAdoptNoteToContent,
+  clearBranchAdoptFields,
+  removeAdoptNoteFromContent,
   resolveBranchAdoptSource,
   stripAdoptedNote,
 } from "../src/lib/adoptBranch.ts";
@@ -64,6 +66,21 @@ assert.equal(
 assert.match(again, /更新后的结论/);
 
 assert.equal(stripAdoptedNote(again, "b1").includes("forknote-adopted"), false);
+assert.equal(
+  removeAdoptNoteFromContent(again, "b1").includes("forknote-adopted"),
+  false,
+);
+
+const adoptedBranch: BranchNode = {
+  ...branch,
+  adoptedAt: 9,
+  adoptedSummary: "因为需要本机读写权限。",
+};
+const clearedTree = clearBranchAdoptFields([adoptedBranch], "b1");
+assert.equal(clearedTree[0]!.adoptedAt, undefined);
+assert.equal(clearedTree[0]!.adoptedSummary, undefined);
+assert.equal(clearedTree[0]!.id, "b1");
+
 assert.equal(
   resolveBranchAdoptSource({
     ...branch,

@@ -62,6 +62,8 @@ import {
 } from "../lib/thread";
 import {
   applyAdoptNoteToContent,
+  clearBranchAdoptFields,
+  removeAdoptNoteFromContent,
   resolveBranchAdoptSource,
   truncateAdoptSummary,
 } from "../lib/adoptBranch";
@@ -251,6 +253,8 @@ interface AppState {
   continueBranch: (branchId: NodeId, question: string) => Promise<void>;
   /** Adopt fork conclusion into the parent assistant message (non-destructive note). */
   adoptBranchIntoMain: (branchId: NodeId) => void;
+  /** Remove an adopted clarification note from the parent main answer. */
+  unadoptBranchFromMain: (branchId: NodeId) => void;
 }
 
 function getActiveSession(state: AppState): ChatSession | undefined {
@@ -2781,11 +2785,64 @@ export const useAppStore = create<AppState>((set, get) => ({
       locale,
     );
 
-    let nextThread = patchMessage(thread, parent.id, { content: nextContent });
+    const pointIndex = branch.anchor.pointIndex;
+    const parentPatch: Partial<ChatMessage> = { content: nextContent };
+    if (pointIndex != null && parent.pointVerdicts?.[pointIndex] !== "accept") {
+      const nextVerdicts = { ...(parent.pointVerdicts ?? {}) };
+      const nextDoubts = { ...(parent.pointDoubts ?? {}) };
+      const nextAttrs = { ...(parent.pointAttributions ?? {}) };
+      nextVerdicts[pointIndex] = "accept";
+      delete nextDoubts[pointIndex];
+      delete nextAttrs[pointIndex];
+      parentPatch.pointVerdicts = nextVerdicts;
+      parentPatch.pointDoubts = nextDoubts;
+      parentPatch.pointAttributions = nextAttrs;
+    }
+
+    let nextThread = patchMessage(thread, parent.id, parentPatch);
     nextThread = patchBranchInThread(nextThread, branchId, {
       adoptedAt: Date.now(),
       adoptedSummary: summary,
     });
+
+    const nextSessions = upsertActiveSession(
+      sessions,
+      activeSessionId,
+      nextThread,
+    );
+    persistSessions(nextSessions, get().activeSessionId);
+    set({
+      sessions: nextSessions,
+      thread: nextThread,
+      error: null,
+    });
+  },
+
+  unadoptBranchFromMain: (branchId) => {
+    const { thread, activeSessionId, sessions } = get();
+    if (!thread || !activeSessionId) return;
+
+    const branch = findBranchInThread(thread, branchId);
+    const parent = findAssistantMessageForBranch(thread, branchId);
+    if (!branch || !parent || !branch.adoptedAt) return;
+
+    const nextContent = removeAdoptNoteFromContent(parent.content, branchId);
+    let nextThread = patchMessage(thread, parent.id, { content: nextContent });
+    nextThread = {
+      ...nextThread,
+      messages: nextThread.messages.map((m) =>
+        m.id === parent.id
+          ? {
+              ...m,
+              content: nextContent,
+              children: clearBranchAdoptFields(m.children, branchId),
+            }
+          : {
+              ...m,
+              children: clearBranchAdoptFields(m.children, branchId),
+            },
+      ),
+    };
 
     const nextSessions = upsertActiveSession(
       sessions,

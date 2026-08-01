@@ -98,7 +98,7 @@ export function applyAdoptNoteToContent(
   return `${cleaned.trimEnd()}\n\n${block}\n`;
 }
 
-/** Prefer latest reply answer, else initial fork answer. */
+  /** Prefer latest reply answer, else initial fork answer. */
 export function resolveBranchAdoptSource(branch: BranchNode): string {
   const replies = branch.replies ?? [];
   for (let i = replies.length - 1; i >= 0; i--) {
@@ -107,3 +107,27 @@ export function resolveBranchAdoptSource(branch: BranchNode): string {
   }
   return branch.assistantMessage?.trim() ?? "";
 }
+
+/** Remove adopt note from parent content (alias for callers). */
+export function removeAdoptNoteFromContent(
+  content: string,
+  branchId: string,
+): string {
+  return stripAdoptedNote(content, branchId);
+}
+
+/** Drop adoptedAt / adoptedSummary from a branch in the tree. */
+export function clearBranchAdoptFields(
+  nodes: BranchNode[],
+  branchId: string,
+): BranchNode[] {
+  return nodes.map((node) => {
+    const children = clearBranchAdoptFields(node.children, branchId);
+    if (node.id !== branchId) {
+      return children === node.children ? node : { ...node, children };
+    }
+    const { adoptedAt: _a, adoptedSummary: _s, ...rest } = node;
+    return { ...rest, children };
+  });
+}
+

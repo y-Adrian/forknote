@@ -538,6 +538,9 @@ const en = {
     "Insert a clarification note under the quoted span in the main answer (does not overwrite the original)",
   "fork.adopted": "Adopted",
   "fork.adoptedHint": "This fork’s conclusion was adopted into the main answer",
+  "fork.unadoptFromMain": "Undo adopt",
+  "fork.unadoptFromMainHint":
+    "Remove the clarification note from the main answer",
   "fork.error.context": "Could not resolve fork context",
   "fork.error.answer": "Fork answer request failed",
   "fork.error.followUp": "Fork follow-up request failed",
@@ -1084,6 +1087,8 @@ const zh: Record<MessageKey, string> = {
     "在主回答对应位置插入澄清注记（不覆盖原文）",
   "fork.adopted": "已采纳",
   "fork.adoptedHint": "该分支结论已写入主回答",
+  "fork.unadoptFromMain": "撤销采纳",
+  "fork.unadoptFromMainHint": "从主回答中移除澄清注记",
   "fork.error.context": "无法解析分支上下文",
   "fork.error.answer": "分支回答请求失败",
   "fork.error.followUp": "分支追问请求失败",
