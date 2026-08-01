@@ -28,8 +28,9 @@ import {
   applyBranchHighlights,
   clearHighlights,
 } from "../lib/domHighlight";
-import { parseAnswerPoints } from "../lib/points";
+import { parseAnswerPoints, anchorForAnswerPoint } from "../lib/points";
 import { clearSelection, getSelectionInContainer } from "../lib/selection";
+import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 import { FloatingAskPanel } from "./FloatingAskPanel";
 import { MarkdownBody } from "./MarkdownBody";
@@ -126,12 +127,17 @@ export function SelectableMarkdown({
   const [askAnchorRect, setAskAnchorRect] = useState<DOMRect | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [question, setQuestion] = useState("");
+  const [askPlaceholder, setAskPlaceholder] = useState<string | undefined>(
+    undefined,
+  );
+  const { t } = useLocale();
 
   const closePopover = useCallback(() => {
     setPopoverOpen(false);
     setQuestion("");
     setPendingAnchor(null);
     setAskAnchorRect(null);
+    setAskPlaceholder(undefined);
   }, []);
 
   const dismissToolbar = useCallback(() => {
@@ -236,6 +242,27 @@ export function SelectableMarkdown({
         : containerRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0);
 
     setAskAnchorRect(rect);
+    setAskPlaceholder(undefined);
+    setPopoverOpen(true);
+    setToolbar(null);
+    clearSelection();
+  };
+
+  const openPointClarify = (pointIndex: number) => {
+    if (disabled || loading) return;
+    const anchor = anchorForAnswerPoint(content, pointIndex);
+    if (!anchor) return;
+    const row = containerRef.current?.querySelector(
+      `[data-point-index="${pointIndex}"]`,
+    ) as HTMLElement | null;
+    const rect =
+      row?.getBoundingClientRect() ??
+      containerRef.current?.getBoundingClientRect() ??
+      new DOMRect(0, 0, 0, 0);
+    setPendingAnchor(anchor);
+    setAskAnchorRect(rect);
+    setAskPlaceholder(t("clarify.pointPlaceholder"));
+    setQuestion("");
     setPopoverOpen(true);
     setToolbar(null);
     clearSelection();
@@ -287,6 +314,7 @@ export function SelectableMarkdown({
             onDenyHypothesis={(idx) =>
               denyPointHypothesis(verdictTargetId, idx)
             }
+            onClarifyPoint={(idx) => openPointClarify(idx)}
           />
         ) : (
           <MarkdownBody content={content} />
@@ -315,6 +343,7 @@ export function SelectableMarkdown({
             loading={loading}
             anchorRect={askAnchorRect}
             zIndex={askZ}
+            placeholder={askPlaceholder}
             onQuestionChange={setQuestion}
             onSubmit={submit}
             onClose={closePopover}

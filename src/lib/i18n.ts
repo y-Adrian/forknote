@@ -511,6 +511,10 @@ const en = {
   "clarify.aria": "Clarify selection",
   "clarify.title": "Clarify selection",
   "clarify.placeholder": "What’s unclear here? e.g. What does this sentence mean?",
+  "clarify.point": "Clarify this point",
+  "clarify.pointShort": "Ask",
+  "clarify.pointPlaceholder":
+    "What’s unclear about this point? e.g. Why this step / what does it imply?",
   "clarify.hint": "Same tools as main when a project is bound · Enter to send · Shift+Enter for new line · Drag title to move",
   "clarify.error.needProject": "Open a local project first (Open project), then retry this clarify request.",
 
@@ -525,6 +529,12 @@ const en = {
   "fork.followUpPlaceholder": "Follow-up stays in this window…",
   "fork.followUpAria": "Follow-up",
   "fork.followUpHint": "Same window · Enter to send · Shift+Enter for a new line",
+  "fork.adoptIntoMain": "Adopt into main",
+  "fork.adoptIntoMainAgain": "Update in main",
+  "fork.adoptIntoMainHint":
+    "Insert a clarification note under the quoted span in the main answer (does not overwrite the original)",
+  "fork.adopted": "Adopted",
+  "fork.adoptedHint": "This fork’s conclusion was adopted into the main answer",
   "fork.error.context": "Could not resolve fork context",
   "fork.error.answer": "Fork answer request failed",
   "fork.error.followUp": "Fork follow-up request failed",
@@ -1045,6 +1055,10 @@ const zh: Record<MessageKey, string> = {
   "clarify.aria": "选中澄清",
   "clarify.title": "选中澄清",
   "clarify.placeholder": "哪里不清楚？例如：这句话是什么意思？",
+  "clarify.point": "澄清此点",
+  "clarify.pointShort": "澄",
+  "clarify.pointPlaceholder":
+    "这一点哪里不清楚？例如：为什么要这一步 / 它意味着什么？",
   "clarify.hint": "绑定项目后可用与主对话相同的工具 · Enter 发送 · Shift+Enter 换行 · 拖标题移动",
   "clarify.error.needProject": "请先打开本地项目（打开项目），然后再试一次澄清提问。",
 
@@ -1059,6 +1073,12 @@ const zh: Record<MessageKey, string> = {
   "fork.followUpPlaceholder": "在此窗口继续追问…",
   "fork.followUpAria": "追问",
   "fork.followUpHint": "同窗口 · Enter 发送 · Shift+Enter 换行",
+  "fork.adoptIntoMain": "采纳进主线",
+  "fork.adoptIntoMainAgain": "更新主线注记",
+  "fork.adoptIntoMainHint":
+    "在主回答对应位置插入澄清注记（不覆盖原文）",
+  "fork.adopted": "已采纳",
+  "fork.adoptedHint": "该分支结论已写入主回答",
   "fork.error.context": "无法解析分支上下文",
   "fork.error.answer": "分支回答请求失败",
   "fork.error.followUp": "分支追问请求失败",

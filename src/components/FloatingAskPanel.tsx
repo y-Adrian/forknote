@@ -10,6 +10,8 @@ interface Props {
   loading: boolean;
   anchorRect: DOMRect;
   zIndex: number;
+  /** Override default clarify placeholder (e.g. point-anchored). */
+  placeholder?: string;
   onQuestionChange: (value: string) => void;
   onSubmit: () => void;
   onClose: () => void;
@@ -21,6 +23,7 @@ export function FloatingAskPanel({
   loading,
   anchorRect,
   zIndex,
+  placeholder,
   onQuestionChange,
   onSubmit,
   onClose,
@@ -75,7 +78,7 @@ export function FloatingAskPanel({
         onCompositionEnd={() => {
           composingRef.current = false;
         }}
-        placeholder={t("clarify.placeholder")}
+        placeholder={placeholder ?? t("clarify.placeholder")}
         autoFocus
         disabled={loading}
         onKeyDown={(e) => {

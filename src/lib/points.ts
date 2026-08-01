@@ -1,4 +1,5 @@
 import type {
+  Anchor,
   PointAttributionMap,
   PointDoubtMap,
   PointVerdictMap,
@@ -89,6 +90,53 @@ export function parseBranchReplyVerdictTarget(
 /** 回答是否是分点格式（至少 2 个分点才值得展示裁决 UI） */
 export function hasPoints(content: string): boolean {
   return parseAnswerPoints(content).points.length >= 2;
+}
+
+/**
+ * Build an Anchor for one-click 「澄清此点」 from a numbered point【N】.
+ */
+export function anchorForAnswerPoint(
+  content: string,
+  pointIndex: number,
+): Anchor | null {
+  const parsed = parseAnswerPoints(content);
+  const point = parsed.points.find((p) => p.index === pointIndex);
+  if (!point) return null;
+
+  const marker = `【${pointIndex}】`;
+  let start = content.indexOf(marker);
+  if (start < 0) {
+    start = content.indexOf(point.content);
+    if (start < 0) {
+      return {
+        startOffset: 0,
+        endOffset: Math.min(content.length, point.content.length),
+        quotedText: point.content,
+        pointIndex,
+      };
+    }
+  }
+
+  let end = content.length;
+  const later = parsed.points
+    .filter((p) => p.index > pointIndex)
+    .sort((a, b) => a.index - b.index);
+  for (const next of later) {
+    const nextMarker = `【${next.index}】`;
+    const nextStart = content.indexOf(nextMarker, start + marker.length);
+    if (nextStart > start) {
+      end = nextStart;
+      break;
+    }
+  }
+
+  const slice = content.slice(start, end).trim();
+  return {
+    startOffset: start,
+    endOffset: end,
+    quotedText: slice || point.content,
+    pointIndex,
+  };
 }
 
 /**

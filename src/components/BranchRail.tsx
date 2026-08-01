@@ -38,6 +38,8 @@ const C_CURVE_OPEN  = "rgba(198,184,220,0.95)";
 const C_LEAF        = "rgba(140,120,175,0.65)";
 const C_LEAF_OPEN   = "#a995c4";
 const C_LEAF_RING   = "rgba(220,210,235,0.70)";
+const C_LEAF_ADOPTED = "#6b8f71";
+const C_LEAF_ADOPTED_RING = "rgba(140,180,145,0.85)";
 
 // ── DFS layout ─────────────────────────────────────────────
 /**
@@ -224,8 +226,20 @@ export function BranchRail({ thread, scrollRef }: Props) {
                     {/* Node circle */}
                     <circle
                       cx={n.x} cy={n.y} r={NODE_R}
-                      fill={open ? C_LEAF_OPEN : C_LEAF}
-                      stroke={open ? C_LEAF_RING : "none"}
+                      fill={
+                        n.branch.adoptedAt
+                          ? C_LEAF_ADOPTED
+                          : open
+                            ? C_LEAF_OPEN
+                            : C_LEAF
+                      }
+                      stroke={
+                        n.branch.adoptedAt
+                          ? C_LEAF_ADOPTED_RING
+                          : open
+                            ? C_LEAF_RING
+                            : "none"
+                      }
                       strokeWidth="1.5"
                       style={{ pointerEvents: "all" }}
                     />
@@ -239,10 +253,15 @@ export function BranchRail({ thread, scrollRef }: Props) {
                       fill={open ? "rgba(230,222,242,0.9)" : "rgba(160,148,180,0.7)"}
                       style={{ pointerEvents: "none", userSelect: "none" }}
                     >
+                      {n.branch.adoptedAt ? "✓ " : ""}
                       {label}{n.branch.userQuestion.length > 10 ? "…" : ""}
                     </text>
 
-                    <title>{n.branch.userQuestion}</title>
+                    <title>
+                      {n.branch.adoptedAt
+                        ? `${n.branch.userQuestion} · adopted`
+                        : n.branch.userQuestion}
+                    </title>
                   </g>
                 );
               })}

@@ -1,12 +1,20 @@
-import type { ArchiveSnapshot, BranchNode, ChatMessage, ThreadRoot } from "../types";
+import type {
+  ArchiveSnapshot,
+  BranchNode,
+  ChatMessage,
+  FeedbackEvent,
+  ThreadRoot,
+} from "../types";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import { annotateContentWithVerdicts } from "./points";
 import { firstUserMessage } from "./thread";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 
-const QUOTE_MAX = 80;
+const QUOTE_MAX = 120;
 const CLARIFY_MAX = 220;
+const CLARIFY_ADOPTED_MAX = 4000;
 const MSG_MAX = 4000;
+const FEEDBACK_LOG_MAX = 24;
 
 function truncate(text: string, max: number): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -22,17 +30,47 @@ function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
       node.pointDoubts,
       node.pointAttributions,
     );
-    if (answer.trim()) {
-      lines.push(
-        `- 澄清「${truncate(node.anchor.quotedText, QUOTE_MAX)}」→ ${truncate(answer, CLARIFY_MAX)}`,
-      );
+    if (!answer.trim() && !node.adoptedSummary?.trim()) {
+      if (node.children.length) flattenClarifications(node.children, lines);
+      continue;
     }
+    const adopted = Boolean(node.adoptedAt);
+    const body = adopted
+      ? truncate(
+          node.adoptedSummary?.trim() || answer,
+          CLARIFY_ADOPTED_MAX,
+        )
+      : truncate(answer, CLARIFY_MAX);
+    const flag = adopted ? "【已收进主线】" : "【未采纳进主线】";
+    const point =
+      node.anchor.pointIndex != null ? ` · 分点【${node.anchor.pointIndex}】` : "";
+    lines.push(
+      `- ${flag}${point} 澄清「${truncate(node.anchor.quotedText, QUOTE_MAX)}」→ ${body}`,
+    );
     if (node.children.length) flattenClarifications(node.children, lines);
   }
 }
 
+function formatFeedbackLogSummary(events: FeedbackEvent[]): string {
+  if (!events.length) return "";
+  const slice = events.slice(-FEEDBACK_LOG_MAX);
+  const lines = slice.map((e) => {
+    const src = e.source ?? (e.explicit ? "explicit" : "unknown");
+    const attr = e.attribution ? ` · ${e.attribution}` : "";
+    return `- #${e.pointIndex} ${e.signal} (${src}, w=${e.weight})${attr}`;
+  });
+  return `## 反馈事件摘要（最近 ${slice.length} 条）\n${lines.join("\n")}`;
+}
+
+export type BuildArchiveSourceOptions = {
+  feedbackLog?: FeedbackEvent[] | null;
+};
+
 /** Build the raw material fed to the archive model. */
-export function buildArchiveSource(thread: ThreadRoot): string {
+export function buildArchiveSource(
+  thread: ThreadRoot,
+  options?: BuildArchiveSourceOptions,
+): string {
   const blocks: string[] = [];
   const topic = firstUserMessage(thread)?.trim();
   if (topic) {
@@ -53,13 +91,18 @@ export function buildArchiveSource(thread: ThreadRoot): string {
       msg.pointDoubts,
       msg.pointAttributions,
     );
-    blocks.push(`## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${truncate(annotated, MSG_MAX)}`);
+    blocks.push(
+      `## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${truncate(annotated, MSG_MAX)}`,
+    );
     const clarifications: string[] = [];
     flattenClarifications(msg.children, clarifications);
     if (clarifications.length) {
-      blocks.push(`### 本轮已澄清要点\n${clarifications.join("\n")}`);
+      blocks.push(`### 本轮澄清（含是否已收进主线）\n${clarifications.join("\n")}`);
     }
   }
+
+  const feedback = formatFeedbackLogSummary(options?.feedbackLog ?? []);
+  if (feedback) blocks.push(feedback);
 
   return blocks.join("\n\n");
 }
@@ -69,10 +112,12 @@ export const ARCHIVE_SYSTEM = `你是开发日志编辑。用户会提供一段�
 
 要求：
 1. 分点反馈是校准信号：区分「主动采纳」「默认沉默」「被动使用（复制）」；「存疑」写成待验证/置信度缺口；「不采纳」按已确认归因（目标/约束/路线/专业判断/表达）写成对照教训，勿当作仍可行方案。
-2. 结构建议：背景 / 对该用户有效的决策方式 / 实践要点（路径、命令、配置若材料里有则保留） / 可信度缺口与未决问题 / 不适合该用户的策略（简要）。
-3. 简明、可当作后续对话的上下文底座；不要写「你可以继续问我…」类客套。
-4. 不要编造材料中没有的事实。
-5. 第一行用短标题（不要用 # 以外的装饰），随后正文。`;
+2. 澄清必须区分两类：标记「已收进主线」的结论写入正文实践要点；标记「未采纳进主线」的只进「未决 / 旁路探索」，不要当成已定论。
+3. 若材料含反馈事件摘要，用它校准权重（hypothesis_confirm / passive_copy / explicit），不要编造未出现的事件。
+4. 结构建议：背景 / 对该用户有效的决策方式 / 实践要点（路径、命令、配置若材料里有则保留） / 已收进主线的澄清结论 / 可信度缺口与未决问题 / 不适合该用户的策略（简要）。
+5. 简明、可当作后续对话的上下文底座；不要写「你可以继续问我…」类客套。
+6. 不要编造材料中没有的事实。
+7. 第一行用短标题（不要用 # 以外的装饰），随后正文。`;
 
 export function archiveSystemPrompt(locale: Locale = getLocale()): string {
   return withReplyLanguage(ARCHIVE_SYSTEM, locale);
@@ -158,15 +203,12 @@ ${modeNote}`;
     },
     ...later.map((m) => ({
       role: m.role as "user" | "assistant",
-      content:
-        m.role === "assistant"
-          ? annotateContentWithVerdicts(
-              m.content,
-              m.pointVerdicts,
-              m.pointDoubts,
-              m.pointAttributions,
-            )
-          : m.content,
+      content: annotateContentWithVerdicts(
+        m.content,
+        m.pointVerdicts,
+        m.pointDoubts,
+        m.pointAttributions,
+      ),
     })),
   ];
 }

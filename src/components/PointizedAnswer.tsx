@@ -32,6 +32,8 @@ interface Props {
     attribution: FeedbackAttribution,
   ) => void;
   onDenyHypothesis: (pointIndex: number) => void;
+  /** One-click clarify for this numbered point (optional). */
+  onClarifyPoint?: (pointIndex: number, pointContent: string) => void;
 }
 
 const VERDICT_OPTIONS: Array<{
@@ -206,6 +208,7 @@ export function PointizedAnswer({
   onDoubt,
   onConfirmHypothesis,
   onDenyHypothesis,
+  onClarifyPoint,
 }: Props) {
   const { t } = useLocale();
   const parsed = parseAnswerPoints(content);
@@ -229,6 +232,7 @@ export function PointizedAnswer({
           <div
             key={point.index}
             className={`point-row${verdict ? ` is-${verdict}` : ""}`}
+            data-point-index={point.index}
           >
             <div className={`point-block${verdict ? ` is-${verdict}` : ""}`}>
               <div className="point-content">
@@ -258,6 +262,21 @@ export function PointizedAnswer({
               role="group"
               aria-label={t("verdict.pointAria", { n: point.index })}
             >
+              {onClarifyPoint ? (
+                <button
+                  type="button"
+                  className="point-verdict-btn v-clarify"
+                  title={t("clarify.point")}
+                  aria-label={t("clarify.point")}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClarifyPoint(point.index, point.content);
+                  }}
+                >
+                  {t("clarify.pointShort")}
+                </button>
+              ) : null}
               {VERDICT_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
