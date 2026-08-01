@@ -58,6 +58,11 @@ export function CommentCard({
           <span className="comment-badge">
             {t("comments.badge", { n: indexLabel })}
           </span>
+          {node.adoptedAt ? (
+            <span className="comment-adopted-badge" title={t("fork.adoptedHint")}>
+              {t("fork.adopted")}
+            </span>
+          ) : null}
           <button
             type="button"
             className="comment-toggle"

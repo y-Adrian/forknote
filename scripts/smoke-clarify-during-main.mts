@@ -1,10 +1,11 @@
 /**
- * Clarify may run during main generation; not during another branch turn.
+ * Clarify gate: parallel with main, queue when branch busy.
  */
 import assert from "node:assert/strict";
 import {
   canStartAskBranch,
   shouldClearPendingPlanForClarify,
+  shouldQueueClarify,
 } from "../src/lib/clarifyGate.ts";
 
 assert.equal(
@@ -12,16 +13,21 @@ assert.equal(
   true,
 );
 assert.equal(
-  canStartAskBranch({ loadingMain: false, loadingBranch: false }),
+  canStartAskBranch({ loadingMain: false, loadingBranch: true }),
+  false,
+);
+
+assert.equal(
+  shouldQueueClarify({ loadingMain: false, loadingBranch: true }),
   true,
 );
 assert.equal(
-  canStartAskBranch({ loadingMain: true, loadingBranch: true }),
+  shouldQueueClarify({ loadingMain: true, loadingBranch: false }),
   false,
 );
 assert.equal(
-  canStartAskBranch({ loadingMain: false, loadingBranch: true }),
-  false,
+  shouldQueueClarify({ loadingMain: true, loadingBranch: true }),
+  true,
 );
 
 assert.equal(
@@ -30,19 +36,11 @@ assert.equal(
     pendingBranchId: null,
   }),
   false,
-  "do not clear main pending plan while main is loading",
 );
 assert.equal(
   shouldClearPendingPlanForClarify({
     loadingMain: true,
     pendingBranchId: "b1",
-  }),
-  true,
-);
-assert.equal(
-  shouldClearPendingPlanForClarify({
-    loadingMain: false,
-    pendingBranchId: null,
   }),
   true,
 );

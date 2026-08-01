@@ -515,6 +515,9 @@ const en = {
   "clarify.pointShort": "Ask",
   "clarify.pointPlaceholder":
     "What’s unclear about this point? e.g. Why this step / what does it imply?",
+  "clarify.queued":
+    "Clarify queued — it will start when the current fork turn finishes.",
+  "clarify.queuedCancel": "Cancel queue",
   "clarify.hint": "Same tools as main when a project is bound · Enter to send · Shift+Enter for new line · Drag title to move",
   "clarify.error.needProject": "Open a local project first (Open project), then retry this clarify request.",
 
@@ -1059,6 +1062,8 @@ const zh: Record<MessageKey, string> = {
   "clarify.pointShort": "澄",
   "clarify.pointPlaceholder":
     "这一点哪里不清楚？例如：为什么要这一步 / 它意味着什么？",
+  "clarify.queued": "澄清已排队 — 当前分支结束后自动开始。",
+  "clarify.queuedCancel": "取消排队",
   "clarify.hint": "绑定项目后可用与主对话相同的工具 · Enter 发送 · Shift+Enter 换行 · 拖标题移动",
   "clarify.error.needProject": "请先打开本地项目（打开项目），然后再试一次澄清提问。",
 

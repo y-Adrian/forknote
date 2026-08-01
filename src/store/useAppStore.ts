@@ -77,6 +77,8 @@ import {
 import {
   canStartAskBranch,
   shouldClearPendingPlanForClarify,
+  shouldQueueClarify,
+  type PendingClarify,
 } from "../lib/clarifyGate";
 import type {
   Anchor,
@@ -116,6 +118,8 @@ interface AppState {
   loadingMainBySession: Record<NodeId, boolean>;
   /** In-flight branch id per session (keyed by session id). */
   loadingBranchBySession: Record<NodeId, NodeId>;
+  /** At most one Clarify queued per session while a branch turn runs. */
+  pendingClarifyBySession: Record<NodeId, PendingClarify>;
   /** Session currently streaming an archive draft, if any. */
   loadingArchiveSessionId: NodeId | null;
   /** Session currently compressing context, if any. */
@@ -239,7 +243,10 @@ interface AppState {
     parentContent: string,
     anchor: Anchor,
     question: string,
+    opts?: { openFloat?: boolean },
   ) => Promise<NodeId | void>;
+  /** Drop a queued Clarify for the active session (or a given session). */
+  clearPendingClarify: (sessionId?: NodeId | null) => void;
   /** Same-window Fork follow-up (does not create a nested float). */
   continueBranch: (branchId: NodeId, question: string) => Promise<void>;
   /** Adopt fork conclusion into the parent assistant message (non-destructive note). */
@@ -549,6 +556,63 @@ function setSessionBranchLoading(
   });
 }
 
+function clearPendingClarifyState(
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  sessionId?: NodeId | null,
+): void {
+  if (sessionId) {
+    set((state) => {
+      if (!state.pendingClarifyBySession[sessionId]) return {};
+      const next = { ...state.pendingClarifyBySession };
+      delete next[sessionId];
+      return { pendingClarifyBySession: next };
+    });
+    return;
+  }
+  set({ pendingClarifyBySession: {} });
+}
+
+function defaultQueuedClarifyRect(): DOMRect {
+  const w = 320;
+  const h = 40;
+  const left = Math.max(16, Math.round(window.innerWidth / 2 - w / 2));
+  const top = Math.max(16, Math.round(window.innerHeight * 0.28));
+  return new DOMRect(left, top, w, h);
+}
+
+function flushPendingClarify(
+  get: () => AppState,
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  sessionId: NodeId,
+): void {
+  const pending = get().pendingClarifyBySession[sessionId];
+  if (!pending) return;
+  clearPendingClarifyState(set, sessionId);
+  if (
+    !canStartAskBranch({
+      loadingMain: Boolean(get().loadingMainBySession[sessionId]),
+      loadingBranch: Boolean(get().loadingBranchBySession[sessionId]),
+    })
+  ) {
+    return;
+  }
+  void get().askBranch(
+    pending.parentId,
+    pending.parentContent,
+    pending.anchor,
+    pending.question,
+    { openFloat: true },
+  );
+}
+
 /** Thread for a session: live store thread when active, else persisted session.thread. */
 function getSessionThread(
   get: () => AppState,
@@ -673,6 +737,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   focus: { type: "root" },
   loadingMainBySession: {},
   loadingBranchBySession: {},
+  pendingClarifyBySession: {},
   loadingArchiveSessionId: null,
   loadingCompressSessionId: null,
   archivePanelOpen: false,
@@ -1745,6 +1810,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         agentChanges: [],
         loadingMainBySession: {},
         loadingBranchBySession: {},
+        pendingClarifyBySession: {},
         loadingArchiveSessionId: null,
         loadingCompressSessionId: null,
         agentPendingPlan: null,
@@ -1816,6 +1882,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projectError: null,
       loadingMainBySession: {},
       loadingBranchBySession: {},
+      pendingClarifyBySession: {},
       loadingArchiveSessionId: null,
       loadingCompressSessionId: null,
       agentPendingPlan: null,
@@ -1855,6 +1922,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projectError: null,
       loadingMainBySession: {},
       loadingBranchBySession: {},
+      pendingClarifyBySession: {},
       loadingArchiveSessionId: null,
       loadingCompressSessionId: null,
       agentPendingPlan: null,
@@ -2213,7 +2281,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return "started";
   },
 
-  askBranch: async (parentId, _parentContent, anchor, question) => {
+  askBranch: async (parentId, parentContent, anchor, question, opts) => {
     const trimmed = question.trim();
     if (!trimmed) return;
 
@@ -2221,16 +2289,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!thread || !activeSessionId) return;
     const sessionId = activeSessionId;
 
-    // Clarify can run while main is still streaming; do not start a second
-    // branch turn while one is already in flight for this session.
-    if (
-      !canStartAskBranch({
-        loadingMain: Boolean(get().loadingMainBySession[sessionId]),
-        loadingBranch: Boolean(get().loadingBranchBySession[sessionId]),
-      })
-    ) {
+    const loadingMain = Boolean(get().loadingMainBySession[sessionId]);
+    const loadingBranch = Boolean(get().loadingBranchBySession[sessionId]);
+
+    // Clarify can run while main is still streaming; if a branch turn is
+    // already in flight, queue at most one Clarify and run it when free.
+    if (!canStartAskBranch({ loadingMain, loadingBranch })) {
+      if (shouldQueueClarify({ loadingMain, loadingBranch })) {
+        set((state) => ({
+          pendingClarifyBySession: {
+            ...state.pendingClarifyBySession,
+            [sessionId]: {
+              parentId,
+              parentContent,
+              anchor,
+              question: trimmed,
+            },
+          },
+        }));
+        return;
+      }
       return;
     }
+
+    clearPendingClarifyState(set, sessionId);
+
     const pending = get().agentPendingPlan;
     if (
       pending?.sessionId === sessionId &&
@@ -2451,11 +2534,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (owned?.ctrl === branchCtrl && !waitingPlan) {
           branchAbortBySession.delete(sessionId);
           setSessionBranchLoading(set, sessionId, null);
+          queueMicrotask(() => flushPendingClarify(get, set, sessionId));
         }
       }
     })();
 
+    if (opts?.openFloat) {
+      get().openBranchFloat(branchId, defaultQueuedClarifyRect(), null);
+    }
+
     return branchId;
+  },
+
+  clearPendingClarify: (sessionId) => {
+    clearPendingClarifyState(set, sessionId ?? get().activeSessionId);
   },
 
   continueBranch: async (branchId, question) => {
@@ -2663,6 +2755,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (owned?.ctrl === branchCtrl && !waitingPlan) {
           branchAbortBySession.delete(sessionId);
           setSessionBranchLoading(set, sessionId, null);
+          queueMicrotask(() => flushPendingClarify(get, set, sessionId));
         }
       }
     })();

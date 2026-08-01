@@ -80,6 +80,12 @@ export function MainPanel({
   const { pending: pendingInline, assistantId: pendingInlineAssistantId } =
     usePendingInlineApproval({ kind: "main" });
   const error = useAppStore((s) => s.error);
+  const pendingClarify = useAppStore((s) =>
+    s.activeSessionId
+      ? s.pendingClarifyBySession[s.activeSessionId] ?? null
+      : null,
+  );
+  const clearPendingClarify = useAppStore((s) => s.clearPendingClarify);
   const recordPassiveCopy = useAppStore((s) => s.recordPassiveCopy);
   const projectRoot = useAppStore((s) => s.projectRoot);
   const sidecarUrl = useAppStore((s) => s.sidecarUrl);
@@ -511,6 +517,22 @@ export function MainPanel({
           </div>
 
           <footer className="ds-chat-footer">
+            {pendingClarify ? (
+              <div className="fn-context-banner fn-context-banner-footer" role="status">
+                <p className="fn-context-banner-text">
+                  {t("clarify.queued")}
+                </p>
+                <div className="fn-context-banner-actions">
+                  <button
+                    type="button"
+                    className="fn-context-banner-btn is-quiet"
+                    onClick={() => clearPendingClarify()}
+                  >
+                    {t("clarify.queuedCancel")}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {modeNotice && inArchiveMode && (
               <div className="fn-context-banner fn-context-banner-footer" role="status">
                 <p className="fn-context-banner-text">
