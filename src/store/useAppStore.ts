@@ -74,6 +74,10 @@ import {
   pushBranchFloat,
   type BranchFloatEntry,
 } from "../lib/branchFloat";
+import {
+  canStartAskBranch,
+  shouldClearPendingPlanForClarify,
+} from "../lib/clarifyGate";
 import type {
   Anchor,
   ApiSettings,
@@ -2217,11 +2221,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!thread || !activeSessionId) return;
     const sessionId = activeSessionId;
 
-    // Don't start a clarify turn while tools are running; a new clarify may
-    // supersede a stale pending plan for this session.
-    if (get().loadingMainBySession[sessionId]) return;
-    if (get().loadingBranchBySession[sessionId]) return;
-    if (get().agentPendingPlan?.sessionId === sessionId) {
+    // Clarify can run while main is still streaming; do not start a second
+    // branch turn while one is already in flight for this session.
+    if (
+      !canStartAskBranch({
+        loadingMain: Boolean(get().loadingMainBySession[sessionId]),
+        loadingBranch: Boolean(get().loadingBranchBySession[sessionId]),
+      })
+    ) {
+      return;
+    }
+    const pending = get().agentPendingPlan;
+    if (
+      pending?.sessionId === sessionId &&
+      shouldClearPendingPlanForClarify({
+        loadingMain: Boolean(get().loadingMainBySession[sessionId]),
+        pendingBranchId: pending.branchId ?? null,
+      })
+    ) {
       clearPendingAgentPlan(set, sessionId);
     }
 

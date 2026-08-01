@@ -315,8 +315,8 @@ export function FloatingBranchDetail({
               branches={
                 isLoadingThis && !settledReplies.length ? [] : branch.children
               }
-              loading={branchLoading}
-              disabled={branchLoading}
+              loading={loadingInitial}
+              disabled={loadingInitial}
               fixedToolbar
               overlayZBase={zIndex}
               compact
@@ -352,8 +352,8 @@ export function FloatingBranchDetail({
             <SelectableMarkdown
               content={reply.assistantMessage}
               branches={[]}
-              loading={branchLoading}
-              disabled={branchLoading}
+              loading={false}
+              disabled={false}
               fixedToolbar
               overlayZBase={zIndex}
               compact
@@ -387,8 +387,8 @@ export function FloatingBranchDetail({
             <SelectableMarkdown
               content={activeReply.assistantMessage}
               branches={[]}
-              loading={branchLoading}
-              disabled={branchLoading}
+              loading={loadingLatestReply}
+              disabled={loadingLatestReply}
               fixedToolbar
               overlayZBase={zIndex}
               compact
