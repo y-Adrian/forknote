@@ -38,6 +38,7 @@ import {
   synthesizeOfficeFromIntent,
   synthesizeShellToolCall,
   synthesizeToolCallsFromApprovedPlan,
+  pendingCoversPlanTool,
   nativeToolResultMessage,
   stripToolCalls,
   synthesizeWriteFromReply,
@@ -882,23 +883,21 @@ export async function runAgentTurn(
         officeFallbackUsed = true;
       }
 
-      // Post-approve: model often dumps monologue / XML without tool_calls.
-      // Parse concrete steps from the approved plan and run them once.
+      // Post-approve: model may emit no tools, or the wrong ones (e.g. list_dir
+      // instead of search_replace). Gap-fill concrete approved steps once.
       if (
         requireToolBatch &&
         projectRoot &&
         !planFallbackUsed &&
-        pending.length === 0 &&
         opts?.fallbackFromPlan
       ) {
         const synth = synthesizeToolCallsFromApprovedPlan(opts.fallbackFromPlan);
         for (const agent of synth) {
           if (agent.tool === "run_terminal" && !allowTerminal) continue;
+          if (pendingCoversPlanTool(pending, agent)) continue;
           pending.push({ agent });
         }
-        if (pending.length > 0) {
-          planFallbackUsed = true;
-        }
+        planFallbackUsed = true;
       }
 
       const cleanedRound = stripToolCalls(roundText);
