@@ -4,6 +4,8 @@ export interface Anchor {
   startOffset: number;
   endOffset: number;
   quotedText: string;
+  /** When clarify started from a numbered point【N】 (one-click). */
+  pointIndex?: number;
 }
 
 /** 用户对回答中某个分点的裁决；缺省（未点击）= 沉默弱正信号，≠ 主动采纳 */
@@ -95,6 +97,10 @@ export interface BranchNode {
    * Nested Clarify this still creates `children` + a new float.
    */
   replies?: BranchReply[];
+  /** User adopted this fork's conclusion into the parent main answer. */
+  adoptedAt?: number;
+  /** Short summary written into the parent (for archive / re-adopt). */
+  adoptedSummary?: string;
 }
 
 export interface ChatMessage {

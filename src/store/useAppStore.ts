@@ -60,6 +60,11 @@ import {
   patchBranchReplyInThread,
   patchMessage,
 } from "../lib/thread";
+import {
+  applyAdoptNoteToContent,
+  resolveBranchAdoptSource,
+  truncateAdoptSummary,
+} from "../lib/adoptBranch";
 import { parseAnswerPoints, parseBranchReplyVerdictTarget } from "../lib/points";
 import { createFeedbackEvent } from "../lib/feedback";
 import { commitFeedbackEvent, inferStrategyId } from "../lib/policy";
@@ -233,6 +238,8 @@ interface AppState {
   ) => Promise<NodeId | void>;
   /** Same-window Fork follow-up (does not create a nested float). */
   continueBranch: (branchId: NodeId, question: string) => Promise<void>;
+  /** Adopt fork conclusion into the parent assistant message (non-destructive note). */
+  adoptBranchIntoMain: (branchId: NodeId) => void;
 }
 
 function getActiveSession(state: AppState): ChatSession | undefined {
@@ -1002,7 +1009,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const source = buildArchiveSource(thread);
+    const source = buildArchiveSource(thread, {
+      feedbackLog: getActiveSession(get())?.feedbackLog,
+    });
     if (!source.trim()) return;
 
     if (archiveAbortSessionId === sessionId) {
@@ -2640,6 +2649,45 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     })();
+  },
+
+  adoptBranchIntoMain: (branchId) => {
+    const { thread, activeSessionId, sessions } = get();
+    if (!thread || !activeSessionId) return;
+
+    const branch = findBranchInThread(thread, branchId);
+    const parent = findAssistantMessageForBranch(thread, branchId);
+    if (!branch || !parent) return;
+
+    const source = resolveBranchAdoptSource(branch);
+    if (!source.trim()) return;
+
+    const locale = getLocale();
+    const summary = truncateAdoptSummary(source);
+    const nextContent = applyAdoptNoteToContent(
+      parent.content,
+      branch,
+      summary,
+      locale,
+    );
+
+    let nextThread = patchMessage(thread, parent.id, { content: nextContent });
+    nextThread = patchBranchInThread(nextThread, branchId, {
+      adoptedAt: Date.now(),
+      adoptedSummary: summary,
+    });
+
+    const nextSessions = upsertActiveSession(
+      sessions,
+      activeSessionId,
+      nextThread,
+    );
+    persistSessions(nextSessions, get().activeSessionId);
+    set({
+      sessions: nextSessions,
+      thread: nextThread,
+      error: null,
+    });
   },
 
 }));

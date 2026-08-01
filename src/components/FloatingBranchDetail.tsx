@@ -9,6 +9,7 @@ import {
   findBranchInThread,
 } from "../lib/thread";
 import { useDraggableFloat } from "../lib/useDraggableFloat";
+import { resolveBranchAdoptSource } from "../lib/adoptBranch";
 import { useAppStore } from "../store/useAppStore";
 import { AgentPlanReview } from "./AgentPlanReview";
 import {
@@ -120,6 +121,7 @@ export function FloatingBranchDetail({
   );
   const askBranch = useAppStore((s) => s.askBranch);
   const continueBranch = useAppStore((s) => s.continueBranch);
+  const adoptBranchIntoMain = useAppStore((s) => s.adoptBranchIntoMain);
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
   const pendingPlanForThis = useAppStore((s) => {
@@ -253,15 +255,45 @@ export function FloatingBranchDetail({
           <span className="float-panel-depth-badge" title={layerLabel}>
             {layerLabel}
           </span>
+          {branch.adoptedAt ? (
+            <span
+              className="float-panel-adopted-badge"
+              title={t("fork.adoptedHint")}
+            >
+              {t("fork.adopted")}
+            </span>
+          ) : null}
         </div>
-        <button
-          type="button"
-          className="ds-icon-btn"
-          onClick={onClose}
-          aria-label={t("common.close")}
+        <div
+          className="float-panel-detail-header-actions"
+          onPointerDown={(e) => e.stopPropagation()}
         >
-          ×
-        </button>
+          <button
+            type="button"
+            className="btn ghost float-panel-adopt-btn"
+            disabled={
+              isLoadingThis || !resolveBranchAdoptSource(branch).trim()
+            }
+            title={t("fork.adoptIntoMainHint")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              adoptBranchIntoMain(branchId);
+            }}
+          >
+            {branch.adoptedAt
+              ? t("fork.adoptIntoMainAgain")
+              : t("fork.adoptIntoMain")}
+          </button>
+          <button
+            type="button"
+            className="ds-icon-btn"
+            onClick={onClose}
+            aria-label={t("common.close")}
+          >
+            ×
+          </button>
+        </div>
       </header>
 
       <div ref={scrollRef} className="float-panel-detail-scroll">
