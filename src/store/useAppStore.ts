@@ -2796,7 +2796,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextContent = applyAdoptNoteToContent(
       parent.content,
       branch,
-      summary,
+      source,
       locale,
     );
 

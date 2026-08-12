@@ -1,11 +1,15 @@
 import type { Components, ExtraProps } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { splitAdoptedSegments } from "../lib/adoptBranch";
 import { useLocale } from "../lib/i18n";
 import { useState, type HTMLAttributes, type ReactNode } from "react";
+import { AdoptedClarifyCard } from "./AdoptedClarifyCard";
 
 interface Props {
   content: string;
+  /** Skip adopted-note cards (used inside the card body itself). */
+  skipAdoptedSplit?: boolean;
 }
 
 function languageFromClass(className?: string): string | null {
@@ -72,10 +76,39 @@ function FencedCodeBlock({
  * agent turn. Custom fenced-code UI replaces <code> with a <div>, which can
  * desync react-markdown reconciliation on rapid Allow→status swaps.
  */
-export function MarkdownBody({ content }: Props) {
+export function MarkdownBody({ content, skipAdoptedSplit = false }: Props) {
   const { t } = useLocale();
   if (!content) {
     return <p className="muted">{t("chat.generating")}</p>;
+  }
+
+  let markdown = content;
+  if (!skipAdoptedSplit) {
+    const segments = splitAdoptedSegments(content);
+    if (segments.some((s) => s.type === "adopted")) {
+      return (
+        <div className="fn-markdown-with-adopts">
+          {segments.map((seg, i) =>
+            seg.type === "adopted" ? (
+              <AdoptedClarifyCard
+                key={`adopt-${seg.branchId}-${i}`}
+                branchId={seg.branchId}
+                label={seg.label}
+                storedBody={seg.body}
+              />
+            ) : (
+              <MarkdownBody
+                key={`md-${i}-${seg.text.length}`}
+                content={seg.text}
+                skipAdoptedSplit
+              />
+            ),
+          )}
+        </div>
+      );
+    }
+    const only = segments[0];
+    if (only?.type === "markdown") markdown = only.text;
   }
 
   const components: Components = {
@@ -100,9 +133,9 @@ export function MarkdownBody({ content }: Props) {
   };
 
   return (
-    <div className="fn-markdown-mount" key={content}>
+    <div className="fn-markdown-mount" key={markdown}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {content}
+        {markdown}
       </ReactMarkdown>
     </div>
   );
