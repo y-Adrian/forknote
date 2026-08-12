@@ -23,7 +23,11 @@ const MIN_RUN_TIMEOUT_MS = 1_000;
 const MAX_RUN_TIMEOUT_MS = 300_000;
 const MAX_COMMAND_CHARS = 8_000;
 const MAX_LIST_ENTRIES = 500;
-const MAX_SEARCH_HITS = 40;
+const MAX_SEARCH_HITS = 80;
+const MAX_GLOB_MATCHES = 200;
+const MAX_DIFF_LINES = 80;
+const DEFAULT_READ_LINES = 400;
+const MAX_SLICE_BYTES = 100 * 1024;
 const SEARCH_SKIP = new Set([
   "node_modules",
   ".git",
@@ -33,6 +37,131 @@ const SEARCH_SKIP = new Set([
   "coverage",
   ".vite",
 ]);
+
+function globToRegExp(pattern) {
+  const src = String(pattern || "")
+    .replace(/\\/g, "/")
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "\0D\0")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\0D\0/g, ".*")
+    .replace(/\?/g, "[^/]");
+  return new RegExp(`^${src}$`, "i");
+}
+
+function shouldSkipName(name) {
+  return SEARCH_SKIP.has(name) || (name.startsWith(".") && name !== ".");
+}
+
+/** Compact unified-ish diff for tool results / UI. */
+function compactDiff(relPath, before, after, maxLines = MAX_DIFF_LINES) {
+  const a = String(before ?? "").split("\n");
+  const b = String(after ?? "").split("\n");
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  let ja = a.length - 1;
+  let jb = b.length - 1;
+  while (ja >= i && jb >= i && a[ja] === b[jb]) {
+    ja -= 1;
+    jb -= 1;
+  }
+  const lines = [`--- a/${relPath}`, `+++ b/${relPath}`, `@@ -${i + 1} +${i + 1} @@`];
+  for (let k = i; k <= ja; k++) lines.push(`-${a[k] ?? ""}`);
+  for (let k = i; k <= jb; k++) lines.push(`+${b[k] ?? ""}`);
+  if (lines.length - 3 > maxLines) {
+    return `${lines.slice(0, 3 + maxLines).join("\n")}\n…(diff truncated)`;
+  }
+  return lines.join("\n");
+}
+
+function looksBinary(buf) {
+  const n = Math.min(buf.length, 8192);
+  for (let i = 0; i < n; i++) {
+    if (buf[i] === 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Read a UTF-8 line slice. Loads files up to MAX_WRITE_BYTES; larger files
+ * require offset+limit and are streamed until the slice is filled.
+ */
+async function readLineSlice(resolved, startLine, limit) {
+  const stat = await fs.stat(resolved);
+  const start = Math.max(1, startLine);
+  const take = Math.max(1, limit);
+
+  if (stat.size <= MAX_WRITE_BYTES) {
+    const raw = await fs.readFile(resolved);
+    if (looksBinary(raw)) {
+      throw Object.assign(
+        new Error("File looks binary — cannot read as UTF-8 text"),
+        { status: 415 },
+      );
+    }
+    const lines = raw.toString("utf8").split("\n");
+    const totalLines = lines.length;
+    const end = Math.min(totalLines, start + take - 1);
+    return {
+      content: lines.slice(start - 1, end).join("\n"),
+      totalLines,
+      startLine: start,
+      endLine: end,
+      truncated: start > 1 || end < totalLines,
+      size: raw.length,
+    };
+  }
+
+  const fh = await fs.open(resolved, "r");
+  try {
+    const probe = Buffer.alloc(Math.min(stat.size, 8192));
+    const { bytesRead } = await fh.read(probe, 0, probe.length, 0);
+    if (looksBinary(probe.subarray(0, bytesRead))) {
+      throw Object.assign(
+        new Error("File looks binary — cannot read as UTF-8 text"),
+        { status: 415 },
+      );
+    }
+    let leftover = "";
+    let lineNo = 0;
+    let collected = [];
+    let totalGuess = 0;
+    const buf = Buffer.alloc(64 * 1024);
+    let pos = 0;
+    while (pos < stat.size) {
+      const { bytesRead: n } = await fh.read(buf, 0, buf.length, pos);
+      if (n === 0) break;
+      pos += n;
+      leftover += buf.toString("utf8", 0, n);
+      const parts = leftover.split("\n");
+      leftover = parts.pop() ?? "";
+      for (const part of parts) {
+        lineNo += 1;
+        if (lineNo >= start && collected.length < take) collected.push(part);
+      }
+      if (collected.length >= take && pos > start * 80) {
+        // keep counting remaining lines cheaply via newlines in leftover+rest
+      }
+    }
+    if (leftover.length || pos >= stat.size) {
+      lineNo += leftover.length ? 1 : 0;
+      if (lineNo >= start && collected.length < take && leftover.length) {
+        collected.push(leftover);
+      }
+    }
+    const end = start + collected.length - 1;
+    return {
+      content: collected.join("\n"),
+      totalLines: lineNo,
+      startLine: start,
+      endLine: Math.max(start, end),
+      truncated: start > 1 || end < lineNo,
+      size: stat.size,
+    };
+  } finally {
+    await fh.close();
+  }
+}
 
 /** @type {string | null} */
 let projectRoot = null;
@@ -296,16 +425,35 @@ async function handleRead(query) {
   if (!stat.isFile()) {
     throw Object.assign(new Error("path is not a file"), { status: 400 });
   }
-  if (stat.size > MAX_READ_BYTES) {
-    throw Object.assign(
-      new Error(
-        `File too large (${stat.size} bytes; max ${MAX_READ_BYTES}). Use a smaller file.`,
-      ),
-      { status: 413 },
-    );
+
+  const offsetRaw = query.get("offset");
+  const limitRaw = query.get("limit");
+  const hasOffset = offsetRaw != null && String(offsetRaw).trim() !== "";
+  const hasLimit = limitRaw != null && String(limitRaw).trim() !== "";
+  const startLine = hasOffset ? Math.max(1, Number(offsetRaw) || 1) : 1;
+  let limit = hasLimit
+    ? Math.max(1, Math.min(2000, Number(limitRaw) || DEFAULT_READ_LINES))
+    : DEFAULT_READ_LINES;
+  if (!hasOffset && !hasLimit && stat.size <= MAX_READ_BYTES) {
+    limit = 100_000;
+  } else if (!hasLimit && stat.size > MAX_READ_BYTES) {
+    limit = DEFAULT_READ_LINES;
   }
-  const content = await fs.readFile(resolved, "utf8");
-  return { path: relative, content, size: Buffer.byteLength(content, "utf8") };
+
+  const slice = await readLineSlice(resolved, startLine, limit);
+  let content = slice.content;
+  if (Buffer.byteLength(content, "utf8") > MAX_SLICE_BYTES && slice.truncated) {
+    content = content.slice(0, MAX_SLICE_BYTES);
+  }
+  return {
+    path: relative,
+    content,
+    size: slice.size,
+    totalLines: slice.totalLines,
+    startLine: slice.startLine,
+    endLine: slice.endLine,
+    truncated: slice.truncated,
+  };
 }
 
 async function handleWrite(body) {
@@ -324,6 +472,13 @@ async function handleWrite(body) {
     );
   }
   const { resolved, relative } = resolveSafe(filePath);
+  let before = "";
+  try {
+    const prev = await fs.readFile(resolved);
+    if (!looksBinary(prev)) before = prev.toString("utf8");
+  } catch {
+    // new file
+  }
   try {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, body.content, "utf8");
@@ -333,7 +488,8 @@ async function handleWrite(body) {
       status: 500,
     });
   }
-  return { path: relative, size: bytes, written: true };
+  const diff = before === body.content ? "" : compactDiff(relative, before, body.content);
+  return { path: relative, size: bytes, written: true, created: before === "", diff };
 }
 
 /**
@@ -377,10 +533,10 @@ async function handleSearchReplace(body) {
     if (!stat.isFile()) {
       throw Object.assign(new Error("path is not a file"), { status: 400 });
     }
-    if (stat.size > MAX_READ_BYTES) {
+    if (stat.size > MAX_WRITE_BYTES) {
       throw Object.assign(
         new Error(
-          `File too large to edit in place (${stat.size} bytes; max ${MAX_READ_BYTES})`,
+          `File too large to edit in place (${stat.size} bytes; max ${MAX_WRITE_BYTES})`,
         ),
         { status: 413 },
       );
@@ -433,6 +589,7 @@ async function handleSearchReplace(body) {
     written: true,
     kind: "search_replace",
     replacements: replaceAll ? occurrences : 1,
+    diff: compactDiff(relative, original, next),
   };
 }
 
@@ -481,6 +638,7 @@ async function handleApplyPatch(body) {
     kind: "apply_patch",
     edits: body.edits.length,
     replacements: total,
+    diff: last?.diff ?? "",
   };
 }
 
@@ -660,9 +818,8 @@ async function handleMkdir(body) {
 }
 
 /**
- * Simple recursive text search (no ripgrep dependency).
- * @param {string} query
- * @param {string} [subpath]
+ * Simple recursive text search (ripgrep when available, else walk).
+ * Body: { query, path?, regex?, glob? }
  */
 async function handleSearch(body) {
   const query = String(body?.query ?? "").trim();
@@ -673,7 +830,25 @@ async function handleSearch(body) {
     throw Object.assign(new Error("query too long"), { status: 400 });
   }
   const { root, resolved: start } = resolveSafe(body?.path || ".");
-  const needle = query.toLowerCase();
+  const useRegex = Boolean(body?.regex);
+  const glob = typeof body?.glob === "string" ? body.glob.trim() : "";
+  const rgHits = await tryRipgrep(root, start, query, {
+    regex: useRegex,
+    glob,
+  });
+  if (rgHits) return rgHits;
+
+  let matcher;
+  if (useRegex) {
+    try {
+      matcher = new RegExp(query, "i");
+    } catch {
+      throw Object.assign(new Error("Invalid regular expression"), {
+        status: 400,
+      });
+    }
+  }
+  const globRe = glob ? globToRegExp(glob) : null;
   /** @type {{ path: string, line: number, text: string }[]} */
   const hits = [];
 
@@ -687,45 +862,427 @@ async function handleSearch(body) {
     }
     for (const ent of entries) {
       if (hits.length >= MAX_SEARCH_HITS) return;
-      if (SEARCH_SKIP.has(ent.name) || ent.name.startsWith(".")) continue;
+      if (shouldSkipName(ent.name)) continue;
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
         await walk(full);
         continue;
       }
       if (!ent.isFile()) continue;
+      const rel = path.relative(root, full).split(path.sep).join("/");
+      if (globRe && !globRe.test(rel) && !globRe.test(ent.name)) continue;
       let stat;
       try {
         stat = await fs.stat(full);
       } catch {
         continue;
       }
-      if (stat.size > MAX_READ_BYTES || stat.size === 0) continue;
+      if (stat.size > MAX_WRITE_BYTES || stat.size === 0) continue;
       let text;
       try {
-        text = await fs.readFile(full, "utf8");
+        const raw = await fs.readFile(full);
+        if (looksBinary(raw)) continue;
+        text = raw.toString("utf8");
       } catch {
         continue;
       }
-      // Skip likely binary
-      if (text.includes("\0")) continue;
       const lines = text.split(/\r?\n/);
-      const rel = path.relative(root, full).split(path.sep).join("/");
       for (let i = 0; i < lines.length; i++) {
         if (hits.length >= MAX_SEARCH_HITS) return;
-        if (lines[i].toLowerCase().includes(needle)) {
-          hits.push({
-            path: rel,
-            line: i + 1,
-            text: lines[i].slice(0, 200),
-          });
+        const line = lines[i];
+        const ok = matcher ? matcher.test(line) : line.toLowerCase().includes(query.toLowerCase());
+        if (ok) {
+          hits.push({ path: rel, line: i + 1, text: line.slice(0, 200) });
         }
       }
     }
   }
 
   await walk(start);
-  return { query, hits, truncated: hits.length >= MAX_SEARCH_HITS };
+  return { query, hits, truncated: hits.length >= MAX_SEARCH_HITS, regex: useRegex };
+}
+
+async function tryRipgrep(root, startAbs, query, opts) {
+  const relStart = path.relative(root, startAbs) || ".";
+  const args = ["-n", "--no-heading", "--color", "never", "-g", "!node_modules", "-g", "!.git"];
+  if (!opts.regex) args.push("-F");
+  if (opts.glob) args.push("-g", opts.glob);
+  args.push("--", query, relStart);
+  try {
+    const { stdout } = await execFileAsync("rg", args, {
+      cwd: root,
+      maxBuffer: 2 * 1024 * 1024,
+      timeout: 15_000,
+    });
+    const hits = [];
+    for (const line of stdout.split("\n")) {
+      if (!line || hits.length >= MAX_SEARCH_HITS) break;
+      const m = /^(.+?):(\d+):(.*)$/.exec(line);
+      if (!m) continue;
+      hits.push({
+        path: m[1].split(path.sep).join("/").replace(/^\.\//, ""),
+        line: Number(m[2]),
+        text: m[3].slice(0, 200),
+      });
+    }
+    return {
+      query,
+      hits,
+      truncated: hits.length >= MAX_SEARCH_HITS,
+      regex: Boolean(opts.regex),
+      engine: "rg",
+    };
+  } catch (e) {
+    const err = /** @type {{ code?: string|number, status?: number }} */ (e);
+    if (err.code === "ENOENT") return null;
+    if (err.code === 1 || err.status === 1) {
+      return { query, hits: [], truncated: false, regex: Boolean(opts.regex), engine: "rg" };
+    }
+    return null;
+  }
+}
+
+async function handleGlob(body) {
+  const pattern = String(body?.pattern ?? "").trim();
+  if (!pattern) {
+    throw Object.assign(new Error("pattern is required"), { status: 400 });
+  }
+  const { root, resolved: start } = resolveSafe(body?.path || ".");
+  const re = globToRegExp(pattern);
+  /** @type {string[]} */
+  const matches = [];
+
+  async function walk(dir) {
+    if (matches.length >= MAX_GLOB_MATCHES) return;
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      if (matches.length >= MAX_GLOB_MATCHES) return;
+      if (shouldSkipName(ent.name)) continue;
+      const full = path.join(dir, ent.name);
+      const rel = path.relative(root, full).split(path.sep).join("/");
+      if (ent.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (!ent.isFile()) continue;
+      if (re.test(rel) || re.test(ent.name)) matches.push(rel);
+    }
+  }
+
+  await walk(start);
+  return {
+    pattern,
+    matches,
+    truncated: matches.length >= MAX_GLOB_MATCHES,
+  };
+}
+
+async function handleDelete(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath || filePath === ".") {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  const { resolved, relative } = resolveSafe(filePath);
+  let stat;
+  try {
+    stat = await fs.lstat(resolved);
+  } catch {
+    throw Object.assign(new Error(`Not found: ${relative}`), { status: 404 });
+  }
+  if (stat.isDirectory()) {
+    const entries = await fs.readdir(resolved);
+    if (entries.length > 0) {
+      throw Object.assign(
+        new Error(`Directory not empty: ${relative} (delete files first)`),
+        { status: 400 },
+      );
+    }
+    await fs.rmdir(resolved);
+    return { path: relative, deleted: true, kind: "dir" };
+  }
+  if (!stat.isFile() && !stat.isSymbolicLink()) {
+    throw Object.assign(new Error("path is not a file"), { status: 400 });
+  }
+  await fs.unlink(resolved);
+  return { path: relative, deleted: true, kind: "file", size: stat.size };
+}
+
+async function handleRename(body) {
+  const from = String(body?.from ?? body?.path ?? "").trim();
+  const to = String(body?.to ?? body?.new_path ?? "").trim();
+  if (!from || from === ".") {
+    throw Object.assign(new Error("from is required"), { status: 400 });
+  }
+  if (!to || to === ".") {
+    throw Object.assign(new Error("to is required"), { status: 400 });
+  }
+  const src = resolveSafe(from);
+  const dest = resolveSafe(to);
+  try {
+    await fs.stat(src.resolved);
+  } catch {
+    throw Object.assign(new Error(`Not found: ${src.relative}`), { status: 404 });
+  }
+  try {
+    await fs.stat(dest.resolved);
+    throw Object.assign(new Error(`Target already exists: ${dest.relative}`), {
+      status: 409,
+    });
+  } catch (e) {
+    if (/** @type {{ status?: number }} */ (e).status) throw e;
+  }
+  await fs.mkdir(path.dirname(dest.resolved), { recursive: true });
+  await fs.rename(src.resolved, dest.resolved);
+  return { from: src.relative, to: dest.relative, renamed: true };
+}
+
+function decodeXmlEntities(s) {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+async function handleReadDocx(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  const { resolved, relative } = resolveSafe(filePath);
+  try {
+    await fs.stat(resolved);
+  } catch {
+    throw Object.assign(new Error(`File not found: ${relative}`), { status: 404 });
+  }
+  let xml;
+  try {
+    const { stdout } = await execFileAsync("unzip", ["-p", resolved, "word/document.xml"], {
+      maxBuffer: 2 * 1024 * 1024,
+      timeout: 10_000,
+    });
+    xml = stdout;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unzip failed";
+    throw Object.assign(
+      new Error(`Cannot read .docx (${relative}): ${msg}`),
+      { status: 400 },
+    );
+  }
+  const text = decodeXmlEntities(
+    xml
+      .replace(/<w:tab\b[^/]*\/>/g, "\t")
+      .replace(/<w:br\b[^/]*\/>/g, "\n")
+      .replace(/<\/w:p>/g, "\n")
+      .replace(/<[^>]+>/g, ""),
+  )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const clipped = text.length > 20_000 ? `${text.slice(0, 20_000)}\n…(truncated)` : text;
+  return { path: relative, text: clipped, truncated: text.length > 20_000 };
+}
+
+async function handleReadXlsx(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  const { resolved, relative } = resolveSafe(filePath);
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.readFile(resolved);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "read failed";
+    throw Object.assign(new Error(`Cannot read .xlsx (${relative}): ${msg}`), {
+      status: 400,
+    });
+  }
+  const sheets = [];
+  wb.eachSheet((ws) => {
+    const rows = [];
+    ws.eachRow({ includeEmpty: false }, (row, n) => {
+      if (rows.length >= 200) return;
+      const vals = [];
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        if (col > 40) return;
+        const v = cell.value;
+        if (v == null) vals.push("");
+        else if (typeof v === "object" && v && "text" in v) vals.push(String(v.text));
+        else if (typeof v === "object" && v && "result" in v) vals.push(String(v.result ?? ""));
+        else vals.push(String(v));
+      });
+      rows.push({ row: n, cells: vals });
+    });
+    sheets.push({ name: ws.name, rows });
+  });
+  return { path: relative, sheets };
+}
+
+async function handlePatchXlsx(body) {
+  const filePath = String(body?.path ?? "").trim();
+  if (!filePath) {
+    throw Object.assign(new Error("path is required"), { status: 400 });
+  }
+  const cells = Array.isArray(body?.cells) ? body.cells : [];
+  if (cells.length === 0) {
+    throw Object.assign(new Error("cells must be a non-empty array"), {
+      status: 400,
+    });
+  }
+  if (cells.length > 500) {
+    throw Object.assign(new Error("Too many cells (max 500)"), { status: 413 });
+  }
+  const { resolved, relative } = resolveSafe(filePath);
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(resolved);
+  const sheetName =
+    typeof body?.sheet_name === "string" && body.sheet_name.trim()
+      ? body.sheet_name.trim()
+      : wb.worksheets[0]?.name;
+  const ws = sheetName ? wb.getWorksheet(sheetName) : wb.worksheets[0];
+  if (!ws) {
+    throw Object.assign(new Error("Worksheet not found"), { status: 404 });
+  }
+  let patched = 0;
+  for (const item of cells) {
+    const r = Number(item?.row ?? item?.r);
+    const c = Number(item?.col ?? item?.c);
+    if (!Number.isFinite(r) || !Number.isFinite(c) || r < 1 || c < 1) continue;
+    ws.getCell(r, c).value = item?.value ?? null;
+    patched += 1;
+  }
+  await wb.xlsx.writeFile(resolved);
+  const stat = await fs.stat(resolved);
+  return {
+    path: relative,
+    sheet_name: ws.name,
+    patched,
+    size: stat.size,
+    written: true,
+  };
+}
+
+async function gitExec(args) {
+  if (!projectRoot) {
+    throw Object.assign(new Error("No project open"), { status: 400 });
+  }
+  try {
+    const { stdout, stderr } = await execFileAsync("git", args, {
+      cwd: projectRoot,
+      maxBuffer: 2 * 1024 * 1024,
+      timeout: 20_000,
+    });
+    return { stdout: stdout || "", stderr: stderr || "", exitCode: 0 };
+  } catch (e) {
+    const err = /** @type {{ stdout?: string, stderr?: string, code?: number }} */ (e);
+    if (err.code === "ENOENT") {
+      throw Object.assign(new Error("git is not installed"), { status: 500 });
+    }
+    return {
+      stdout: err.stdout || "",
+      stderr: err.stderr || (e instanceof Error ? e.message : "git failed"),
+      exitCode: typeof err.code === "number" ? err.code : 1,
+    };
+  }
+}
+
+async function handleGitStatus() {
+  const r = await gitExec(["status", "--porcelain=v1", "-b"]);
+  return { ok: r.exitCode === 0, output: (r.stdout || r.stderr).trim(), exitCode: r.exitCode };
+}
+
+async function handleGitDiff(body) {
+  const filePath = typeof body?.path === "string" ? body.path.trim() : "";
+  const args = ["diff", "--no-color"];
+  if (filePath) {
+    const { relative } = resolveSafe(filePath);
+    args.push("--", relative);
+  }
+  const r = await gitExec(args);
+  let output = (r.stdout || r.stderr).trim();
+  if (output.length > 30_000) output = `${output.slice(0, 30_000)}\n…(truncated)`;
+  return { ok: r.exitCode === 0, output, exitCode: r.exitCode };
+}
+
+async function handleGitCommit(body) {
+  const message = String(body?.message ?? "").trim();
+  if (!message) {
+    throw Object.assign(new Error("commit message is required"), { status: 400 });
+  }
+  if (/^-/.test(message) || message.includes("\0")) {
+    throw Object.assign(new Error("invalid commit message"), { status: 400 });
+  }
+  const paths = Array.isArray(body?.paths)
+    ? body.paths.map((p) => String(p ?? "").trim()).filter(Boolean)
+    : [];
+  if (paths.length === 0) {
+    throw Object.assign(
+      new Error("paths is required — list files to stage (no git add -A)"),
+      { status: 400 },
+    );
+  }
+  const rels = paths.map((p) => resolveSafe(p).relative);
+  const add = await gitExec(["add", "--", ...rels]);
+  if (add.exitCode !== 0) {
+    throw Object.assign(new Error(add.stderr || add.stdout || "git add failed"), {
+      status: 400,
+    });
+  }
+  const commit = await gitExec(["commit", "-m", message, "--", ...rels]);
+  return {
+    ok: commit.exitCode === 0,
+    output: (commit.stdout || commit.stderr).trim(),
+    exitCode: commit.exitCode,
+    paths: rels,
+  };
+}
+
+async function handleDiagnostics(body) {
+  if (!projectRoot) {
+    throw Object.assign(new Error("No project open"), { status: 400 });
+  }
+  let hasTsconfig = false;
+  try {
+    await fs.stat(path.join(projectRoot, "tsconfig.json"));
+    hasTsconfig = true;
+  } catch {
+    hasTsconfig = false;
+  }
+  if (!hasTsconfig) {
+    return {
+      ok: true,
+      skipped: true,
+      output: "No tsconfig.json — skipped tsc. Run tests via run_terminal if needed.",
+    };
+  }
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      "npx",
+      ["tsc", "--noEmit", "--pretty", "false"],
+      {
+        cwd: projectRoot,
+        maxBuffer: 2 * 1024 * 1024,
+        timeout: 45_000,
+      },
+    );
+    const output = `${stdout || ""}${stderr || ""}`.trim() || "tsc: no errors";
+    return { ok: true, skipped: false, output: output.slice(0, 12_000) };
+  } catch (e) {
+    const err = /** @type {{ stdout?: string, stderr?: string, code?: string|number }} */ (e);
+    if (err.code === "ENOENT") {
+      return { ok: false, skipped: true, output: "npx/tsc not available" };
+    }
+    const output = `${err.stdout || ""}${err.stderr || ""}`.trim() || "tsc failed";
+    return { ok: false, skipped: false, output: output.slice(0, 12_000) };
+  }
 }
 
 /**
@@ -1117,6 +1674,45 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/search") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleSearch(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/glob") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleGlob(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/delete") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleDelete(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/rename") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleRename(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/read_docx") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleReadDocx(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/read_xlsx") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleReadXlsx(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/patch_xlsx") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handlePatchXlsx(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/diagnostics") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleDiagnostics(body));
+    }
+    if (req.method === "POST" && pathname === "/git/status") {
+      return sendJson(res, 200, await handleGitStatus());
+    }
+    if (req.method === "POST" && pathname === "/git/diff") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleGitDiff(body));
+    }
+    if (req.method === "POST" && pathname === "/git/commit") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleGitCommit(body));
     }
     if (req.method === "POST" && pathname === "/fs/run") {
       const body = await readBody(req);

@@ -238,14 +238,23 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | 工具 | 作用 |
 |------|------|
 | `list_dir` | 列目录 |
-| `read_file` | 读文本（有大小上限） |
-| `write_file` | 覆盖写入 UTF-8 文本文件（源码、md、csv、json 等） |
-| `search_replace` | 精确替换已有文本文件中的片段（优先用于小改动） |
-| `apply_patch` | 对同一文件顺序应用多处 `search_replace` |
+| `glob_files` | 按 glob 找文件（如 `**/*.ts`） |
+| `read_file` | 读文本；大文件默认前 ~400 行，可用 `offset`/`limit` 分页 |
+| `write_file` | 覆盖写入 UTF-8 文本；结果含 compact diff |
+| `search_replace` | 精确替换已有文本文件中的片段（优先用于小改动；结果含 diff） |
+| `apply_patch` | 对同一文件顺序应用多处 `search_replace`（结果含 diff） |
+| `delete_file` | 删除文件或空目录 |
+| `rename_file` | 项目内重命名/移动 |
 | `write_docx` | 生成真实 Word `.docx`（`title` + `paragraphs`） |
+| `read_docx` | 读取已有 Word 正文 |
 | `write_xlsx` | 生成真实 Excel `.xlsx`（`rows` 二维数组） |
+| `read_xlsx` | 读取已有 Excel 单元格 |
+| `patch_xlsx` | 按行列修补已有 Excel 单元格 |
 | `mkdir` | 创建目录 |
-| `search_files` | 简单全文搜索 |
+| `search_files` | 全文搜索（子串；`regex=true` 为正则；可用 `glob` 限文件） |
+| `run_diagnostics` | 若有 `tsconfig.json` 则跑 `tsc --noEmit` |
+| `git_status` / `git_diff` | 结构化 git 状态与 diff |
+| `git_commit` | 安全提交：必须 `message` + `paths[]`（禁止 `add -A` / push） |
 | `run_terminal` | 在项目内执行 shell 命令（可选相对 `cwd`、`timeoutMs`） |
 
 示例提问：
@@ -263,14 +272,24 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 | `GET` | `/project` | 当前根目录 |
 | `POST` | `/project/close` | 解除绑定 |
 | `GET` | `/fs/list?path=` | 列目录 |
-| `GET` | `/fs/read?path=` | 读文件 |
-| `POST` | `/fs/write` | `{ "path", "content" }` 文本 |
-| `POST` | `/fs/search_replace` | `{ "path", "old_string", "new_string", "replace_all?" }` |
-| `POST` | `/fs/apply_patch` | `{ "path", "edits": [{ "old_string", "new_string", "replace_all?" }] }` |
+| `GET` | `/fs/read?path=` | 读文件；可选 `offset`/`limit`（1-based 行） |
+| `POST` | `/fs/write` | `{ "path", "content" }` 文本；返回 `diff` |
+| `POST` | `/fs/search_replace` | `{ "path", "old_string", "new_string", "replace_all?" }`；返回 `diff` |
+| `POST` | `/fs/apply_patch` | `{ "path", "edits": [{ "old_string", "new_string", "replace_all?" }] }`；返回 `diff` |
 | `POST` | `/fs/write_docx` | `{ "path", "title?", "paragraphs": string[] }` |
 | `POST` | `/fs/write_xlsx` | `{ "path", "sheet_name?", "rows": cell[][] }` |
+| `POST` | `/fs/read_docx` | `{ "path" }` 读取 Word 正文 |
+| `POST` | `/fs/read_xlsx` | `{ "path" }` 读取 Excel 单元格 |
+| `POST` | `/fs/patch_xlsx` | `{ "path", "sheet_name?", "cells": [{ row, col, value }] }` |
 | `POST` | `/fs/mkdir` | `{ "path" }` |
-| `POST` | `/fs/search` | `{ "query", "path?" }` |
+| `POST` | `/fs/delete` | `{ "path" }` 删除文件或空目录 |
+| `POST` | `/fs/rename` | `{ "from", "to" }` |
+| `POST` | `/fs/glob` | `{ "pattern", "path?" }` |
+| `POST` | `/fs/search` | `{ "query", "path?", "regex?", "glob?" }` |
+| `POST` | `/fs/diagnostics` | 有 `tsconfig.json` 时跑 `tsc --noEmit` |
+| `POST` | `/git/status` | porcelain 状态 |
+| `POST` | `/git/diff` | `{ "path?" }` |
+| `POST` | `/git/commit` | `{ "message", "paths": string[] }`（禁止 add -A / push） |
 | `POST` | `/fs/run` | `{ "command", "cwd?", "timeoutMs?" }` → `{ exitCode, stdout, stderr, truncated, cwd }` |
 | `GET` | `/health` | 探活 |
 
@@ -411,7 +430,7 @@ flowchart TD
 | 归档 | `archive.ts`、`ArchivePanel.tsx` | 开发日志草稿与面板 |
 | 记忆包 | `contextMemory.ts`、`memoryTransfer.ts`、`userPreferences.ts`、`repoContext.ts`、`MemoryPanel.tsx` | 三层注入；可编辑 UI；导入/导出；@file 附带 |
 | 推理展示 | `openai.ts`、`reasoning.ts`、`ThinkingBlock.tsx` | 仅在有真实 reasoning 时显示 |
-| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `read_file` / `write_file` / `run_terminal` / …；多轮循环 + 计划批准门控 |
+| Agent 工具 | `agentTools.ts`、`sidecar.ts` | `list_dir` / `glob_files` / `read_file` / `write_file` / `git_*` / `run_terminal` / …；只读工具可并行；多轮循环 + 计划批准门控 |
 | 计划审核 | `AgentPlanReview.tsx` | 绑定项目且开启批准时，工具执行前的计划审阅栏 |
 | 设置 / i18n | `SettingsPanel.tsx`、`i18n.ts`、`theme.ts` | 系统设置；EN/ZH；主题 |
 | 类型 | `types.ts` | `ChatSession`、`ThreadRoot`、归档、记忆包等 |
