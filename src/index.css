@@ -1,7 +1,7 @@
 /* ============================================================
    ForkNote — Design System
-   Airy white chat UI, soft lavender-blue accents
-   Minimal chrome, large composer radius, clean UI sans
+   Manga ink-line panels: bold outlines, screentone paper,
+   hard offset shadows, stamp-red accents (not soft neon chrome)
    ============================================================ */
 
 /* ── Keyframe Library ─────────────────────────────────────── */
@@ -80,15 +80,21 @@
 /* ── CSS Variables ────────────────────────────────────────── */
 
 :root {
-  /* Shape — soft consumer chrome */
-  --ds-radius:          12px;
-  --ds-radius-lg:       16px;
-  --ds-radius-xl:       20px;
-  --ds-radius-pill:     999px;
+  /* Shape — comic panel corners (not stadium pills) */
+  --ds-radius:          6px;
+  --ds-radius-lg:       8px;
+  --ds-radius-xl:       10px;
+  --ds-radius-pill:     8px;
+  --ds-ink:             #161616;
+  --ds-ink-soft:        rgba(22, 22, 22, 0.72);
+  --ds-stamp:           #e23d3d;
+  --ds-screen:          #2aa8b8;
+  --ds-line:            2px;
+  --ds-hard-shadow:     3px 3px 0 var(--ds-ink);
 
-  /* Composer — stadium / large soft capsule */
-  --ds-composer-radius: 28px;
-  --ds-composer-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+  /* Composer — ink-bordered panel */
+  --ds-composer-radius: 10px;
+  --ds-composer-shadow: var(--ds-hard-shadow);
 
   /* Layout */
   --ds-sidebar-w:       268px;
@@ -114,14 +120,19 @@
   --fn-text-chat:       1.05rem;   /* ~16.8px — was ~0.975rem / ~15.6px */
   --fn-text-chat-sm:    1rem;      /* compact composer — was ~0.925rem */
 
-  /* Typography — clean UI sans; JetBrains Mono for all code surfaces */
+  /* Typography — rounded gothic UI + display stamp face */
   --ds-font-ui:
-    "DM Sans",
+    "M PLUS Rounded 1c",
+    "Hiragino Maru Gothic ProN",
+    "PingFang SC",
     "Segoe UI",
     system-ui,
-    -apple-system,
     sans-serif;
-  --ds-font-display: var(--ds-font-ui);
+  --ds-font-display:
+    "Dela Gothic One",
+    "M PLUS Rounded 1c",
+    system-ui,
+    sans-serif;
   /* Loaded via Google Fonts in index.html — distinct from DM Sans body/UI */
   --ds-font-mono:
     "JetBrains Mono",
@@ -232,120 +243,121 @@
   line-height: 1.35;
 }
 
-/* Dark — soft indigo-gray, lavender-blue accent (not harsh charcoal) */
+/* Dark — ink night + white linework, stamp-red accent */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --ds-bg:              #12141c;
-  --ds-main:            #171a24;
-  --ds-sidebar:         #1a1d28;
-  --ds-surface:         #222633;
-  --ds-surface-hover:   #2a2f3e;
-  --ds-surface-elevated:#1e2230;
+  --ds-bg:              #0e0e12;
+  --ds-main:            #141418;
+  --ds-sidebar:         #121216;
+  --ds-surface:         #1a1a20;
+  --ds-surface-hover:   #24242c;
+  --ds-surface-elevated:#1c1c24;
 
-  --ds-border:          rgba(180, 190, 220, 0.1);
-  --ds-border-strong:   rgba(180, 190, 220, 0.16);
+  --ds-border:          rgba(240, 240, 245, 0.55);
+  --ds-border-strong:   rgba(255, 255, 255, 0.78);
 
-  --ds-text:            #e8eaf2;
-  --ds-text-dim:        #a8b0c4;
-  --ds-muted:           #7a849c;
+  --ds-text:            #f2f2f5;
+  --ds-text-dim:        #c4c4ce;
+  --ds-muted:           #8e8e9a;
 
-  /* Soft lavender-blue — solid, not neon / gradient glow */
-  --ds-brand:           #7b8fff;
-  --ds-brand-2:         #9aacff;
-  --ds-brand-grad:      #7b8fff;
+  --ds-brand:           #ff5a5a;
+  --ds-brand-2:         #ff8585;
+  --ds-brand-grad:      #ff5a5a;
 
-  --ds-accent:          #7b8fff;
-  --ds-accent-hover:    #9aacff;
-  --ds-accent-soft:     rgba(123, 143, 255, 0.14);
-  --ds-accent-glow:     rgba(123, 143, 255, 0.12);
-  --ds-on-accent:       #ffffff;
+  --ds-accent:          #ff5a5a;
+  --ds-accent-hover:    #ff7575;
+  --ds-accent-soft:     rgba(255, 90, 90, 0.16);
+  --ds-accent-glow:     rgba(255, 90, 90, 0.14);
+  --ds-on-accent:       #120808;
 
-  /* Soft lavender tint — bubble only, not a heavy card */
-  --ds-user-bubble:     color-mix(in srgb, #9aacff 16%, #1e2230);
-  --ds-comment-bg:      #1c2030;
-  --ds-composer-bg:     #1c2030;
-  --ds-composer-shadow: 0 4px 20px rgba(0, 0, 0, 0.28);
-  --ds-highlight:       rgba(212, 168, 70, 0.22);
-  --ds-error:           #e87878;
+  --ds-user-bubble:     #1c1c24;
+  --ds-comment-bg:      #18181e;
+  --ds-composer-bg:     #16161c;
+  --ds-composer-shadow: 3px 3px 0 rgba(255, 255, 255, 0.55);
+  --ds-highlight:       rgba(255, 200, 80, 0.28);
+  --ds-error:           #ff6b6b;
 
-  --ds-overlay:         rgba(8, 10, 16, 0.52);
-  --ds-overlay-strong:  rgba(8, 10, 16, 0.68);
-  --ds-shadow:          0 10px 32px rgba(0, 0, 0, 0.35);
-  --ds-shadow-lg:       0 20px 48px rgba(0, 0, 0, 0.45);
-  --ds-card-shadow:     0 1px 0 rgba(255, 255, 255, 0.03), 0 6px 18px rgba(0, 0, 0, 0.22);
-  --ds-inset-edge:      rgba(255, 255, 255, 0.04);
-  --ds-glass-ring:      rgba(180, 190, 220, 0.04);
+  --ds-overlay:         rgba(0, 0, 0, 0.58);
+  --ds-overlay-strong:  rgba(0, 0, 0, 0.72);
+  --ds-shadow:          4px 4px 0 rgba(255, 255, 255, 0.35);
+  --ds-shadow-lg:       6px 6px 0 rgba(255, 255, 255, 0.28);
+  --ds-card-shadow:     3px 3px 0 rgba(255, 255, 255, 0.35);
+  --ds-inset-edge:      rgba(255, 255, 255, 0.08);
+  --ds-glass-ring:      rgba(255, 255, 255, 0.06);
 
-  --ds-code-bg:         rgba(8, 10, 16, 0.45);
-  --ds-code-text:       #c8cee0;
-  --ds-code-inline-bg:  rgba(123, 143, 255, 0.14);
-  --ds-code-inline-text:#b4c0ff;
-  --ds-code-border:     rgba(123, 143, 255, 0.22);
-  --ds-blockquote-border: rgba(123, 143, 255, 0.35);
-  --ds-blockquote-bg:   rgba(123, 143, 255, 0.07);
-  --ds-focus-border:    rgba(123, 143, 255, 0.45);
-  --ds-focus-ring:      rgba(123, 143, 255, 0.14);
-  --ds-scrollbar:       rgba(130, 140, 170, 0.28);
+  --ds-code-bg:         rgba(0, 0, 0, 0.45);
+  --ds-code-text:       #e8e8ef;
+  --ds-code-inline-bg:  rgba(42, 168, 184, 0.18);
+  --ds-code-inline-text:#7ed7e4;
+  --ds-code-border:     rgba(255, 255, 255, 0.35);
+  --ds-blockquote-border: rgba(255, 90, 90, 0.7);
+  --ds-blockquote-bg:   rgba(255, 90, 90, 0.08);
+  --ds-focus-border:    rgba(255, 90, 90, 0.85);
+  --ds-focus-ring:      rgba(255, 90, 90, 0.2);
+  --ds-scrollbar:       rgba(220, 220, 230, 0.35);
   --ds-shell-wash:      none;
+  --ds-ink:             #f2f2f5;
+  --ds-hard-shadow:     3px 3px 0 rgba(255, 255, 255, 0.55);
 }
 
-/* Light — clean white / near-white, soft lavender-blue accent */
+/* Light — manga paper + black ink outlines, stamp-red accent */
 [data-theme="light"] {
   color-scheme: light;
 
-  --ds-bg:              #f5f6f8;
-  --ds-main:            #ffffff;
-  --ds-sidebar:         #ffffff;
-  --ds-surface:         #f3f4f7;
-  --ds-surface-hover:   #ebedf2;
+  --ds-bg:              #f3eee6;
+  --ds-main:            #fffdf8;
+  --ds-sidebar:         #fffdf8;
+  --ds-surface:         #f7f1e8;
+  --ds-surface-hover:   #efe7db;
   --ds-surface-elevated:#ffffff;
 
-  --ds-border:          rgba(15, 23, 42, 0.08);
-  --ds-border-strong:   rgba(15, 23, 42, 0.12);
+  --ds-border:          rgba(22, 22, 22, 0.85);
+  --ds-border-strong:   #161616;
 
-  --ds-text:            #1f2430;
-  --ds-text-dim:        #4a5568;
-  --ds-muted:           #8b95a8;
+  --ds-text:            #161616;
+  --ds-text-dim:        #3a3a3a;
+  --ds-muted:           #6a6a6a;
 
-  /* Soft lavender-blue (presets / send) — not neon purple */
-  --ds-brand:           #4d6bfe;
-  --ds-brand-2:         #6b84ff;
-  --ds-brand-grad:      #4d6bfe;
+  --ds-brand:           #e23d3d;
+  --ds-brand-2:         #c52f2f;
+  --ds-brand-grad:      #e23d3d;
 
-  --ds-accent:          #4d6bfe;
-  --ds-accent-hover:    #3d5cf0;
-  --ds-accent-soft:     rgba(77, 107, 254, 0.1);
-  --ds-accent-glow:     rgba(77, 107, 254, 0.12);
-  --ds-on-accent:       #ffffff;
+  --ds-accent:          #e23d3d;
+  --ds-accent-hover:    #c52f2f;
+  --ds-accent-soft:     rgba(226, 61, 61, 0.1);
+  --ds-accent-glow:     rgba(226, 61, 61, 0.14);
+  --ds-on-accent:       #fffdf8;
 
-  --ds-user-bubble:     #eef1ff;
-  --ds-comment-bg:      #f7f8fb;
-  --ds-composer-bg:     #ffffff;
-  --ds-composer-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
-  --ds-highlight:       rgba(170, 125, 30, 0.22);
-  --ds-error:           #d14343;
+  --ds-user-bubble:     #fffdf8;
+  --ds-comment-bg:      #faf6f0;
+  --ds-composer-bg:     #fffdf8;
+  --ds-composer-shadow: 3px 3px 0 #161616;
+  --ds-highlight:       rgba(226, 180, 40, 0.28);
+  --ds-error:           #c52f2f;
 
-  --ds-overlay:         rgba(15, 23, 42, 0.2);
-  --ds-overlay-strong:  rgba(15, 23, 42, 0.36);
-  --ds-shadow:          0 6px 24px rgba(15, 23, 42, 0.07);
-  --ds-shadow-lg:       0 16px 40px rgba(15, 23, 42, 0.1);
-  --ds-card-shadow:     0 1px 2px rgba(15, 23, 42, 0.04);
+  --ds-overlay:         rgba(22, 22, 22, 0.28);
+  --ds-overlay-strong:  rgba(22, 22, 22, 0.45);
+  --ds-shadow:          4px 4px 0 #161616;
+  --ds-shadow-lg:       6px 6px 0 #161616;
+  --ds-card-shadow:     3px 3px 0 #161616;
   --ds-inset-edge:      rgba(255, 255, 255, 0.9);
-  --ds-glass-ring:      rgba(15, 23, 42, 0.03);
+  --ds-glass-ring:      rgba(22, 22, 22, 0.06);
 
-  --ds-code-bg:         rgba(15, 23, 42, 0.035);
-  --ds-code-text:       #2a3140;
-  --ds-code-inline-bg:  rgba(77, 107, 254, 0.08);
-  --ds-code-inline-text:#3d5cf0;
-  --ds-code-border:     rgba(77, 107, 254, 0.16);
-  --ds-blockquote-border: rgba(77, 107, 254, 0.28);
-  --ds-blockquote-bg:   rgba(77, 107, 254, 0.05);
-  --ds-focus-border:    rgba(77, 107, 254, 0.4);
-  --ds-focus-ring:      rgba(77, 107, 254, 0.12);
-  --ds-scrollbar:       rgba(100, 110, 130, 0.22);
+  --ds-code-bg:         rgba(22, 22, 22, 0.04);
+  --ds-code-text:       #1a1a1a;
+  --ds-code-inline-bg:  rgba(42, 168, 184, 0.12);
+  --ds-code-inline-text:#1a7a88;
+  --ds-code-border:     rgba(22, 22, 22, 0.55);
+  --ds-blockquote-border: #e23d3d;
+  --ds-blockquote-bg:   rgba(226, 61, 61, 0.06);
+  --ds-focus-border:    #e23d3d;
+  --ds-focus-ring:      rgba(226, 61, 61, 0.18);
+  --ds-scrollbar:       rgba(22, 22, 22, 0.35);
   --ds-shell-wash:      none;
+  --ds-ink:             #161616;
+  --ds-hard-shadow:     3px 3px 0 #161616;
 }
 
 
@@ -394,7 +406,10 @@ body {
   overflow: hidden;
   gap: var(--ds-shell-gap);
   padding: var(--ds-shell-gap);
-  background: var(--ds-bg);
+  background-color: var(--ds-bg);
+  background-image:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ds-ink) 18%, transparent) 1px, transparent 0);
+  background-size: 10px 10px;
 }
 
 
@@ -409,7 +424,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   background: var(--ds-sidebar);
-  border: 1px solid var(--ds-border);
+  border: var(--ds-line) solid var(--ds-border-strong);
   border-radius: var(--ds-radius-xl);
   box-shadow: var(--ds-card-shadow);
   transition:
@@ -479,6 +494,7 @@ body {
     opacity var(--dur-base) ease,
     flex var(--dur-slow) var(--ease-out),
     max-width var(--dur-slow) var(--ease-out);
+  filter: drop-shadow(1.5px 1.5px 0 color-mix(in srgb, var(--ds-ink) 35%, transparent));
 }
 
 .ds-brand-wordmark .fn-wm-note {
@@ -824,7 +840,7 @@ body {
   height: 100%;
   overflow: hidden;
   background: var(--ds-main);
-  border: 1px solid var(--ds-border);
+  border: var(--ds-line) solid var(--ds-border-strong);
   border-radius: var(--ds-radius-xl);
   box-shadow: var(--ds-card-shadow);
 }
@@ -845,16 +861,18 @@ body {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 22px;
-  border-bottom: 1px solid var(--ds-border);
+  border-bottom: var(--ds-line) solid var(--ds-border-strong);
   flex-shrink: 0;
   background: transparent;
 }
 
 .ds-chat-title {
   margin: 0;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--ds-muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-family: var(--ds-font-display);
+  letter-spacing: 0.02em;
+  color: var(--ds-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -863,11 +881,13 @@ body {
 .ds-branch-count {
   flex-shrink: 0;
   font-size: 0.75rem;
-  color: var(--ds-muted);
-  padding: 4px 12px;
-  border-radius: var(--ds-radius-pill);
-  border: 1px solid var(--ds-border);
+  font-weight: 700;
+  color: var(--ds-text);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: var(--ds-line) solid var(--ds-border-strong);
   background: var(--ds-surface);
+  box-shadow: 2px 2px 0 var(--ds-ink);
 }
 
 .ds-comments-toggle {
@@ -1178,11 +1198,12 @@ body {
 }
 
 .ds-bubble-user {
+  position: relative;
   background: var(--ds-user-bubble);
-  border: none;
-  border-radius: 18px;
+  border: var(--ds-line) solid var(--ds-border-strong);
+  border-radius: 14px 14px 4px 14px;
   padding: 12px 16px;
-  box-shadow: none;
+  box-shadow: var(--ds-hard-shadow);
   width: fit-content;
   max-width: 100%;
   color: var(--ds-text);
@@ -1619,26 +1640,24 @@ body {
   position: relative;
   margin: 4px 0 8px;
   padding: 14px 16px 12px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 170, 210, 0.22);
+  border-radius: 8px;
+  border: var(--ds-line) solid var(--ds-border-strong);
   background:
-    radial-gradient(140px 90px at 10% 0%, rgba(255, 140, 190, 0.18), transparent 70%),
-    radial-gradient(160px 100px at 95% 8%, rgba(140, 170, 255, 0.16), transparent 72%),
-    linear-gradient(145deg, rgba(52, 36, 52, 0.92) 0%, rgba(38, 40, 62, 0.94) 100%);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ds-ink) 16%, transparent) 1px, transparent 0),
+    var(--ds-surface);
+  background-size: 8px 8px, auto;
+  box-shadow: var(--ds-hard-shadow);
   color: var(--ds-text);
   overflow: hidden;
 }
 
 [data-theme="light"] .fn-adopt-card {
-  border-color: rgba(255, 168, 198, 0.45);
+  border-color: var(--ds-border-strong);
   background:
-    radial-gradient(120px 80px at 12% 0%, rgba(255, 214, 232, 0.9), transparent 70%),
-    radial-gradient(140px 90px at 92% 12%, rgba(214, 228, 255, 0.85), transparent 72%),
-    linear-gradient(145deg, #fff7fb 0%, #f6f1ff 52%, #eef8ff 100%);
-  box-shadow:
-    0 10px 28px rgba(255, 150, 186, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    radial-gradient(circle at 1px 1px, rgba(22, 22, 22, 0.14) 1px, transparent 0),
+    #fffdf8;
+  background-size: 8px 8px, auto;
+  box-shadow: 3px 3px 0 #161616;
 }
 
 .fn-adopt-sparkles {
@@ -1646,15 +1665,16 @@ body {
   inset: 8px 12px auto auto;
   display: flex;
   gap: 6px;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
+  font-weight: 800;
   line-height: 1;
   pointer-events: none;
-  opacity: 0.72;
+  opacity: 0.85;
 }
 
-.fn-adopt-sparkles span:nth-child(1) { color: #ff8fb8; }
-.fn-adopt-sparkles span:nth-child(2) { color: #ff6b9d; transform: translateY(3px); }
-.fn-adopt-sparkles span:nth-child(3) { color: #8bb7ff; }
+.fn-adopt-sparkles span:nth-child(1) { color: var(--ds-accent); }
+.fn-adopt-sparkles span:nth-child(2) { color: var(--ds-screen); transform: translateY(3px); }
+.fn-adopt-sparkles span:nth-child(3) { color: var(--ds-ink); }
 
 .fn-adopt-head {
   display: flex;
@@ -1668,30 +1688,33 @@ body {
 .fn-adopt-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 9px;
-  border-radius: 999px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #ffd0e4;
-  background: rgba(255, 130, 180, 0.22);
-  border: 1px solid rgba(255, 160, 200, 0.28);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-on-accent);
+  background: var(--ds-accent);
+  border: 1.5px solid var(--ds-border-strong);
+  box-shadow: 1.5px 1.5px 0 var(--ds-ink);
 }
 
 [data-theme="light"] .fn-adopt-chip {
-  color: #c43d73;
-  background: rgba(255, 182, 210, 0.55);
-  border-color: rgba(255, 150, 190, 0.4);
+  color: #fffdf8;
+  background: #e23d3d;
+  border-color: #161616;
 }
 
 .fn-adopt-label {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: #f3d5e6;
+  font-size: 0.9rem;
+  font-weight: 800;
+  font-family: var(--ds-font-display);
+  color: var(--ds-text);
 }
 
 [data-theme="light"] .fn-adopt-label {
-  color: #7a4a6a;
+  color: #161616;
 }
 
 .fn-adopt-body {
@@ -1708,29 +1731,30 @@ body {
 
 .fn-adopt-toggle {
   margin-top: 8px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffd0e4;
+  border: 1.5px solid var(--ds-border-strong);
+  background: var(--ds-surface);
+  color: var(--ds-text);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 800;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: 4px;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(255, 170, 210, 0.22);
+  box-shadow: 2px 2px 0 var(--ds-ink);
 }
 
 .fn-adopt-toggle:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
 }
 
 [data-theme="light"] .fn-adopt-toggle {
-  background: rgba(255, 255, 255, 0.55);
-  color: #c43d73;
-  box-shadow: inset 0 0 0 1px rgba(255, 150, 190, 0.35);
+  background: #fffdf8;
+  color: #161616;
+  box-shadow: 2px 2px 0 #161616;
 }
 
 [data-theme="light"] .fn-adopt-toggle:hover {
-  background: rgba(255, 255, 255, 0.85);
+  background: #efe7db;
 }
 
 .fn-adopt-card .fn-markdown-mount {
@@ -2105,15 +2129,12 @@ mark.branch-highlight:hover {
 .float-panel {
   position: fixed;
   z-index: 210;
-  background: color-mix(in srgb, var(--ds-composer-bg) 92%, transparent);
-  backdrop-filter: blur(20px) saturate(1.25);
-  -webkit-backdrop-filter: blur(20px) saturate(1.25);
-  border: 1px solid var(--ds-border);
+  background: var(--ds-composer-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: var(--ds-line) solid var(--ds-border-strong);
   border-radius: var(--ds-radius-xl);
-  box-shadow:
-    var(--ds-shadow-lg),
-    0 0 0 1px var(--ds-glass-ring),
-    inset 0 1px 0 var(--ds-inset-edge);
+  box-shadow: var(--ds-shadow-lg);
   padding: 18px 20px;
   overflow: auto;
 }
@@ -2705,14 +2726,15 @@ mark.branch-highlight:hover {
 /* ── Buttons ──────────────────────────────────────────────── */
 
 .btn {
-  border: none;
-  border-radius: 14px;
+  border: var(--ds-line) solid var(--ds-border-strong);
+  border-radius: var(--ds-radius);
   padding: 8px 16px;
   font: inherit;
+  font-weight: 700;
   cursor: pointer;
   background: var(--ds-surface);
   color: var(--ds-text);
-  border: 1px solid var(--ds-border);
+  box-shadow: 2px 2px 0 var(--ds-ink);
   transition:
     background var(--dur-fast) ease,
     color var(--dur-fast) ease,
@@ -2722,34 +2744,39 @@ mark.branch-highlight:hover {
 
 .btn:hover:not(:disabled) {
   background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ds-ink);
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--ds-ink);
 }
 
 .btn.primary {
-  border-radius: var(--ds-radius-pill);
+  border-radius: var(--ds-radius);
   padding: 8px 18px;
   background: var(--ds-accent);
-  border-color: transparent;
+  border-color: var(--ds-border-strong);
   color: var(--ds-on-accent);
-  box-shadow: none;
+  box-shadow: 2px 2px 0 var(--ds-ink);
 }
 
 .btn.primary:hover:not(:disabled) {
-  box-shadow: none;
+  box-shadow: 3px 3px 0 var(--ds-ink);
   background: var(--ds-accent-hover);
 }
 
 .btn.ghost {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
 }
 
 .btn.ghost:hover:not(:disabled) {
   background: var(--ds-surface-hover);
-  border-color: var(--ds-border);
+  border-color: var(--ds-border-strong);
+  box-shadow: 2px 2px 0 var(--ds-ink);
 }
 
 .btn.sm {
@@ -3624,20 +3651,22 @@ mark.branch-highlight:hover {
   display: flex;
   flex-direction: column;
   background: var(--ds-composer-bg);
-  border: 1px solid var(--ds-border);
+  border: var(--ds-line) solid var(--ds-border-strong);
   border-radius: var(--ds-composer-radius);
   padding: 18px 20px 14px;
   box-shadow: var(--ds-composer-shadow);
   transition:
     border-color var(--dur-base) ease,
-    box-shadow var(--dur-base) ease;
+    box-shadow var(--dur-base) ease,
+    transform var(--dur-fast) ease;
 }
 
 .fn-composer:focus-within {
-  border-color: color-mix(in srgb, var(--ds-accent) 35%, var(--ds-border));
+  border-color: var(--ds-accent);
   box-shadow:
     var(--ds-composer-shadow),
     0 0 0 3px var(--ds-focus-ring);
+  transform: translate(-1px, -1px);
 }
 
 .fn-composer.is-compact {
@@ -4510,14 +4539,15 @@ mark.branch-highlight:hover {
 .btn.primary,
 .ds-send-btn {
   background: var(--ds-accent) !important;
-  border-color: transparent !important;
+  border-color: var(--ds-border-strong) !important;
   color: var(--ds-on-accent) !important;
-  box-shadow: none !important;
+  box-shadow: 2px 2px 0 var(--ds-ink) !important;
 }
 
 .btn.primary:hover:not(:disabled),
 .ds-send-btn:hover:not(:disabled) {
   background: var(--ds-accent-hover) !important;
+  box-shadow: 3px 3px 0 var(--ds-ink) !important;
 }
 
 .ds-chat-footer .fn-composer {
@@ -4540,30 +4570,35 @@ mark.branch-highlight:hover {
   gap: 6px;
   max-width: 220px;
   padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  border: var(--ds-line) solid var(--ds-border-strong);
   background: var(--ds-surface);
   color: var(--ds-muted);
   font: inherit;
   font-size: var(--fn-text-ui-sm);
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 2px 2px 0 var(--ds-ink);
   transition:
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
-    background var(--dur-fast) ease;
+    background var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) ease;
 }
 
 .fn-project-chip:hover {
-  color: var(--ds-accent);
-  border-color: color-mix(in srgb, var(--ds-accent) 30%, var(--ds-border));
-  background: var(--ds-accent-soft);
-  transform: none;
+  color: var(--ds-text);
+  border-color: var(--ds-border-strong);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ds-ink);
 }
 
 .fn-project-chip.is-connected {
-  color: var(--ds-accent);
-  background: var(--ds-accent-soft);
-  border-color: color-mix(in srgb, var(--ds-accent) 22%, var(--ds-border));
+  color: var(--ds-on-accent);
+  background: var(--ds-accent);
+  border-color: var(--ds-border-strong);
 }
 
 .fn-project-chip-label {
@@ -5481,3 +5516,55 @@ mark.branch-highlight:hover {
 .fn-at-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 20; margin: 0; padding: 4px; list-style: none; max-height: 200px; overflow: auto; border-radius: 12px; border: 1px solid var(--ds-border); background: var(--ds-bg); box-shadow: 0 8px 24px color-mix(in srgb, var(--ds-text) 12%, transparent); }
 .fn-at-option { display: block; width: 100%; text-align: left; border: none; background: transparent; color: var(--ds-text); font: inherit; font-size: var(--fn-text-ui-sm); padding: 8px 10px; border-radius: 8px; cursor: pointer; }
 .fn-at-option:hover, .fn-at-option.is-active { background: var(--ds-accent-soft); color: var(--ds-accent); }
+
+
+/* ── Manga ink-line polish ─────────────────────────────── */
+.point-block {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
+.modal-card,
+.ss-panel,
+.ds-settings-panel,
+.fn-memory-item,
+.fn-at-menu {
+  border: var(--ds-line) solid var(--ds-border-strong) !important;
+  border-radius: var(--ds-radius-lg) !important;
+  box-shadow: var(--ds-hard-shadow) !important;
+}
+
+.fn-include-chip {
+  border-radius: 4px !important;
+  border: 1.5px solid var(--ds-border-strong) !important;
+  box-shadow: 1.5px 1.5px 0 var(--ds-ink);
+  color: var(--ds-text) !important;
+}
+
+.answer-body h1,
+.answer-body h2,
+.answer-body h3 {
+  font-family: var(--ds-font-display);
+  letter-spacing: 0.01em;
+}
+
+.ds-bubble-user::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 12px;
+  height: 12px;
+  background: var(--ds-user-bubble);
+  border-right: var(--ds-line) solid var(--ds-border-strong);
+  border-bottom: var(--ds-line) solid var(--ds-border-strong);
+  transform: translate(4px, 4px) rotate(45deg);
+  box-shadow: 2px 2px 0 transparent;
+}
+
+.selection-toolbar,
+.fn-selection-toolbar {
+  border: var(--ds-line) solid var(--ds-border-strong) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--ds-hard-shadow) !important;
+}
