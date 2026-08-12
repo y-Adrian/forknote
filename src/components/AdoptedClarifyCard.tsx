@@ -37,9 +37,9 @@ export function AdoptedClarifyCard({ branchId, label, storedBody }: Props) {
       className={`fn-adopt-card${open ? " is-open" : " is-collapsed"}`}
     >
       <div className="fn-adopt-sparkles" aria-hidden>
-        <span>✦</span>
-        <span>♡</span>
-        <span>✧</span>
+        <span>!</span>
+        <span>/</span>
+        <span>*</span>
       </div>
       <header className="fn-adopt-head">
         <span className="fn-adopt-chip">{t("fork.adopted")}</span>
