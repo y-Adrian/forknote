@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatSession } from "../types";
+import { flattenAdoptedForPlaintext } from "./adoptBranch";
 
 /** Soft warn when encoded URL hash exceeds this (chars). Still allowed. */
 export const SHARE_SOFT_LIMIT = 200_000;
@@ -61,7 +62,7 @@ export function getShareableMessages(session: ChatSession): ShareableMessage[] {
     .map((msg) => ({
       id: msg.id,
       role: msg.role,
-      content: msg.content,
+      content: flattenAdoptedForPlaintext(msg.content),
     }));
 }
 
@@ -74,7 +75,7 @@ export function buildSharePayload(
     title: title.trim() || "Untitled",
     messages: messages.map((msg) => ({
       role: msg.role,
-      content: msg.content.trim(),
+      content: flattenAdoptedForPlaintext(msg.content).trim(),
     })),
   };
 }

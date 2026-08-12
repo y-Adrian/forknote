@@ -5,6 +5,7 @@ import type {
   FeedbackEvent,
   ThreadRoot,
 } from "../types";
+import { flattenAdoptedForPlaintext } from "./adoptBranch";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import { annotateContentWithVerdicts, formatCheckpointForArchive } from "./points";
 import { firstUserMessage } from "./thread";
@@ -25,7 +26,7 @@ function truncate(text: string, max: number): string {
 function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
   for (const node of nodes) {
     const answer = annotateContentWithVerdicts(
-      node.assistantMessage,
+      flattenAdoptedForPlaintext(node.assistantMessage),
       node.pointVerdicts,
       node.pointDoubts,
       node.pointAttributions,
@@ -86,7 +87,7 @@ export function buildArchiveSource(
       continue;
     }
     const annotated = annotateContentWithVerdicts(
-      msg.content,
+      flattenAdoptedForPlaintext(msg.content),
       msg.pointVerdicts,
       msg.pointDoubts,
       msg.pointAttributions,
@@ -207,7 +208,7 @@ ${modeNote}`;
     ...later.map((m) => ({
       role: m.role as "user" | "assistant",
       content: annotateContentWithVerdicts(
-        m.content,
+        flattenAdoptedForPlaintext(m.content),
         m.pointVerdicts,
         m.pointDoubts,
         m.pointAttributions,

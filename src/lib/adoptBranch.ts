@@ -89,6 +89,22 @@ export function adoptedBodyNeedsCollapse(body: string): boolean {
   return t.split("\n").filter((l) => l.trim()).length > 4;
 }
 
+/**
+ * Human/model-facing plaintext: keep clarification bodies, drop HTML markers
+ * so share/archive/LLM context cannot echo `<!-- forknote-adopted -->`.
+ */
+export function flattenAdoptedForPlaintext(content: string): string {
+  const segs = splitAdoptedSegments(content);
+  return segs
+    .map((seg) => {
+      if (seg.type === "markdown") return seg.text.trim();
+      const title = seg.label.trim() ? `**${seg.label.trim()}**` : "";
+      return [title, seg.body.trim()].filter(Boolean).join("\n\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /** Strip a previous adopt note for this branch id from parent content. */
 export function stripAdoptedNote(content: string, branchId: string): string {
   const start = `<!-- forknote-adopted:${branchId} -->`;
