@@ -3,6 +3,11 @@ import type { Locale } from "./i18n";
 import { anchorForAnswerPoint } from "./points";
 
 const ADOPT_SUMMARY_MAX = 480;
+const ADOPT_BODY_MAX = 32_000;
+
+const ADOPT_MARKER_RE = /<!--\s*\/?forknote-adopted:[^>]*-->/g;
+const ADOPT_BLOCK_RE =
+  /<!--\s*forknote-adopted:([A-Za-z0-9_-]+)\s*-->\s*([\s\S]*?)\s*<!--\s*\/forknote-adopted:\1\s*-->/g;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -12,6 +17,76 @@ export function truncateAdoptSummary(text: string, max = ADOPT_SUMMARY_MAX): str
   const t = text.trim().replace(/\s+/g, " ");
   if (t.length <= max) return t;
   return `${t.slice(0, max)}…`;
+}
+
+function clipAdoptBody(text: string): string {
+  const t = text.trim();
+  if (t.length <= ADOPT_BODY_MAX) return t;
+  return `${t.slice(0, ADOPT_BODY_MAX)}\n…`;
+}
+
+export function stripAdoptMarkers(text: string): string {
+  return text.replace(ADOPT_MARKER_RE, "").replace(/\n{3,}/g, "\n\n");
+}
+
+export type AdoptedContentSegment =
+  | { type: "markdown"; text: string }
+  | { type: "adopted"; branchId: string; label: string; body: string };
+
+export function parseAdoptedInner(raw: string): { label: string; body: string } {
+  const unquoted = raw
+    .split("\n")
+    .map((line) => line.replace(/^>\s?/, ""))
+    .join("\n")
+    .trim();
+  const colonInside = /^\*\*(.+?)[：:]\*\*\s*([\s\S]*)$/.exec(unquoted);
+  if (colonInside) {
+    return { label: colonInside[1].trim(), body: colonInside[2].trim() };
+  }
+  const colonAfter = /^\*\*(.+?)\*\*[：:]\s*([\s\S]*)$/.exec(unquoted);
+  if (colonAfter) {
+    return { label: colonAfter[1].trim(), body: colonAfter[2].trim() };
+  }
+  const headed = /^\*\*(.+?)\*\*\s*(?:\n+)([\s\S]*)$/.exec(unquoted);
+  if (headed) return { label: headed[1].trim(), body: headed[2].trim() };
+  return { label: "", body: unquoted };
+}
+
+/** Split parent markdown so adopted notes can render as cards, not raw HTML comments. */
+export function splitAdoptedSegments(content: string): AdoptedContentSegment[] {
+  const out: AdoptedContentSegment[] = [];
+  let last = 0;
+  const re = new RegExp(ADOPT_BLOCK_RE.source, "g");
+  for (const match of content.matchAll(re)) {
+    const idx = match.index ?? 0;
+    if (idx > last) {
+      const text = stripAdoptMarkers(content.slice(last, idx));
+      if (text.trim()) out.push({ type: "markdown", text });
+    }
+    const inner = parseAdoptedInner(match[2] ?? "");
+    out.push({
+      type: "adopted",
+      branchId: match[1] ?? "",
+      label: inner.label,
+      body: inner.body,
+    });
+    last = idx + match[0].length;
+  }
+  if (last === 0) {
+    const text = stripAdoptMarkers(content);
+    return [{ type: "markdown", text }];
+  }
+  if (last < content.length) {
+    const text = stripAdoptMarkers(content.slice(last));
+    if (text.trim()) out.push({ type: "markdown", text });
+  }
+  return out.length > 0 ? out : [{ type: "markdown", text: content }];
+}
+
+export function adoptedBodyNeedsCollapse(body: string): boolean {
+  const t = body.trim();
+  if (t.length > 220) return true;
+  return t.split("\n").filter((l) => l.trim()).length > 4;
 }
 
 /** Strip a previous adopt note for this branch id from parent content. */
@@ -41,14 +116,16 @@ export function formatAdoptedBlock(
         : "Clarification";
   return [
     `<!-- forknote-adopted:${branchId} -->`,
-    `> **${label}：** ${summary}`,
+    `**${label}**`,
+    "",
+    clipAdoptBody(summary),
     `<!-- /forknote-adopted:${branchId} -->`,
   ].join("\n");
 }
 
 /**
  * Insert (or refresh) an adopt note into the parent assistant message.
- * Does not overwrite the original body — appends a blockquote note.
+ * Does not overwrite the original body — inserts a labeled clarification card.
  */
 export function applyAdoptNoteToContent(
   content: string,
@@ -59,7 +136,7 @@ export function applyAdoptNoteToContent(
   const cleaned = stripAdoptedNote(content, branch.id);
   const block = formatAdoptedBlock(
     branch.id,
-    truncateAdoptSummary(summary),
+    summary,
     locale,
     branch.anchor.pointIndex,
   );

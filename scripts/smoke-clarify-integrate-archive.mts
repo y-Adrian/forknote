@@ -3,10 +3,13 @@
  */
 import assert from "node:assert/strict";
 import {
+  adoptedBodyNeedsCollapse,
   applyAdoptNoteToContent,
   clearBranchAdoptFields,
+  parseAdoptedInner,
   removeAdoptNoteFromContent,
   resolveBranchAdoptSource,
+  splitAdoptedSegments,
   stripAdoptedNote,
 } from "../src/lib/adoptBranch.ts";
 import { buildArchiveSource } from "../src/lib/archive.ts";
@@ -51,6 +54,53 @@ assert.match(adopted, /forknote-adopted:b1/);
 assert.match(adopted, /澄清结论/);
 assert.match(adopted, /第一步/);
 assert.ok(adopted.indexOf("第一步") < adopted.indexOf("澄清结论"));
+assert.equal(adopted.includes("<!-- forknote-adopted:b1 -->"), true);
+
+const segs = splitAdoptedSegments(adopted);
+assert.equal(segs.some((s) => s.type === "adopted"), true);
+const note = segs.find((s) => s.type === "adopted");
+assert.ok(note && note.type === "adopted");
+assert.equal(note.branchId, "b1");
+assert.match(note.label, /澄清结论/);
+assert.match(note.body, /本机读写权限/);
+assert.equal(
+  segs
+    .filter((s) => s.type === "markdown")
+    .some((s) => s.type === "markdown" && s.text.includes("forknote-adopted")),
+  false,
+  "HTML comment markers must not leak into markdown segments",
+);
+
+const legacy = splitAdoptedSegments(
+  [
+    "kgdb is useful.",
+    "<!-- forknote-adopted:b9b67756-9412-49a0-adb1-9af37da3421a -->",
+    "> **Clarification：** " + "walkthrough ".repeat(40),
+    "<!-- /forknote-adopted:b9b67756-9412-49a0-adb1-9af37da3421a -->",
+    "Next paragraph.",
+  ].join("\n"),
+);
+assert.equal(legacy.length, 3);
+assert.equal(legacy[0]?.type, "markdown");
+assert.equal(legacy[1]?.type, "adopted");
+assert.equal(legacy[2]?.type, "markdown");
+if (legacy[1]?.type === "adopted") {
+  assert.equal(legacy[1].branchId, "b9b67756-9412-49a0-adb1-9af37da3421a");
+  assert.equal(legacy[1].label, "Clarification");
+  assert.equal(adoptedBodyNeedsCollapse(legacy[1].body), true);
+}
+assert.equal(parseAdoptedInner("> **澄清结论：** 短句").label, "澄清结论");
+assert.equal(parseAdoptedInner("> **澄清结论：** 短句").body, "短句");
+assert.equal(parseAdoptedInner("**Clarification:** hello").label, "Clarification");
+
+const orphan = splitAdoptedSegments(
+  "Hello\n<!-- forknote-adopted:orphan -->\nWorld",
+);
+assert.equal(orphan.length, 1);
+assert.equal(orphan[0]?.type, "markdown");
+if (orphan[0]?.type === "markdown") {
+  assert.equal(orphan[0].text.includes("forknote-adopted"), false);
+}
 
 const again = applyAdoptNoteToContent(
   adopted,
