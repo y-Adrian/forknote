@@ -1654,6 +1654,41 @@ body {
   opacity: 1;
 }
 
+.point-row.is-truncated .point-verdict-group {
+  opacity: 0.25;
+}
+
+.point-block.is-truncated {
+  opacity: 0.48;
+}
+
+.point-truncated-hint {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: var(--ds-muted);
+}
+
+.point-checkpoint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--ds-border);
+  background: var(--ds-surface, var(--ds-bg, #fff));
+}
+
+.point-checkpoint-text {
+  margin: 0;
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--ds-text-dim, var(--ds-muted));
+}
+
 .point-verdict-btn {
   width: 18px;
   height: 18px;

@@ -6,7 +6,7 @@ import type {
   ThreadRoot,
 } from "../types";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
-import { annotateContentWithVerdicts } from "./points";
+import { annotateContentWithVerdicts, formatCheckpointForArchive } from "./points";
 import { firstUserMessage } from "./thread";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 
@@ -99,6 +99,8 @@ export function buildArchiveSource(
     if (clarifications.length) {
       blocks.push(`### 本轮澄清（含是否已收进主线）\n${clarifications.join("\n")}`);
     }
+    const checkpoint = formatCheckpointForArchive(msg.content, msg.pointVerdicts);
+    if (checkpoint) blocks.push(checkpoint);
   }
 
   const feedback = formatFeedbackLogSummary(options?.feedbackLog ?? []);
@@ -117,7 +119,8 @@ export const ARCHIVE_SYSTEM = `你是开发日志编辑。用户会提供一段�
 4. 结构建议：背景 / 对该用户有效的决策方式 / 实践要点（路径、命令、配置若材料里有则保留） / 已收进主线的澄清结论 / 可信度缺口与未决问题 / 不适合该用户的策略（简要）。
 5. 简明、可当作后续对话的上下文底座；不要写「你可以继续问我…」类客套。
 6. 不要编造材料中没有的事实。
-7. 第一行用短标题（不要用 # 以外的装饰），随后正文。`;
+7. 第一行用短标题（不要用 # 以外的装饰），随后正文。
+8. 若材料含「检查点（阶段性整合）」：已不采纳分点之后未裁决的步骤视为过时，不要写进实践要点；把已采纳步骤与「已收进主线」的澄清写成下一轮底座。检查点文档应可直接作为后续对话上下文，也便于阶段性导出。`;
 
 export function archiveSystemPrompt(locale: Locale = getLocale()): string {
   return withReplyLanguage(ARCHIVE_SYSTEM, locale);

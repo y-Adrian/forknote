@@ -211,10 +211,16 @@ export function describePointFeedbackForAgent(input: {
   verdict: PointVerdict | undefined;
   doubt?: string;
   attribution?: FeedbackAttribution;
+  /** Later silent points after an earlier reject — obsolete, not live advice. */
+  truncated?: boolean;
 }): string {
-  const { index, content, verdict, doubt, attribution } = input;
+  const { index, content, verdict, doubt, attribution, truncated } = input;
   const attr = formatAttributionForAgent(attribution);
   const attrSuffix = attr ? `；已确认归因：${attr}` : "";
+
+  if (truncated && !verdict) {
+    return `【${index}】（已截断：用户在更早分点处分叉，此步骤不再作为可行方案，勿再展开）${content}`;
+  }
 
   if (verdict === "reject") {
     const why = attr

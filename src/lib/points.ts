@@ -139,9 +139,70 @@ export function anchorForAnswerPoint(
   };
 }
 
+/** Lowest rejected point index, or null if none. */
+export function earliestRejectIndex(
+  verdicts: PointVerdictMap | undefined,
+): number | null {
+  if (!verdicts) return null;
+  const rejects = Object.entries(verdicts)
+    .filter(([, v]) => v === "reject")
+    .map(([k]) => Number(k))
+    .filter((n) => Number.isFinite(n));
+  if (!rejects.length) return null;
+  return Math.min(...rejects);
+}
+
+export function hasExplicitAcceptOrReject(
+  verdicts: PointVerdictMap | undefined,
+): boolean {
+  if (!verdicts) return false;
+  return Object.values(verdicts).some((v) => v === "accept" || v === "reject");
+}
+
+/**
+ * Checkpoint note for archive source: where the user branched, what to keep.
+ */
+export function formatCheckpointForArchive(
+  content: string,
+  verdicts: PointVerdictMap | undefined,
+): string | null {
+  if (!hasExplicitAcceptOrReject(verdicts)) return null;
+  const parsed = parseAnswerPoints(content);
+  if (parsed.points.length < 2) return null;
+
+  const accepted = Object.entries(verdicts ?? {})
+    .filter(([, v]) => v === "accept")
+    .map(([k]) => Number(k))
+    .sort((a, b) => a - b);
+  const rejected = Object.entries(verdicts ?? {})
+    .filter(([, v]) => v === "reject")
+    .map(([k]) => Number(k))
+    .sort((a, b) => a - b);
+  const cut = earliestRejectIndex(verdicts);
+
+  const lines: string[] = ["### 检查点（阶段性整合）"];
+  if (accepted.length) {
+    lines.push(`- 已主动采纳：${accepted.map((n) => `【${n}】`).join(" ")}`);
+  }
+  if (rejected.length) {
+    lines.push(`- 已不采纳：${rejected.map((n) => `【${n}】`).join(" ")}`);
+  }
+  if (cut != null) {
+    lines.push(
+      `- 截断：从【${cut}】起，其后未单独裁决的步骤视为过时，不要再当作可行方案。请把已采纳步骤、已收进主线的澄清、以及不采纳原因整合成下一轮底座。`,
+    );
+  } else {
+    lines.push(
+      "- 请把已采纳步骤与已收进主线的澄清整合成下一轮底座；未裁决点保持弱正信号，勿等同于主动采纳。",
+    );
+  }
+  return lines.join("\n");
+}
+
 /**
  * 构建带裁决标注的回答文本，用于发给模型的上下文。
  * 对齐反馈闭环：主动采纳 ≠ 默认沉默；不采纳/存疑可带归因标签。
+ * 更早分点被不采纳时，其后未裁决步骤标记为已截断。
  */
 export function annotateContentWithVerdicts(
   content: string,
@@ -154,17 +215,21 @@ export function annotateContentWithVerdicts(
   const parsed = parseAnswerPoints(content);
   if (parsed.points.length === 0) return content;
 
+  const cut = earliestRejectIndex(verdicts);
   const parts: string[] = [];
   if (parsed.preamble) parts.push(parsed.preamble);
 
   for (const p of parsed.points) {
+    const verdict = verdicts[p.index];
+    const truncated = cut != null && p.index > cut && !verdict;
     parts.push(
       describePointFeedbackForAgent({
         index: p.index,
         content: p.content,
-        verdict: verdicts[p.index],
+        verdict,
         doubt: doubts?.[p.index],
         attribution: attributions?.[p.index],
+        truncated,
       }),
     );
   }

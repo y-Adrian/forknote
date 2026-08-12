@@ -87,6 +87,10 @@ export function SelectableMarkdown({
   const setPointDoubt = useAppStore((s) => s.setPointDoubt);
   const setPointAttribution = useAppStore((s) => s.setPointAttribution);
   const denyPointHypothesis = useAppStore((s) => s.denyPointHypothesis);
+  const archiveCurrent = useAppStore((s) => s.archiveCurrent);
+  const integrating = useAppStore(
+    (s) => s.loadingArchiveSessionId === s.activeSessionId,
+  );
   // Select the log reference (stable until feedback changes). Deriving a fresh
   // array inside the Zustand selector caused Maximum update depth exceeded.
   const feedbackLog = useAppStore((s) => {
@@ -315,6 +319,8 @@ export function SelectableMarkdown({
               denyPointHypothesis(verdictTargetId, idx)
             }
             onClarifyPoint={(idx) => openPointClarify(idx)}
+            onIntegrateProgress={() => void archiveCurrent()}
+            integrating={integrating}
           />
         ) : (
           <MarkdownBody content={content} />
