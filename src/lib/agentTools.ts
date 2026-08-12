@@ -2,10 +2,20 @@ import { getLocale, t, type Locale } from "./i18n";
 import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
 import {
   applyPatch,
+  deleteFile,
   ensureProjectBound,
+  gitCommit,
+  gitDiff,
+  gitStatus,
+  globFiles,
   listDir,
   mkdir as sidecarMkdir,
+  patchXlsx,
+  readDocx,
   readFile,
+  readXlsx,
+  renameFile,
+  runDiagnostics,
   runTerminal,
   searchFiles,
   searchReplace,
@@ -38,8 +48,18 @@ export type AgentToolName =
   | "apply_patch"
   | "write_docx"
   | "write_xlsx"
+  | "read_docx"
+  | "read_xlsx"
+  | "patch_xlsx"
   | "mkdir"
   | "search_files"
+  | "glob_files"
+  | "delete_file"
+  | "rename_file"
+  | "run_diagnostics"
+  | "git_status"
+  | "git_diff"
+  | "git_commit"
   | "run_terminal";
 
 export type SpreadsheetCell = string | number | boolean | null;
@@ -63,12 +83,19 @@ export type AgentToolCall = {
   new_string?: string;
   replace_all?: boolean;
   edits?: TextEdit[];
-  /** Shell command for run_terminal */
   command?: string;
-  /** Optional cwd relative to project root (run_terminal) */
   cwd?: string;
-  /** Optional timeout in ms (run_terminal) */
   timeoutMs?: number;
+  offset?: number;
+  limit?: number;
+  pattern?: string;
+  regex?: boolean;
+  glob?: string;
+  from?: string;
+  to?: string;
+  message?: string;
+  paths?: string[];
+  cells?: Array<{ row: number; col: number; value: SpreadsheetCell }>;
 };
 
 export type AgentActivity = {
@@ -90,6 +117,7 @@ export type AgentFileChange = {
   path: string;
   size: number;
   at: number;
+  diff?: string;
 };
 
 const TOOL_NAMES = new Set<string>([
@@ -100,8 +128,18 @@ const TOOL_NAMES = new Set<string>([
   "apply_patch",
   "write_docx",
   "write_xlsx",
+  "read_docx",
+  "read_xlsx",
+  "patch_xlsx",
   "mkdir",
   "search_files",
+  "glob_files",
+  "delete_file",
+  "rename_file",
+  "run_diagnostics",
+  "git_status",
+  "git_diff",
+  "git_commit",
   "run_terminal",
 ]);
 
@@ -130,13 +168,21 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     function: {
       name: "read_file",
       description:
-        "Read a UTF-8 text file relative to the project root. Use after list_dir when you need file contents.",
+        "Read a UTF-8 text file relative to the project root. Large files return the first ~400 lines unless you pass offset (1-based start line) and limit. Use glob_files / search_files to find paths first.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
             description: "Relative file path, e.g. src/main.c or soft/hello.c",
+          },
+          offset: {
+            type: "number",
+            description: "1-based start line (optional). Use with limit for large files.",
+          },
+          limit: {
+            type: "number",
+            description: "Max number of lines to return (optional, default 400 for large files).",
           },
         },
         required: ["path"],
@@ -311,17 +357,181 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
     type: "function",
     function: {
       name: "search_files",
-      description: "Search file contents under the project for a text query.",
+      description:
+        "Search file contents under the project. Default is a case-insensitive substring. Set regex=true for a JS/ripgrep regular expression. Optional glob limits which files are searched (e.g. **/*.ts).",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Substring to search for" },
+          query: { type: "string", description: "Substring or regex to search for" },
+          path: {
+            type: "string",
+            description: 'Subdirectory to search, default "."',
+          },
+          regex: {
+            type: "boolean",
+            description: "Treat query as a regular expression",
+          },
+          glob: {
+            type: "string",
+            description: "Optional file glob, e.g. **/*.{ts,tsx}",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "glob_files",
+      description:
+        "Find files by glob pattern relative to the project root (e.g. **/*.ts, src/**/*.c). Prefer this over guessing paths or listing every directory.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: { type: "string", description: "Glob, e.g. **/*.{ts,tsx}" },
           path: {
             type: "string",
             description: 'Subdirectory to search, default "."',
           },
         },
-        required: ["query"],
+        required: ["pattern"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_file",
+      description:
+        "Delete a file, or an empty directory, relative to the project root. Non-empty directories are rejected.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative path to delete" },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "rename_file",
+      description: "Rename or move a file/directory within the project (from → to).",
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "Existing relative path" },
+          to: { type: "string", description: "Destination relative path" },
+        },
+        required: ["from", "to"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_docx",
+      description: "Extract plain text from an existing Word .docx file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative .docx path" },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_xlsx",
+      description: "Read an existing Excel .xlsx workbook as sheet rows (capped).",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Relative .xlsx path" },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "patch_xlsx",
+      description:
+        "Patch individual cells in an existing .xlsx (1-based row/col). Prefer this over rewriting the whole workbook.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          sheet_name: { type: "string" },
+          cells: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                row: { type: "number" },
+                col: { type: "number" },
+                value: { type: ["string", "number", "boolean", "null"] },
+              },
+              required: ["row", "col"],
+            },
+          },
+        },
+        required: ["path", "cells"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_diagnostics",
+      description:
+        "Run project typecheck (npx tsc --noEmit) when tsconfig.json exists. Call after a batch of TypeScript edits.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_status",
+      description: "Show git status --porcelain for the bound project (read-only).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_diff",
+      description: "Show git diff (unstaged). Optional path limits to one file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Optional relative file path" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_commit",
+      description:
+        "Stage the listed paths and create a git commit. Does not push. Requires an explicit message and file list (no git add -A).",
+      parameters: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "Commit message" },
+          paths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Relative paths to stage",
+          },
+        },
+        required: ["message", "paths"],
       },
     },
   },
@@ -494,11 +704,11 @@ export function buildExecutionPhaseSystem(locale: Locale): string {
 }
 
 const TOOL_MENTION_RE =
-  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files|run_terminal)\b/i;
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
 
 /** Disk-mutating tools excluding run_terminal (terminal is classified by command). */
 const DISK_MUTATING_TOOL_RE =
-  /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b/i;
+  /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|patch_xlsx|mkdir|delete_file|rename_file|git_commit)\b/i;
 
 const MUTATING_TOOLS = new Set<AgentToolName>([
   "write_file",
@@ -506,7 +716,11 @@ const MUTATING_TOOLS = new Set<AgentToolName>([
   "apply_patch",
   "write_docx",
   "write_xlsx",
+  "patch_xlsx",
   "mkdir",
+  "delete_file",
+  "rename_file",
+  "git_commit",
   "run_terminal",
 ]);
 
@@ -820,7 +1034,7 @@ export function isPrimarilyTerminalPlan(
 
   const mentioned = [
     ...blob.matchAll(
-      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir|search_files|run_terminal)\b/gi,
+      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
     ),
   ].map((m) => m[1]!.toLowerCase());
   const nonTerminal = mentioned.filter(
@@ -828,7 +1042,13 @@ export function isPrimarilyTerminalPlan(
       n !== "run_terminal" &&
       n !== "list_dir" &&
       n !== "read_file" &&
-      n !== "search_files",
+      n !== "search_files" &&
+      n !== "glob_files" &&
+      n !== "read_docx" &&
+      n !== "read_xlsx" &&
+      n !== "run_diagnostics" &&
+      n !== "git_status" &&
+      n !== "git_diff",
   );
   return nonTerminal.length === 0;
 }
@@ -853,13 +1073,13 @@ function extractMutationPathFromPlanBlob(
   blob: string,
 ): { tool: string; path: string } | null {
   const labeled = blob.match(
-    /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b[^\n]{0,160}?path\s*=\s*["'`]([^"'`]+)["'`]/i,
+    /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|patch_xlsx|mkdir|delete_file|rename_file|git_commit)\b[^\n]{0,160}?path\s*=\s*["'`]([^"'`]+)["'`]/i,
   );
   if (labeled?.[1] && labeled[2]) {
     return { tool: labeled[1].toLowerCase(), path: labeled[2].trim() };
   }
   const near = blob.match(
-    /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|mkdir)\b[^\n]{0,100}?[`"'“”]?([\w./\\-]+\.\w{1,10}|[\w./\\-]+\/)[`"'“”]?/i,
+    /\b(write_file|search_replace|apply_patch|write_docx|write_xlsx|patch_xlsx|mkdir|delete_file|rename_file|git_commit)\b[^\n]{0,100}?[`"'“”]?([\w./\\-]+\.\w{1,10}|[\w./\\-]+\/)[`"'“”]?/i,
   );
   if (near?.[1] && near[2]) {
     return { tool: near[1].toLowerCase(), path: near[2].trim() };
@@ -1082,9 +1302,25 @@ export function isWriteTool(tool: AgentToolName): boolean {
     tool === "apply_patch" ||
     tool === "write_docx" ||
     tool === "write_xlsx" ||
+    tool === "patch_xlsx" ||
     tool === "mkdir" ||
+    tool === "delete_file" ||
+    tool === "rename_file" ||
+    tool === "git_commit" ||
     tool === "run_terminal"
   );
+}
+
+/** True when a tool cannot change the disk (safe to run in parallel). */
+export function isReadOnlyAgentTool(
+  tool: AgentToolName,
+  command?: string,
+  projectRoot?: string | null,
+): boolean {
+  if (tool === "run_terminal") {
+    return isReadOnlyTerminalCommand(command ?? "", projectRoot);
+  }
+  return !isWriteTool(tool);
 }
 
 export function batchNeedsWriteApproval(
@@ -1106,8 +1342,8 @@ export function buildCodingToolsSystem(
 ): string {
   const allowTerminal = options?.allowTerminal !== false;
   const toolNames = allowTerminal
-    ? "list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files、run_terminal"
-    : "list_dir、read_file、mkdir、write_file、search_replace、apply_patch、write_docx、write_xlsx、search_files";
+    ? "list_dir、read_file、glob_files、search_files、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
+    : "list_dir、read_file、glob_files、search_files、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
   const terminalBlock = allowTerminal
     ? `
 终端：
@@ -1126,15 +1362,21 @@ export function buildCodingToolsSystem(
 你有原生函数工具：${toolNames}。
 
 查看项目（必须用工具，不要凭空猜目录内容）：
-- 列出目录 → list_dir（项目根用 path="."；子目录如 "src"）——仅当用户要看项目内目录且未要求 shell/run/绝对路径 ls 时
-- 用户要「执行 shell / 终端 / run 命令」或带绝对路径的 ls → run_terminal（如 command="ls"、"ls /debris"、"npm test"），不要用 list_dir 顶替
-- 阅读文件 → read_file（先 list_dir 再读具体路径）
-- 全文搜索 → search_files
+- 按名找文件 → glob_files（如 pattern="**/*.ts"）
+- 列出目录 → list_dir（项目根用 path="."）——仅当用户要看项目内目录且未要求 shell/run/绝对路径 ls 时
+- 用户要「执行 shell / 终端 / run 命令」或带绝对路径的 ls → run_terminal，不要用 list_dir 顶替
+- 全文搜索 → search_files（子串；正则设 regex=true；可用 glob 限文件）
+- 阅读文件 → read_file（大文件用 offset+limit）
+- 已有 Word → read_docx；已有 Excel → read_xlsx
+- git 状态/差异 → git_status / git_diff
 
 写入：
-- 新建纯文本 → write_file
-- 修改已有文本 → 优先 search_replace / apply_patch（先 read_file）
-- Word → write_docx；Excel → write_xlsx
+- 新建纯文本 → write_file（结果含 diff）
+- 修改已有文本 → 优先 search_replace / apply_patch
+- 删除/重命名 → delete_file / rename_file
+- Word 新建 → write_docx；Excel 新建 → write_xlsx；改已有单元格 → patch_xlsx
+- TypeScript 改完可 run_diagnostics
+- 提交 → git_commit（必须 message + paths，禁止 add -A / push）
 ${terminalBlock}
 只把内容写在 Markdown 里不会写入磁盘。
 路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径（run_terminal 的 command 内除外）。
@@ -1296,6 +1538,33 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
       typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)
         ? args.timeoutMs
         : undefined,
+    offset:
+      typeof args.offset === "number" && Number.isFinite(args.offset)
+        ? args.offset
+        : undefined,
+    limit:
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? args.limit
+        : undefined,
+    pattern: typeof args.pattern === "string" ? args.pattern : undefined,
+    regex: typeof args.regex === "boolean" ? args.regex : undefined,
+    glob: typeof args.glob === "string" ? args.glob : undefined,
+    from:
+      typeof args.from === "string" ? normalizeRelPath(args.from) : undefined,
+    to: typeof args.to === "string" ? normalizeRelPath(args.to) : undefined,
+    message: typeof args.message === "string" ? args.message : undefined,
+    paths: Array.isArray(args.paths)
+      ? args.paths.map((p) => normalizeRelPath(String(p ?? "")))
+      : undefined,
+    cells: Array.isArray(args.cells)
+      ? args.cells
+          .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+          .map((c) => ({
+            row: Number(c.row ?? c.r),
+            col: Number(c.col ?? c.c),
+            value: (c.value ?? null) as SpreadsheetCell,
+          }))
+      : undefined,
   };
 }
 
@@ -1833,6 +2102,17 @@ function inferToolFromPartialObject(
   const ctx = `${userText}\n${assistantText}`;
 
   if (/run_terminal\b/i.test(assistantText) && command) return "run_terminal";
+  if (/glob_files\b/i.test(assistantText) && (query || typeof obj.pattern === "string"))
+    return "glob_files";
+  if (/delete_file\b/i.test(assistantText) && path) return "delete_file";
+  if (/rename_file\b/i.test(assistantText) && path) return "rename_file";
+  if (/read_docx\b/i.test(assistantText) && path) return "read_docx";
+  if (/read_xlsx\b/i.test(assistantText) && path) return "read_xlsx";
+  if (/patch_xlsx\b/i.test(assistantText) && path) return "patch_xlsx";
+  if (/git_status\b/i.test(assistantText)) return "git_status";
+  if (/git_diff\b/i.test(assistantText)) return "git_diff";
+  if (/git_commit\b/i.test(assistantText)) return "git_commit";
+  if (/run_diagnostics\b/i.test(assistantText)) return "run_diagnostics";
   if (/list_dir\b/i.test(assistantText) && path !== undefined) return "list_dir";
   if (/read_file\b/i.test(assistantText) && path) return "read_file";
   if (/write_docx\b/i.test(assistantText) && path) return "write_docx";
@@ -1900,6 +2180,20 @@ function agentCallFromPartialObject(
     call.edits = obj.edits as TextEdit[];
   }
   if (typeof obj.sheet_name === "string") call.sheet_name = obj.sheet_name;
+  if (typeof obj.pattern === "string") call.pattern = obj.pattern;
+  if (typeof obj.regex === "boolean") call.regex = obj.regex;
+  if (typeof obj.glob === "string") call.glob = obj.glob;
+  if (typeof obj.from === "string") call.from = normalizeRelPath(obj.from);
+  if (typeof obj.to === "string") call.to = normalizeRelPath(obj.to);
+  if (typeof obj.message === "string") call.message = obj.message;
+  if (typeof obj.offset === "number") call.offset = obj.offset;
+  if (typeof obj.limit === "number") call.limit = obj.limit;
+  if (Array.isArray(obj.paths)) {
+    call.paths = obj.paths.map((p) => normalizeRelPath(String(p ?? "")));
+  }
+  if (Array.isArray(obj.cells)) {
+    call.cells = obj.cells as AgentToolCall["cells"];
+  }
   return call;
 }
 
@@ -2066,7 +2360,7 @@ export function hasExplicitRepoActionSignal(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
   if (
-    /创建文件|写入|写进|写到|保存到|保存为|放到|在项目(?:里|中)|实现到|改一下|改下|修改|删除|覆盖|新建|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|create\s+(?:a\s+)?(?:new\s+)?file|save\s+(?:it\s+)?to|write\s+(?:it\s+)?to|implement\s+in\b|edit\s+(?:the\s+)?file|delete\s+(?:the\s+)?file|remove\s+(?:the\s+)?file/i.test(
+    /创建文件|写入|写进|写到|保存到|保存为|放到|在项目(?:里|中)|实现到|改一下|改下|修改|删除|覆盖|新建|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|delete_file|rename_file|patch_xlsx|git_commit|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|create\s+(?:a\s+)?(?:new\s+)?file|save\s+(?:it\s+)?to|write\s+(?:it\s+)?to|implement\s+in\b|edit\s+(?:the\s+)?file|delete\s+(?:the\s+)?file|remove\s+(?:the\s+)?file/i.test(
       t,
     )
   ) {
@@ -2275,7 +2569,7 @@ export function looksLikeMutationRequest(userText: string): boolean {
     return false;
   }
   if (hasExplicitRepoActionSignal(userText)) return true;
-  return /安装|卸载|移动|重命名|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|delete|remove|install/i.test(
+  return /安装|卸载|移动|重命名|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|delete_file|rename_file|patch_xlsx|git_commit|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|delete|remove|install/i.test(
     userText,
   );
 }
@@ -2787,7 +3081,7 @@ export function stripToolCalls(text: string): string {
       const obj = JSON.parse(inner);
       if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return "";
     } catch {
-      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|run_terminal)"/.test(inner)) {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
         return "";
       }
     }
@@ -2918,6 +3212,12 @@ function formatHits(hits: SearchHit[]): string {
     .join("\n");
 }
 
+function withDiffFooter(text: string, diff?: string): string {
+  const d = diff?.trim();
+  if (!d) return text;
+  return `${text}\n\n--- diff ---\n${d}`;
+}
+
 /** Ensure blank Word docs work even with an older sidecar still running. */
 function normalizeDocxPayload(
   title: string | undefined,
@@ -2975,10 +3275,18 @@ export async function executeToolCall(
             activity: { kind: "error", message: t("agent.activity.readMissingPath", undefined, locale) },
           };
         }
-        const { content, size } = await readFile(path, sidecarUrl, signal);
+        const { content, size, truncated, totalLines, startLine, endLine } =
+          await readFile(path, sidecarUrl, signal, {
+            offset: call.offset,
+            limit: call.limit,
+          });
+        let resultText = content;
+        if (truncated) {
+          resultText += `\n\n…(truncated; totalLines=${totalLines ?? "?"}; showing ${startLine ?? 1}–${endLine ?? "?"}. Pass offset+limit to read more.)`;
+        }
         return {
           ok: true,
-          resultText: content,
+          resultText,
           activity: {
             kind: "read",
             message: t("agent.activity.reading", { path, size }, locale),
@@ -3027,12 +3335,17 @@ export async function executeToolCall(
             },
           };
         }
-        const { size } = await writeFile(path, call.content, sidecarUrl, signal);
+        const { size, diff } = await writeFile(
+          path,
+          call.content,
+          sidecarUrl,
+          signal,
+        );
         return {
           ok: true,
-          resultText: `Wrote ${path} (${size} bytes)`,
+          resultText: withDiffFooter(`Wrote ${path} (${size} bytes)`, diff),
           activity: { kind: "write", message: t("agent.activity.wrote", { path }, locale) },
-          change: { path, size },
+          change: { path, size, diff },
         };
       }
       case "search_replace": {
@@ -3064,7 +3377,7 @@ export async function executeToolCall(
             },
           };
         }
-        const { size, path: writtenPath, replacements } = await searchReplace(
+        const { size, path: writtenPath, replacements, diff } = await searchReplace(
           path,
           {
             old_string: call.old_string,
@@ -3076,12 +3389,15 @@ export async function executeToolCall(
         );
         return {
           ok: true,
-          resultText: `Updated ${writtenPath} (${replacements} replacement(s), ${size} bytes)`,
+          resultText: withDiffFooter(
+            `Updated ${writtenPath} (${replacements} replacement(s), ${size} bytes)`,
+            diff,
+          ),
           activity: {
             kind: "write",
             message: t("agent.activity.patched", { path: writtenPath, n: replacements }, locale),
           },
-          change: { path: writtenPath, size },
+          change: { path: writtenPath, size, diff },
         };
       }
       case "apply_patch": {
@@ -3100,20 +3416,19 @@ export async function executeToolCall(
             activity: { kind: "error", message: t("agent.activity.patchMissingEdits", undefined, locale) },
           };
         }
-        const { size, path: writtenPath, edits, replacements } = await applyPatch(
-          path,
-          call.edits,
-          sidecarUrl,
-          signal,
-        );
+        const { size, path: writtenPath, edits, replacements, diff } =
+          await applyPatch(path, call.edits, sidecarUrl, signal);
         return {
           ok: true,
-          resultText: `Patched ${writtenPath} (${edits} edit(s), ${replacements} replacement(s), ${size} bytes)`,
+          resultText: withDiffFooter(
+            `Patched ${writtenPath} (${edits} edit(s), ${replacements} replacement(s), ${size} bytes)`,
+            diff,
+          ),
           activity: {
             kind: "write",
             message: t("agent.activity.patchedEdits", { path: writtenPath, edits }, locale),
           },
-          change: { path: writtenPath, size },
+          change: { path: writtenPath, size, diff },
         };
       }
       case "write_docx": {
@@ -3188,6 +3503,7 @@ export async function executeToolCall(
           normalizeRelPath(call.path?.trim() || ".", projectRoot),
           sidecarUrl,
           signal,
+          { regex: call.regex, glob: call.glob },
         );
         return {
           ok: true,
@@ -3197,6 +3513,281 @@ export async function executeToolCall(
             kind: "search",
             message: t("agent.activity.search", { query, n: hits.length }, locale),
           },
+        };
+      }
+      case "glob_files": {
+        const pattern = (call.pattern ?? call.query ?? "").trim();
+        if (!pattern) {
+          return {
+            ok: false,
+            resultText: "Error: pattern is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.globMissingPattern", undefined, locale),
+            },
+          };
+        }
+        const { matches, truncated } = await globFiles(
+          pattern,
+          normalizeRelPath(call.path?.trim() || ".", projectRoot),
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText:
+            (matches.join("\n") || "(no matches)") +
+            (truncated ? "\n…(truncated)" : ""),
+          activity: {
+            kind: "search",
+            message: t(
+              "agent.activity.glob",
+              { pattern, n: matches.length },
+              locale,
+            ),
+          },
+        };
+      }
+      case "delete_file": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.deleteMissingPath", undefined, locale),
+            },
+          };
+        }
+        const { kind, size } = await deleteFile(path, sidecarUrl, signal);
+        return {
+          ok: true,
+          resultText: `Deleted ${path} (${kind})`,
+          activity: {
+            kind: "write",
+            message: t("agent.activity.deleted", { path }, locale),
+          },
+          change: { path, size: size ?? 0 },
+        };
+      }
+      case "rename_file": {
+        const from = normalizeRelPath(
+          (call.from ?? call.path)?.trim() || "",
+          projectRoot,
+        );
+        const to = normalizeRelPath(call.to?.trim() || "", projectRoot);
+        if (!from || from === "." || !to || to === ".") {
+          return {
+            ok: false,
+            resultText: "Error: from and to are required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.renameMissingArgs", undefined, locale),
+            },
+          };
+        }
+        const { from: src, to: dest } = await renameFile(
+          from,
+          to,
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText: `Renamed ${src} → ${dest}`,
+          activity: {
+            kind: "write",
+            message: t("agent.activity.renamed", { from: src, to: dest }, locale),
+          },
+          change: { path: dest, size: 0 },
+        };
+      }
+      case "read_docx": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.readDocxMissingPath", undefined, locale),
+            },
+          };
+        }
+        const { text, truncated } = await readDocx(path, sidecarUrl, signal);
+        return {
+          ok: true,
+          resultText: truncated ? `${text}\n\n…(truncated)` : text || "(empty)",
+          activity: {
+            kind: "read",
+            message: t("agent.activity.readDocx", { path }, locale),
+          },
+        };
+      }
+      case "read_xlsx": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.readXlsxMissingPath", undefined, locale),
+            },
+          };
+        }
+        const { sheets } = await readXlsx(path, sidecarUrl, signal);
+        const lines = sheets.flatMap((sheet) => [
+          `# ${sheet.name}`,
+          ...sheet.rows.map(
+            (row) => `r${row.row}: ${row.cells.join("\t")}`,
+          ),
+        ]);
+        return {
+          ok: true,
+          resultText: lines.join("\n") || "(empty workbook)",
+          activity: {
+            kind: "read",
+            message: t("agent.activity.readXlsx", { path }, locale),
+          },
+        };
+      }
+      case "patch_xlsx": {
+        const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
+        if (!path || path === ".") {
+          return {
+            ok: false,
+            resultText: "Error: path is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.patchXlsxMissingPath", undefined, locale),
+            },
+          };
+        }
+        if (!call.cells || call.cells.length === 0) {
+          return {
+            ok: false,
+            resultText: "Error: cells must be a non-empty array",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.patchXlsxMissingCells", undefined, locale),
+            },
+          };
+        }
+        const { path: writtenPath, patched, size, sheet_name } = await patchXlsx(
+          path,
+          { sheet_name: call.sheet_name, cells: call.cells },
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok: true,
+          resultText: `Patched ${patched} cell(s) in ${writtenPath} sheet=${sheet_name} (${size} bytes)`,
+          activity: {
+            kind: "write",
+            message: t(
+              "agent.activity.patchedXlsx",
+              { path: writtenPath, n: patched },
+              locale,
+            ),
+          },
+          change: { path: writtenPath, size },
+        };
+      }
+      case "run_diagnostics": {
+        const { ok, skipped, output } = await runDiagnostics(sidecarUrl, signal);
+        return {
+          ok,
+          resultText: skipped
+            ? output
+            : `${ok ? "Diagnostics clean" : "Diagnostics reported issues"}\n${output}`,
+          activity: {
+            kind: ok ? "info" : "error",
+            message: t(
+              skipped
+                ? "agent.activity.diagnosticsSkipped"
+                : ok
+                  ? "agent.activity.diagnosticsOk"
+                  : "agent.activity.diagnosticsFailed",
+              undefined,
+              locale,
+            ),
+          },
+        };
+      }
+      case "git_status": {
+        const { ok, output, exitCode } = await gitStatus(sidecarUrl, signal);
+        return {
+          ok,
+          resultText: output || "(clean)",
+          activity: {
+            kind: "info",
+            message: t("agent.activity.gitStatus", { code: exitCode }, locale),
+          },
+        };
+      }
+      case "git_diff": {
+        const rel = call.path?.trim()
+          ? normalizeRelPath(call.path, projectRoot)
+          : undefined;
+        const { ok, output, exitCode } = await gitDiff(
+          rel,
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok,
+          resultText: output || "(no diff)",
+          activity: {
+            kind: "info",
+            message: t("agent.activity.gitDiff", { code: exitCode }, locale),
+          },
+        };
+      }
+      case "git_commit": {
+        const message = call.message?.trim();
+        const paths = (call.paths ?? [])
+          .map((p) => normalizeRelPath(String(p ?? "").trim(), projectRoot))
+          .filter((p) => p && p !== ".");
+        if (!message) {
+          return {
+            ok: false,
+            resultText: "Error: commit message is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.gitCommitMissingMessage", undefined, locale),
+            },
+          };
+        }
+        if (paths.length === 0) {
+          return {
+            ok: false,
+            resultText: "Error: paths is required (no git add -A)",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.gitCommitMissingPaths", undefined, locale),
+            },
+          };
+        }
+        const { ok, output, exitCode } = await gitCommit(
+          message,
+          paths,
+          sidecarUrl,
+          signal,
+        );
+        return {
+          ok,
+          resultText: output || (ok ? "Committed" : "git commit failed"),
+          activity: {
+            kind: ok ? "write" : "error",
+            message: t(
+              "agent.activity.gitCommit",
+              { code: exitCode, n: paths.length },
+              locale,
+            ),
+          },
+          change: ok ? { path: paths.join(", "), size: 0 } : undefined,
         };
       }
       case "run_terminal": {
@@ -3371,9 +3962,15 @@ export function toolResultMessage(
   const label =
     call.tool === "search_files"
       ? `search_files query=${JSON.stringify(call.query ?? "")}`
-      : call.tool === "run_terminal"
-        ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
-        : `${call.tool} path=${JSON.stringify(call.path ?? ".")}`;
+      : call.tool === "glob_files"
+        ? `glob_files pattern=${JSON.stringify(call.pattern ?? call.query ?? "")}`
+        : call.tool === "run_terminal"
+          ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
+          : call.tool === "git_commit"
+            ? `git_commit message=${JSON.stringify(call.message ?? "")}`
+            : call.tool === "rename_file"
+              ? `rename_file from=${JSON.stringify(call.from ?? call.path ?? "")} to=${JSON.stringify(call.to ?? "")}`
+              : `${call.tool} path=${JSON.stringify(call.path ?? ".")}`;
   const truncated = truncateToolResultText(resultText, TOOL_RESULT_MAX_CHARS);
   const status = ok ? "成功" : "失败";
   const followUp = ok

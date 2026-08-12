@@ -121,8 +121,19 @@ export async function readFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
-): Promise<{ path: string; content: string; size: number }> {
+  options?: { offset?: number; limit?: number },
+): Promise<{
+  path: string;
+  content: string;
+  size: number;
+  totalLines?: number;
+  startLine?: number;
+  endLine?: number;
+  truncated?: boolean;
+}> {
   const q = new URLSearchParams({ path: relPath });
+  if (options?.offset != null) q.set("offset", String(options.offset));
+  if (options?.limit != null) q.set("limit", String(options.limit));
   const res = await fetch(`${base(sidecarUrl)}/fs/read?${q}`, { signal });
   return parseJson(res);
 }
@@ -132,7 +143,7 @@ export async function writeFile(
   content: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
-): Promise<{ path: string; size: number; written: boolean }> {
+): Promise<{ path: string; size: number; written: boolean; diff?: string; created?: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/write`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -157,6 +168,7 @@ export async function searchReplace(
   written: boolean;
   kind: string;
   replacements: number;
+  diff?: string;
 }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/search_replace`, {
     method: "POST",
@@ -188,6 +200,7 @@ export async function applyPatch(
   kind: string;
   edits: number;
   replacements: number;
+  diff?: string;
 }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/apply_patch`, {
     method: "POST",
@@ -264,11 +277,169 @@ export async function searchFiles(
   subpath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
-): Promise<{ query: string; hits: SearchHit[]; truncated: boolean }> {
+  options?: { regex?: boolean; glob?: string },
+): Promise<{ query: string; hits: SearchHit[]; truncated: boolean; regex?: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, path: subpath }),
+    body: JSON.stringify({
+      query,
+      path: subpath,
+      regex: options?.regex,
+      glob: options?.glob,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function globFiles(
+  pattern: string,
+  subpath = ".",
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ pattern: string; matches: string[]; truncated: boolean }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/glob`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pattern, path: subpath }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function deleteFile(
+  relPath: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ path: string; deleted: boolean; kind: string; size?: number }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: relPath }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function renameFile(
+  from: string,
+  to: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ from: string; to: string; renamed: boolean }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function readDocx(
+  relPath: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ path: string; text: string; truncated?: boolean }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/read_docx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: relPath }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function readXlsx(
+  relPath: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  path: string;
+  sheets: Array<{ name: string; rows: Array<{ row: number; cells: string[] }> }>;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/read_xlsx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: relPath }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function patchXlsx(
+  relPath: string,
+  options: {
+    sheet_name?: string;
+    cells: Array<{ row: number; col: number; value: string | number | boolean | null }>;
+  },
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ path: string; sheet_name: string; patched: number; size: number; written: boolean }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/patch_xlsx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: relPath,
+      sheet_name: options.sheet_name,
+      cells: options.cells,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function runDiagnostics(
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; skipped?: boolean; output: string }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/diagnostics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function gitStatus(
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; output: string; exitCode: number }> {
+  const res = await fetch(`${base(sidecarUrl)}/git/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function gitDiff(
+  relPath?: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; output: string; exitCode: number }> {
+  const res = await fetch(`${base(sidecarUrl)}/git/diff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: relPath || undefined }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function gitCommit(
+  message: string,
+  paths: string[],
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; output: string; exitCode: number; paths: string[] }> {
+  const res = await fetch(`${base(sidecarUrl)}/git/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, paths }),
     signal,
   });
   return parseJson(res);

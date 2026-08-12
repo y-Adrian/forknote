@@ -84,8 +84,13 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
           <ul>
             {agentChanges.map((c) => (
               <li key={`${c.path}-${c.at}`}>
-                <code>{c.path}</code>
-                <span className="fn-agent-changes-meta">{c.size} B</span>
+                <div className="fn-agent-changes-row">
+                  <code>{c.path}</code>
+                  <span className="fn-agent-changes-meta">{c.size} B</span>
+                </div>
+                {c.diff ? (
+                  <pre className="fn-agent-changes-diff">{c.diff}</pre>
+                ) : null}
               </li>
             ))}
           </ul>

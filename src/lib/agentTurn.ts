@@ -21,6 +21,7 @@ import {
   inferOfficeCreateIntent,
   inferPreferredToolFromPlan,
   isMutatingAgentTool,
+  isReadOnlyAgentTool,
   usesInlineToolApproval,
   limitPlanForApproval,
   looksLikeAnswerOnlyRequest,
@@ -994,7 +995,7 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content:
-              "请立刻调用工具执行（list_dir / read_file / write_file / search_replace / write_docx / run_terminal 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
+              "请立刻调用工具执行（list_dir / glob_files / read_file / write_file / search_replace / write_docx / git_status / run_terminal 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
           });
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
@@ -1081,16 +1082,11 @@ export async function runAgentTurn(
       let wroteTarget = false;
       let batchHadTools = pending.length > 0;
       let batchHadSuccess = false;
-      for (const item of pending) {
-        if (signal.aborted) break;
-        const executed = await abortable(
-          executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
-            allowTerminal,
-            allowOutsideProject,
-          }),
-          signal,
-        );
-        if (signal.aborted) break;
+
+      const applyExecuted = (
+        item: PendingCall,
+        executed: Awaited<ReturnType<typeof executeToolCall>>,
+      ) => {
         if (executed.ok) {
           batchHadSuccess = true;
           if (
@@ -1150,6 +1146,43 @@ export async function runAgentTurn(
           apiMessages.push(
             toolResultMessage(item.agent, executed.resultText, executed.ok),
           );
+        }
+      };
+
+      const runOne = (item: PendingCall) =>
+        abortable(
+          executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
+            allowTerminal,
+            allowOutsideProject,
+          }),
+          signal,
+        );
+
+      const parallel =
+        pending.length > 1 &&
+        pending.every((item) =>
+          isReadOnlyAgentTool(
+            item.agent.tool,
+            item.agent.command,
+            projectRoot,
+          ),
+        );
+
+      if (parallel) {
+        const executedList = await abortable(
+          Promise.all(pending.map((item) => runOne(item))),
+          signal,
+        );
+        for (let i = 0; i < pending.length; i++) {
+          if (signal.aborted) break;
+          applyExecuted(pending[i]!, executedList[i]!);
+        }
+      } else {
+        for (const item of pending) {
+          if (signal.aborted) break;
+          const executed = await runOne(item);
+          if (signal.aborted) break;
+          applyExecuted(item, executed);
         }
       }
 

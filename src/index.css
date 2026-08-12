@@ -4656,12 +4656,31 @@ mark.branch-highlight:hover {
 }
 
 .fn-agent-changes li {
+  display: block;
+  padding: 2px 0;
+  color: var(--ds-text);
+}
+
+.fn-agent-changes-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 2px 0;
-  color: var(--ds-text);
+}
+
+.fn-agent-changes-diff {
+  margin: 4px 0 8px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--ds-bg);
+  border: 1px solid var(--ds-border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .fn-agent-changes code {
