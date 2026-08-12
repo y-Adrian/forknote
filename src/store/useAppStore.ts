@@ -92,6 +92,7 @@ import type {
   ChatSession,
   ContextMemoryPack,
   ContextMode,
+  ThreadView,
   FeedbackAttribution,
   FocusTarget,
   NodeId,
@@ -169,6 +170,7 @@ interface AppState {
    */
   compressContext: () => Promise<void>;
   setContextMode: (mode: ContextMode, archiveId?: NodeId | null) => void;
+  setThreadView: (view: ThreadView) => void;
   setArchivePanelOpen: (open: boolean) => void;
   setViewingArchiveId: (id: NodeId | null) => void;
   deleteArchive: (archiveId: NodeId) => void;
@@ -352,6 +354,7 @@ function patchActiveSessionMeta(
       | "archives"
       | "contextMode"
       | "activeArchiveId"
+      | "threadView"
       | "contextMemory"
       | "sessionMemory"
     >
@@ -997,6 +1000,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setViewingArchiveId: (id) => set({ viewingArchiveId: id }),
 
+  setThreadView: (view) => {
+    const { sessions, activeSessionId } = get();
+    if (!activeSessionId) return;
+    const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
+      threadView: view,
+    });
+    persistSessions(nextSessions, activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
   setContextMode: (mode, archiveId) => {
     const { sessions, activeSessionId } = get();
     if (!activeSessionId) return;
@@ -1020,6 +1033,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
       contextMode: mode,
       activeArchiveId: nextArchiveId ?? null,
+      ...(mode === "archive" ? { threadView: "archive" as const } : {}),
     });
     persistSessions(nextSessions, activeSessionId);
     set({
@@ -1153,6 +1167,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         archives,
         contextMode: "archive",
         activeArchiveId: snapshot.id,
+        threadView: "archive",
       });
       persistSessions(nextSessions, get().activeSessionId);
       set({

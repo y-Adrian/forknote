@@ -1405,6 +1405,19 @@ body {
   word-break: break-word;
 }
 
+.answer-body li,
+.answer-body ol,
+.answer-body ul,
+.answer-body blockquote {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.answer-body li .fn-code-block,
+.answer-body blockquote .fn-code-block {
+  margin-left: 0;
+}
+
 .answer-body :not(pre):not(.fn-code-pre) > code {
   white-space: pre-wrap;
   word-break: break-all;
@@ -1511,8 +1524,10 @@ body {
 }
 
 .answer-body .fn-code-line-num {
+  display: block;
   padding-right: 10px;
   min-width: 1.75em;
+  line-height: 1.55;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1625,14 +1640,13 @@ body {
   position: relative;
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--ds-border);
+  border: none;
   border-left: 3px solid var(--ds-focus-border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  background: var(--ds-accent-soft);
+  border-radius: 0;
+  padding: 2px 0 2px 12px;
+  background: transparent;
   transition:
     border-color var(--dur-base) ease,
-    background var(--dur-base) ease,
     opacity var(--dur-base) ease;
 }
 
@@ -1759,7 +1773,7 @@ body {
 /* Verdict state on the whole block */
 .point-block.is-accept {
   border-left-color: #4ade80;
-  background: rgba(74, 222, 128, 0.05);
+  background: rgba(74, 222, 128, 0.04);
 }
 
 .point-block.is-unsure {
@@ -2265,7 +2279,7 @@ mark.branch-highlight:hover {
 }
 
 .float-panel-detail .point-block {
-  padding: 10px 12px;
+  padding: 2px 0 2px 10px;
 }
 
 .float-panel-detail .point-verdict-group {
@@ -3793,6 +3807,37 @@ mark.branch-highlight:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.fn-archive-base {
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 0 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--ds-border);
+}
+
+.fn-archive-base-kicker {
+  display: block;
+  font-size: var(--fn-text-ui-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-accent);
+}
+
+.fn-archive-base-title {
+  margin: 6px 0 14px;
+  font-family: var(--ds-font-ui);
+  font-size: 1.12rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ds-text);
+  line-height: 1.35;
+}
+
+.fn-archive-base .answer-body {
+  font-size: var(--fn-text-chat);
 }
 
 .fn-fork-chip {

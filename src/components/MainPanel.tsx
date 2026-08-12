@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { messagesAfterArchive } from "../lib/archive";
 import { countBranchesInThread } from "../lib/branches";
-import { resolveConversationContext } from "../lib/conversationContext";
+import {
+  resolveConversationContext,
+  resolveThreadView,
+} from "../lib/conversationContext";
 import { useLocale } from "../lib/i18n";
 import { COMPRESS_SUGGEST_MESSAGE_THRESHOLD } from "../lib/settings";
-import { firstUserMessage } from "../lib/thread";
+import { displaySessionTitle } from "../lib/storage";
 import { useAppStore } from "../store/useAppStore";
-import type { NodeId } from "../types";
+import type { ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
 import { AgentPlanReview } from "./AgentPlanReview";
@@ -14,6 +18,7 @@ import {
   usePendingInlineApproval,
 } from "./InlineToolApproval";
 import { ChatComposer } from "./ChatComposer";
+import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
@@ -101,6 +106,7 @@ export function MainPanel({
   const setArchivePanelOpen = useAppStore((s) => s.setArchivePanelOpen);
   const setViewingArchiveId = useAppStore((s) => s.setViewingArchiveId);
   const setContextMode = useAppStore((s) => s.setContextMode);
+  const setThreadView = useAppStore((s) => s.setThreadView);
 
   const [input, setInput] = useState("");
   const [openBranchId, setOpenBranchId] = useState<NodeId | null>(null);
@@ -135,6 +141,9 @@ export function MainPanel({
   const hasArchives = archives.length > 0;
   /** Must match askMain: only true when archive snapshot resolves */
   const inArchiveMode = resolvedContext.mode === "archive";
+  const threadView = resolveThreadView(activeSession, resolvedContext.mode);
+  const showArchiveDoc =
+    inArchiveMode && threadView === "archive" && Boolean(activeArchive);
 
   const forkCount = useMemo(
     () => (thread ? countBranchesInThread(thread) : 0),
@@ -145,6 +154,16 @@ export function MainPanel({
     () => Boolean(thread?.messages.some((m) => m.content.trim())),
     [thread],
   );
+
+  const visibleMessages: ChatMessage[] = useMemo(() => {
+    if (!thread) return [];
+    if (showArchiveDoc && activeArchive) {
+      return messagesAfterArchive(thread, activeArchive);
+    }
+    return thread.messages;
+  }, [thread, showArchiveDoc, activeArchive]);
+
+  const lastThreadMessageId = thread?.messages[thread.messages.length - 1]?.id;
 
   const showCompressSuggest = useMemo(() => {
     if (!thread || !activeSessionId || inArchiveMode) return false;
@@ -214,7 +233,7 @@ export function MainPanel({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [thread?.messages.length, loadingMain, pendingInline]);
+  }, [thread?.messages.length, visibleMessages.length, showArchiveDoc, loadingMain, pendingInline]);
 
   useEffect(() => {
     if (!loadingBranchId && openBranchId) {
@@ -281,12 +300,6 @@ export function MainPanel({
       window.clearTimeout(modeNoticeTimerRef.current);
       modeNoticeTimerRef.current = null;
     }
-  };
-
-  const switchToLive = () => {
-    // Always write live so a stale archive id cannot leave askMain on archive
-    setContextMode("live");
-    dismissModeNotice();
   };
 
   const switchToArchive = (archiveId?: NodeId) => {
@@ -395,7 +408,7 @@ export function MainPanel({
     );
   }
 
-  const title = firstUserMessage(thread) || t("main.untitled");
+  const title = displaySessionTitle(activeSession?.title ?? "");
 
   return (
     <main className="ds-main ds-main-chat">
@@ -428,7 +441,26 @@ export function MainPanel({
         <div className="ds-chat-column">
           <div className="ds-chat-scroll" ref={scrollRef}>
             <div className="ds-messages">
-              {thread.messages.map((msg, index) =>
+              {showArchiveDoc && activeArchive ? (
+                <div className="fn-msg fn-msg-assistant">
+                  <article className="fn-archive-base">
+                    <span className="fn-archive-base-kicker">
+                      {t("main.archiveBaseKicker")}
+                    </span>
+                    <h2 className="fn-archive-base-title">
+                      {activeArchive.title}
+                    </h2>
+                    <div className="answer-body">
+                      <MarkdownBody content={activeArchive.content} />
+                    </div>
+                  </article>
+                  <MessageActions
+                    text={activeArchive.content}
+                    align="start"
+                  />
+                </div>
+              ) : null}
+              {visibleMessages.map((msg) =>
                 msg.role === "user" ? (
                   <div
                     key={msg.id}
@@ -455,7 +487,7 @@ export function MainPanel({
                         reasoning={msg.reasoning}
                         seconds={msg.thinkingSeconds}
                         streaming={
-                          loadingMain && index === thread.messages.length - 1
+                          loadingMain && msg.id === lastThreadMessageId
                         }
                       />
                     ) : null}
@@ -470,7 +502,7 @@ export function MainPanel({
                             onAskBranch={askBranch}
                             branchLoading={
                               loadingBranchId !== null ||
-                              (loadingMain && index === thread.messages.length - 1)
+                              (loadingMain && msg.id === lastThreadMessageId)
                             }
                             activeBranchId={openBranchId}
                             onToggleBranch={toggleBranch}
@@ -486,7 +518,7 @@ export function MainPanel({
                           onCopy={() => recordPassiveCopy(msg.id)}
                         />
                       </>
-                    ) : loadingMain && index === thread.messages.length - 1 ? (
+                    ) : loadingMain && msg.id === lastThreadMessageId ? (
                       !msg.reasoning?.trim() ? (
                         <div
                           className="ds-typing"
@@ -501,7 +533,7 @@ export function MainPanel({
                     {pendingInline &&
                     (pendingInlineAssistantId
                       ? pendingInlineAssistantId === msg.id
-                      : index === thread.messages.length - 1) ? (
+                      : msg.id === lastThreadMessageId) ? (
                       <InlineToolApproval scope={{ kind: "main" }} />
                     ) : null}
                   </div>
@@ -599,7 +631,9 @@ export function MainPanel({
 
             {inArchiveMode && (
               <p className="fn-context-composer-hint">
-                {t("main.archiveComposerHint")}
+                {threadView === "evolution"
+                  ? t("main.evolutionComposerHint")
+                  : t("main.archiveComposerHint")}
               </p>
             )}
 
@@ -624,8 +658,8 @@ export function MainPanel({
                   >
                     <button
                       type="button"
-                      className={`fn-context-seg${inArchiveMode ? " is-active" : ""}`}
-                      aria-pressed={inArchiveMode}
+                      className={`fn-context-seg${inArchiveMode && threadView === "archive" ? " is-active" : ""}`}
+                      aria-pressed={inArchiveMode && threadView === "archive"}
                       disabled={composerBusy}
                       title={t("main.archiveContextTitle")}
                       onClick={() => switchToArchive()}
@@ -634,11 +668,11 @@ export function MainPanel({
                     </button>
                     <button
                       type="button"
-                      className={`fn-context-seg${!inArchiveMode ? " is-active" : ""}`}
-                      aria-pressed={!inArchiveMode}
+                      className={`fn-context-seg${threadView === "evolution" ? " is-active" : ""}`}
+                      aria-pressed={threadView === "evolution"}
                       disabled={composerBusy}
                       title={t("main.fullThreadTitle")}
-                      onClick={switchToLive}
+                      onClick={() => setThreadView("evolution")}
                     >
                       {t("main.fullThread")}
                     </button>
@@ -717,7 +751,9 @@ export function MainPanel({
             />
           </footer>
         </div>
-        <BranchRail thread={thread} scrollRef={scrollRef} />
+        {showArchiveDoc ? null : (
+          <BranchRail thread={thread} scrollRef={scrollRef} />
+        )}
       </div>
 
       {error && <p className="ds-error ds-error-bar">{error}</p>}
