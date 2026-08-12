@@ -10,6 +10,7 @@ import {
   buildArchiveContextMessages,
   messagesAfterArchive,
 } from "./archive";
+import { flattenAdoptedForPlaintext } from "./adoptBranch";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import { annotateContentWithVerdicts } from "./points";
@@ -43,11 +44,25 @@ function findBranchPath(
   return null;
 }
 
+function annotateForModel(
+  content: string,
+  verdicts: ChatMessage["pointVerdicts"],
+  doubts?: ChatMessage["pointDoubts"],
+  attributions?: ChatMessage["pointAttributions"],
+): string {
+  return annotateContentWithVerdicts(
+    flattenAdoptedForPlaintext(content),
+    verdicts,
+    doubts,
+    attributions,
+  );
+}
+
 function formatBranchTurns(node: BranchNode, answerMax = ANCESTOR_ANSWER_MAX): string {
   const lines = [
     `问：${truncate(node.userQuestion, ANCESTOR_QUESTION_MAX)}`,
     `答：${truncate(
-      annotateContentWithVerdicts(
+      annotateForModel(
         node.assistantMessage,
         node.pointVerdicts,
         node.pointDoubts,
@@ -61,7 +76,7 @@ function formatBranchTurns(node: BranchNode, answerMax = ANCESTOR_ANSWER_MAX): s
     lines.push(
       `追问 ${i + 1}：${truncate(reply.userQuestion, ANCESTOR_QUESTION_MAX)}`,
       `答：${truncate(
-        annotateContentWithVerdicts(
+        annotateForModel(
           reply.assistantMessage,
           reply.pointVerdicts,
           reply.pointDoubts,
@@ -223,7 +238,7 @@ export function buildOlderTurnsSummary(
       );
       continue;
     }
-    const annotated = annotateContentWithVerdicts(
+    const annotated = annotateForModel(
       msg.content,
       msg.pointVerdicts,
       msg.pointDoubts,
@@ -262,7 +277,7 @@ function mapThreadMessageToApi(m: ChatMessage): ApiChatMessage {
     role: m.role as "user" | "assistant",
     content:
       m.role === "assistant"
-        ? annotateContentWithVerdicts(
+        ? annotateForModel(
             m.content,
             m.pointVerdicts,
             m.pointDoubts,
@@ -346,7 +361,7 @@ export function resolveBranchAttachContext(
 ): { assistantContent: string; ancestors: BranchNode[] } | null {
   for (const msg of thread.messages) {
     if (msg.role !== "assistant") continue;
-    const annotated = annotateContentWithVerdicts(
+    const annotated = annotateForModel(
       msg.content,
       msg.pointVerdicts,
       msg.pointDoubts,

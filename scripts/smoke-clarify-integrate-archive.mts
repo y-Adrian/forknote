@@ -6,6 +6,7 @@ import {
   adoptedBodyNeedsCollapse,
   applyAdoptNoteToContent,
   clearBranchAdoptFields,
+  flattenAdoptedForPlaintext,
   parseAdoptedInner,
   removeAdoptNoteFromContent,
   resolveBranchAdoptSource,
@@ -13,6 +14,8 @@ import {
   stripAdoptedNote,
 } from "../src/lib/adoptBranch.ts";
 import { buildArchiveSource } from "../src/lib/archive.ts";
+import { annotateContentWithVerdicts } from "../src/lib/points.ts";
+import { buildSharePayload, sharePayloadToHtml, sharePayloadToMarkdown } from "../src/lib/sessionShare.ts";
 import { anchorForAnswerPoint } from "../src/lib/points.ts";
 import type { BranchNode, FeedbackEvent, ThreadRoot } from "../src/types.ts";
 
@@ -101,6 +104,23 @@ assert.equal(orphan[0]?.type, "markdown");
 if (orphan[0]?.type === "markdown") {
   assert.equal(orphan[0].text.includes("forknote-adopted"), false);
 }
+
+const flat = flattenAdoptedForPlaintext(adopted);
+assert.equal(flat.includes("forknote-adopted"), false);
+assert.match(flat, /澄清结论/);
+assert.match(flat, /本机读写权限/);
+assert.match(flat, /第一步/);
+
+const md = sharePayloadToMarkdown(buildSharePayload("Note", [{ role: "assistant", content: adopted }]));
+assert.equal(md.includes("forknote-adopted"), false);
+const html = sharePayloadToHtml(
+  buildSharePayload("Note", [{ role: "assistant", content: adopted }]),
+  { roleUser: "User", roleAssistant: "Assistant" },
+);
+assert.equal(html.includes("forknote-adopted"), false);
+
+const annotated = annotateContentWithVerdicts(flattenAdoptedForPlaintext(adopted), undefined);
+assert.equal(annotated.includes("forknote-adopted"), false);
 
 const again = applyAdoptNoteToContent(
   adopted,
@@ -201,5 +221,6 @@ assert.match(source, /未采纳进主线/);
 assert.match(source, /反馈事件摘要/);
 assert.match(source, /passive_copy|explicit/);
 assert.match(source, /因为需要本机读写权限/);
+assert.equal(source.includes("forknote-adopted"), false);
 
 console.log("smoke-clarify-integrate-archive: ok");
