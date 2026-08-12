@@ -417,14 +417,18 @@ const en = {
   "main.viewArchive": "View archive",
   "main.gotIt": "Got it",
   "main.archiveComposerHint":
-    "Sends use the archive log as context; older bubbles on screen are not all sent to the model",
-  "main.contextModeAria": "Conversation context mode",
-  "main.switchContextAria": "Switch context mode",
-  "main.archiveContext": "Archive context",
+    "Sends use the archive log as the base; follow-up messages below are included",
+  "main.evolutionComposerHint":
+    "Screen shows the clarification history; sends still use the archive log as the base",
+  "main.contextModeAria": "Prior conversation view",
+  "main.switchContextAria": "Switch how prior conversation is shown",
+  "main.archiveContext": "Archive log",
   "main.archiveContextTitle":
-    "Use the archive log as the base for follow-up chat",
-  "main.fullThread": "Full thread",
-  "main.fullThreadTitle": "Use the full conversation thread",
+    "Show the archive document; follow-up chat uses it as the base",
+  "main.fullThread": "Evolution",
+  "main.fullThreadTitle":
+    "Show the clarification history; sends still use the archive log",
+  "main.archiveBaseKicker": "Archive base",
   "main.archivesCount": "{count} archives",
   "main.archivesViewTitle":
     "Open archive panel to view or switch archives",
@@ -452,7 +456,7 @@ const en = {
   "main.placeholderContinue": "Continue the conversation…",
   "main.placeholderContinueProject":
     "Continue the main thread, or ask to list/read/write project files…",
-  "main.placeholderArchive": "Continue on the archive context…",
+  "main.placeholderArchive": "Continue from the archive log…",
 
   "composer.hintHero":
     "Drag-select text in answers to clarify · Enter to send",
@@ -979,13 +983,16 @@ const zh: Record<MessageKey, string> = {
   "main.viewArchive": "查看归档",
   "main.gotIt": "知道了",
   "main.archiveComposerHint":
-    "发送时使用归档日志作为上下文；屏幕上较早的气泡不会全部发给模型",
-  "main.contextModeAria": "对话上下文模式",
-  "main.switchContextAria": "切换上下文模式",
-  "main.archiveContext": "归档上下文",
-  "main.archiveContextTitle": "以归档日志作为后续对话底座",
-  "main.fullThread": "完整线程",
-  "main.fullThreadTitle": "使用完整对话线程",
+    "发送以归档日志为底座；下方续聊会一并带上",
+  "main.evolutionComposerHint":
+    "屏幕显示澄清演进记录；发送仍以归档日志为底座",
+  "main.contextModeAria": "先前会话显示方式",
+  "main.switchContextAria": "切换先前会话的显示方式",
+  "main.archiveContext": "归档内容",
+  "main.archiveContextTitle": "显示归档正文，后续对话以它为底座",
+  "main.fullThread": "演进记录",
+  "main.fullThreadTitle": "显示澄清演进；发送仍以归档日志为底座",
+  "main.archiveBaseKicker": "归档底座",
   "main.archivesCount": "{count} 篇归档",
   "main.archivesViewTitle": "打开归档面板以查看或切换归档",
   "main.archive": "归档",
@@ -1011,7 +1018,7 @@ const zh: Record<MessageKey, string> = {
   "main.placeholderContinue": "继续对话…",
   "main.placeholderContinueProject":
     "继续主线，或让助手列出/读取/修改项目文件…",
-  "main.placeholderArchive": "在归档上下文上继续…",
+  "main.placeholderArchive": "从归档内容继续…",
 
   "composer.hintHero": "在回答中拖选文字即可澄清 · Enter 发送",
   "composer.hintCompact": "Enter 发送 · Shift+Enter 换行",

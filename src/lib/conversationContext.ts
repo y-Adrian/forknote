@@ -1,4 +1,9 @@
-import type { ArchiveSnapshot, ChatSession, ContextMode } from "../types";
+import type {
+  ArchiveSnapshot,
+  ChatSession,
+  ContextMode,
+  ThreadView,
+} from "../types";
 
 export type ResolvedConversationContext = {
   /** Effective mode that askMain / UI must both honor */
@@ -41,4 +46,16 @@ export function resolveConversationContext(
   }
 
   return { mode: "archive", archive, repairedToLive: false };
+}
+
+/**
+ * What the main pane shows. Archive send-mode defaults to the archive
+ * document; live mode always shows the full evolution record.
+ */
+export function resolveThreadView(
+  session: Pick<ChatSession, "threadView"> | null | undefined,
+  mode: ContextMode,
+): ThreadView {
+  if (mode !== "archive") return "evolution";
+  return session?.threadView === "evolution" ? "evolution" : "archive";
 }

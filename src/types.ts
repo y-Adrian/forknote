@@ -154,6 +154,13 @@ export interface ChatSession {
   /** contextMode === "archive" 时使用的归档 id */
   activeArchiveId?: NodeId | null;
   /**
+   * How to render turns before the archive cutoff. Send context still
+   * follows `contextMode` (archive log vs full thread).
+   * - archive：主区显示归档正文 + 归档之后的新消息
+   * - evolution：主区显示澄清/分点演进的完整记录
+   */
+  threadView?: ThreadView;
+  /**
    * Compressed context pack (SUMMARY / TASKS / DECISIONS) when no project
    * write target is available. Project-bound packs live on disk under memoryDir.
    */
@@ -214,6 +221,9 @@ export interface ArchiveSnapshot {
 }
 
 export type ContextMode = "live" | "archive";
+
+/** On-screen history while an archive exists (independent of send context). */
+export type ThreadView = "archive" | "evolution";
 
 export interface SessionStore {
   sessions: ChatSession[];

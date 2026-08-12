@@ -51,16 +51,18 @@ function FencedCodeBlock({
           {copied ? t("chat.copied") : t("chat.copy")}
         </button>
       </div>
-      <div className="fn-code-gutter" aria-hidden>
-        {lines.map((_, i) => (
-          <span key={i} className="fn-code-line-no">
-            {i + 1}
-          </span>
-        ))}
+      <div className="fn-code-body">
+        <div className="fn-code-gutter" aria-hidden>
+          {lines.map((_, i) => (
+            <span key={i} className="fn-code-line-num">
+              {i + 1}
+            </span>
+          ))}
+        </div>
+        <pre className="fn-code-pre">
+          <code className={className}>{text}</code>
+        </pre>
       </div>
-      <pre className="fn-code-pre">
-        <code className={className}>{text}</code>
-      </pre>
     </div>
   );
 }
@@ -77,6 +79,11 @@ export function MarkdownBody({ content }: Props) {
   }
 
   const components: Components = {
+    // Custom fenced UI is a <div>; unwrap the wrapping <pre> so lists /
+    // point cards do not nest an extra pre around the code chrome.
+    pre({ children }) {
+      return <>{children}</>;
+    },
     code({ className, children, node: _node, ...props }: HTMLAttributes<HTMLElement> & ExtraProps) {
       const text = String(children).replace(/\n$/, "");
       const isFenced =
