@@ -551,6 +551,11 @@ const en = {
   "verdict.hypoAria": "Confirm feedback reason",
   "verdict.hypoYes": "Yes",
   "verdict.hypoNo": "No",
+  "checkpoint.truncated": "Truncated — later steps are no longer the plan",
+  "checkpoint.hint":
+    "Integrate accepted steps, adopted clarifies, and rejects into a checkpoint log. Follow-up chat will use that document as the base.",
+  "checkpoint.action": "Integrate progress",
+  "checkpoint.working": "Integrating…",
   "verdict.hypoConfirmed": "Reason confirmed",
   "verdict.hypoUnsureConfirmed": "Needs more verification",
   "verdict.hypoStreakHint": "Similar answers were rejected a few times — a quick check helps me adjust.",
@@ -1097,6 +1102,11 @@ const zh: Record<MessageKey, string> = {
   "verdict.hypoAria": "确认反馈原因",
   "verdict.hypoYes": "对",
   "verdict.hypoNo": "不对",
+  "checkpoint.truncated": "已截断 — 后续步骤不再作为方案",
+  "checkpoint.hint":
+    "把已采纳步骤、收进主线的澄清、以及不采纳原因整合成检查点日志。后续对话将以这份文档为底座。",
+  "checkpoint.action": "整合进展",
+  "checkpoint.working": "整合中…",
   "verdict.hypoConfirmed": "已确认原因",
   "verdict.hypoUnsureConfirmed": "需要进一步验证",
   "verdict.hypoStreakHint": "同类回答已被连续拒绝几次——确认一下能帮我更快调整。",

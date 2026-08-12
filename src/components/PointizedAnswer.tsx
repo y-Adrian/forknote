@@ -6,7 +6,11 @@ import {
   pickHypothesisAttribution,
 } from "../lib/feedback";
 import { useLocale } from "../lib/i18n";
-import { parseAnswerPoints } from "../lib/points";
+import {
+  earliestRejectIndex,
+  hasExplicitAcceptOrReject,
+  parseAnswerPoints,
+} from "../lib/points";
 import type {
   FeedbackAttribution,
   PointAttributionMap,
@@ -34,6 +38,9 @@ interface Props {
   onDenyHypothesis: (pointIndex: number) => void;
   /** One-click clarify for this numbered point (optional). */
   onClarifyPoint?: (pointIndex: number, pointContent: string) => void;
+  /** Integrate current verdicts + clarifies into an archive checkpoint. */
+  onIntegrateProgress?: () => void;
+  integrating?: boolean;
 }
 
 const VERDICT_OPTIONS: Array<{
@@ -209,6 +216,8 @@ export function PointizedAnswer({
   onConfirmHypothesis,
   onDenyHypothesis,
   onClarifyPoint,
+  onIntegrateProgress,
+  integrating = false,
 }: Props) {
   const { t } = useLocale();
   const parsed = parseAnswerPoints(content);
@@ -216,6 +225,10 @@ export function PointizedAnswer({
   if (parsed.points.length < 2) {
     return <MarkdownBody key="flat" content={content} />;
   }
+
+  const cut = earliestRejectIndex(verdicts);
+  const showCheckpoint =
+    Boolean(onIntegrateProgress) && hasExplicitAcceptOrReject(verdicts);
 
   return (
     <div key={`points-${parsed.points.length}`} className="pointized-answer">
@@ -227,17 +240,21 @@ export function PointizedAnswer({
 
       {parsed.points.map((point) => {
         const verdict = verdicts?.[point.index];
+        const truncated = cut != null && point.index > cut && !verdict;
         const needsHypo = verdict === "unsure" || verdict === "reject";
         return (
           <div
             key={point.index}
-            className={`point-row${verdict ? ` is-${verdict}` : ""}`}
+            className={`point-row${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}
             data-point-index={point.index}
           >
-            <div className={`point-block${verdict ? ` is-${verdict}` : ""}`}>
+            <div className={`point-block${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}>
               <div className="point-content">
                 <MarkdownBody content={point.content} />
               </div>
+              {truncated ? (
+                <p className="point-truncated-hint">{t("checkpoint.truncated")}</p>
+              ) : null}
               {needsHypo && (
                 <PointHypothesisConfirm
                   signal={verdict}
@@ -297,6 +314,23 @@ export function PointizedAnswer({
           </div>
         );
       })}
+      {showCheckpoint ? (
+        <div className="point-checkpoint">
+          <p className="point-checkpoint-text">{t("checkpoint.hint")}</p>
+          <button
+            type="button"
+            className="btn ghost sm"
+            disabled={integrating}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onIntegrateProgress?.();
+            }}
+          >
+            {integrating ? t("checkpoint.working") : t("checkpoint.action")}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
