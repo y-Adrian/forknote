@@ -82,6 +82,7 @@ import {
   parseStructuredPlanHints,
 } from "./agentLoop";
 import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
+import { reflectWithOptionalLlm } from "./llmReflect";
 import { withAgentPhaseModel } from "./agentModelRouting";
 import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, FeedbackEvent, ThreadRoot } from "../types";
@@ -1328,9 +1329,16 @@ export async function runAgentTurn(
         const expected =
           agentLoop.structuredSteps.find((s) => s.expectedOutcome)
             ?.expectedOutcome ?? agentLoop.structuredSteps[0]?.expectedOutcome;
-        const decision = agentLoop.reflect({
-          observed,
-          expectedOutcome: expected,
+        const { decision, source: reflectSource } = await reflectWithOptionalLlm({
+          loop: agentLoop,
+          input: {
+            observed,
+            expectedOutcome: expected,
+          },
+          llm,
+          enableLlm: true,
+          signal,
+          locale: locale === "zh" ? "zh" : "en",
         });
 
         // Decision-bound tool_selection logging (observe outcome → feedback log).
@@ -1360,7 +1368,7 @@ export async function runAgentTurn(
             id: createId(),
             at: Date.now(),
             kind: decision === "abort" ? "error" : "info",
-            message: `reflect:${decision}${observed.primaryErrorType ? `/${observed.primaryErrorType}` : ""}`,
+            message: `reflect:${decision}${observed.primaryErrorType ? `/${observed.primaryErrorType}` : ""}${reflectSource === "llm" ? "/llm" : ""}`,
           });
         }
         if (decision === "abort") {

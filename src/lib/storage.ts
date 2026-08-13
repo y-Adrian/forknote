@@ -171,6 +171,7 @@ export const LOCAL_STORAGE_KEYS = {
   locale: "forknote-locale",
   uiFont: "forknote-ui-font",
   userPreferences: "forknote-user-preferences",
+  userModel: "forknote-user-model-v1",
   recentFiles: "forknote-recent-files",
   skipSessionDeleteConfirm: SKIP_SESSION_DELETE_CONFIRM_KEY,
 } as const;
