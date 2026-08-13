@@ -108,6 +108,11 @@
   --ds-composer-radius: 10px;
   --ds-composer-shadow: var(--ds-hard-shadow);
 
+  /* Disconnect-style manga press: hard ink offset + slight lift */
+  --fn-press-shadow: 2px 2px 0 var(--ds-ink);
+  --fn-press-shadow-hover: 3px 3px 0 var(--ds-ink);
+  --fn-press-shadow-active: 1px 1px 0 var(--ds-ink);
+
   /* Layout */
   --ds-sidebar-w:       268px;
   --ds-shell-gap:       10px;
@@ -592,11 +597,11 @@ body {
   justify-content: center;
 }
 
-/* Icon buttons */
+/* Icon buttons — same manga press as Disconnect */
 .ds-icon-btn {
   width: 32px;
   height: 32px;
-  border: none;
+  border: var(--ds-line) solid transparent;
   border-radius: 12px;
   background: transparent;
   color: var(--ds-muted);
@@ -605,20 +610,26 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: none;
   transition:
     background var(--dur-fast) ease,
     color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
     transform var(--dur-fast) var(--ease-spring);
 }
 
 .ds-icon-btn:hover {
   background: var(--ds-surface-hover);
   color: var(--ds-text);
-  transform: scale(1.08);
+  border-color: var(--ds-border-strong);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow);
 }
 
 .ds-icon-btn:active {
-  transform: scale(0.93);
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 /* New chat button */
@@ -630,18 +641,21 @@ body {
   gap: 8px;
   margin: 6px 14px 14px;
   padding: 10px 18px;
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-pill);
-  background: transparent;
-  color: var(--ds-text-dim);
+  border: var(--ds-line) solid var(--ds-border-strong);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  color: var(--ds-text);
   font: inherit;
   font-size: 0.875rem;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: var(--fn-press-shadow);
   transition:
-    background var(--dur-base) ease,
-    border-color var(--dur-base) ease,
-    color var(--dur-base) ease,
-    box-shadow var(--dur-base) ease;
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
   position: relative;
   overflow: hidden;
 }
@@ -651,10 +665,11 @@ body {
 }
 
 .ds-new-chat:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--ds-accent) 35%, var(--ds-border));
-  color: var(--ds-accent);
-  background: var(--ds-accent-soft);
-  box-shadow: none;
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
 }
 
 .ds-new-chat:hover:not(:disabled)::before {
@@ -662,7 +677,8 @@ body {
 }
 
 .ds-new-chat:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 /* Session list */
@@ -1075,7 +1091,7 @@ body {
 .ds-send-btn {
   width: 36px;
   height: 36px;
-  border: none;
+  border: var(--ds-line) solid var(--ds-border-strong);
   border-radius: 50%;
   background: var(--ds-accent);
   color: var(--ds-on-accent);
@@ -1084,21 +1100,23 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: none;
+  box-shadow: var(--fn-press-shadow);
   transition:
     background var(--dur-base) ease,
-    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring),
     opacity var(--dur-fast) ease;
 }
 
 .ds-send-btn:hover:not(:disabled) {
   background: var(--ds-accent-hover);
-  box-shadow: none;
-  transform: translateY(-1px);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
 }
 
 .ds-send-btn:active:not(:disabled) {
-  transform: scale(0.92);
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .ds-send-btn:disabled {
@@ -3024,23 +3042,24 @@ mark.branch-highlight:hover {
   cursor: pointer;
   background: var(--ds-surface);
   color: var(--ds-text);
-  box-shadow: 2px 2px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow);
   transition:
     background var(--dur-fast) ease,
     color var(--dur-fast) ease,
     transform var(--dur-fast) var(--ease-spring),
-    box-shadow var(--dur-fast) ease;
+    box-shadow var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--ds-surface-hover);
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow-hover);
 }
 
 .btn:active:not(:disabled) {
   transform: translate(1px, 1px);
-  box-shadow: 1px 1px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .btn.primary {
@@ -3049,11 +3068,11 @@ mark.branch-highlight:hover {
   background: var(--ds-accent);
   border-color: var(--ds-border-strong);
   color: var(--ds-on-accent);
-  box-shadow: 2px 2px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow);
 }
 
 .btn.primary:hover:not(:disabled) {
-  box-shadow: 3px 3px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow-hover);
   background: var(--ds-accent-hover);
 }
 
@@ -3066,7 +3085,13 @@ mark.branch-highlight:hover {
 .btn.ghost:hover:not(:disabled) {
   background: var(--ds-surface-hover);
   border-color: var(--ds-border-strong);
-  box-shadow: 2px 2px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow);
+  transform: translate(-1px, -1px);
+}
+
+.btn.ghost:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .btn.sm {
@@ -3941,13 +3966,18 @@ mark.branch-highlight:hover {
   display: flex;
   flex-direction: column;
   background: var(--ds-composer-bg);
-  border: 1px solid var(--ds-border);
+  border: var(--ds-line) solid var(--ds-border);
   border-radius: var(--ds-composer-radius);
   padding: 18px 20px 14px;
-  box-shadow: var(--ds-composer-shadow);
+  box-shadow: var(--fn-press-shadow);
   transition:
     border-color var(--dur-base) ease,
     box-shadow var(--dur-base) ease;
+}
+
+.fn-composer:hover {
+  border-color: var(--ds-border-strong);
+  box-shadow: var(--fn-press-shadow-hover);
 }
 
 .fn-composer:focus-within {
@@ -3955,7 +3985,7 @@ mark.branch-highlight:hover {
   /* Prefer shadow lift over transform — transform makes position:fixed
      descendants (e.g. Session API modal) bind to the composer instead of the viewport. */
   box-shadow:
-    var(--ds-composer-shadow),
+    var(--fn-press-shadow-hover),
     0 0 0 3px var(--ds-focus-ring);
 }
 
@@ -4018,18 +4048,33 @@ mark.branch-highlight:hover {
   height: 28px;
   padding: 0 8px;
   margin: 0;
-  border: 1px solid var(--ds-border);
+  border: var(--ds-line) solid var(--ds-border);
   border-radius: 8px;
   background: var(--ds-surface);
   color: var(--ds-muted);
   font: inherit;
   font-size: var(--fn-text-ui-xs);
   cursor: pointer;
+  box-shadow: var(--fn-press-shadow);
+  transition:
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .fn-session-api-btn:hover:not(:disabled) {
-  border-color: var(--ds-accent);
+  border-color: var(--ds-border-strong);
   color: var(--ds-text);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
+}
+
+.fn-session-api-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .fn-session-api-btn.is-custom {
@@ -4134,7 +4179,7 @@ mark.branch-highlight:hover {
   height: 36px;
   min-width: 36px;
   padding: 0 16px;
-  border: none;
+  border: var(--ds-line) solid var(--ds-border-strong);
   border-radius: 999px;
   font: inherit;
   font-size: var(--fn-text-ui);
@@ -4143,19 +4188,26 @@ mark.branch-highlight:hover {
   transition:
     transform var(--dur-fast) var(--ease-spring),
     background var(--dur-base) ease,
-    opacity var(--dur-fast) ease;
+    opacity var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
 }
 
 .fn-send-btn {
   background: var(--ds-accent);
   color: var(--ds-on-accent);
-  box-shadow: none;
+  box-shadow: var(--fn-press-shadow);
 }
 
 .fn-send-btn:hover:not(:disabled) {
   background: var(--ds-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: none;
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
+}
+
+.fn-send-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .fn-send-btn:disabled {
@@ -4166,12 +4218,20 @@ mark.branch-highlight:hover {
 
 .fn-stop-btn {
   background: rgba(248, 113, 113, 0.14);
-  border: 1.5px solid rgba(248, 113, 113, 0.45);
+  border-color: rgba(248, 113, 113, 0.55);
   color: #f87171;
+  box-shadow: var(--fn-press-shadow);
 }
 
 .fn-stop-btn:hover {
   background: rgba(248, 113, 113, 0.24);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
+}
+
+.fn-stop-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .fn-new-note {
@@ -4182,25 +4242,34 @@ mark.branch-highlight:hover {
   gap: 8px;
   margin: 6px 14px 14px;
   padding: 10px 18px;
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-pill);
-  background: transparent;
-  color: var(--ds-text-dim);
+  border: var(--ds-line) solid var(--ds-border-strong);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  color: var(--ds-text);
   font: inherit;
   font-size: var(--fn-text-ui);
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: var(--fn-press-shadow);
   transition:
-    background var(--dur-base) ease,
-    border-color var(--dur-base) ease,
-    color var(--dur-base) ease,
-    box-shadow var(--dur-base) ease;
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .fn-new-note:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--ds-accent) 35%, var(--ds-border));
-  color: var(--ds-accent);
-  background: var(--ds-accent-soft);
-  box-shadow: none;
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
+}
+
+.fn-new-note:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .fn-sidebar-empty {
@@ -4838,13 +4907,20 @@ mark.branch-highlight:hover {
   background: var(--ds-accent) !important;
   border-color: var(--ds-border-strong) !important;
   color: var(--ds-on-accent) !important;
-  box-shadow: 2px 2px 0 var(--ds-ink) !important;
+  box-shadow: var(--fn-press-shadow) !important;
 }
 
 .btn.primary:hover:not(:disabled),
 .ds-send-btn:hover:not(:disabled) {
   background: var(--ds-accent-hover) !important;
-  box-shadow: 3px 3px 0 var(--ds-ink) !important;
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover) !important;
+}
+
+.btn.primary:active:not(:disabled),
+.ds-send-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active) !important;
 }
 
 .ds-chat-footer .fn-composer {
@@ -4875,13 +4951,13 @@ mark.branch-highlight:hover {
   font-size: var(--fn-text-ui-sm);
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 2px 2px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow);
   transition:
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
     background var(--dur-fast) ease,
     box-shadow var(--dur-fast) ease,
-    transform var(--dur-fast) ease;
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .fn-project-chip:hover {
@@ -4889,13 +4965,23 @@ mark.branch-highlight:hover {
   border-color: var(--ds-border-strong);
   background: var(--ds-surface-hover);
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ds-ink);
+  box-shadow: var(--fn-press-shadow-hover);
+}
+
+.fn-project-chip:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .fn-project-chip.is-connected {
   color: var(--ds-on-accent);
   background: var(--ds-accent);
   border-color: var(--ds-border-strong);
+}
+
+.fn-project-chip.is-connected:hover {
+  color: var(--ds-on-accent);
+  background: var(--ds-accent-hover);
 }
 
 .fn-project-chip-label {
@@ -5434,29 +5520,41 @@ mark.branch-highlight:hover {
   flex-shrink: 0;
   font: inherit;
   font-size: var(--fn-text-ui-sm);
-  color: var(--ds-text-dim);
+  font-weight: 700;
+  color: var(--ds-text);
   padding: 5px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  border: var(--ds-line) solid var(--ds-border-strong);
   background: var(--ds-surface);
   cursor: pointer;
+  box-shadow: var(--fn-press-shadow);
   transition:
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
-    background var(--dur-fast) ease;
+    background var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .fn-archive-btn:hover:not(:disabled),
 .fn-archive-view-btn:hover {
-  color: var(--ds-accent);
-  border-color: color-mix(in srgb, var(--ds-accent) 30%, var(--ds-border));
-  background: var(--ds-accent-soft);
-  transform: none;
+  color: var(--ds-text);
+  border-color: var(--ds-border-strong);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
+}
+
+.fn-archive-btn:active:not(:disabled),
+.fn-archive-view-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
 }
 
 .fn-archive-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .fn-context-mode {
@@ -5520,16 +5618,20 @@ mark.branch-highlight:hover {
   max-width: 168px;
   font: inherit;
   font-size: var(--fn-text-ui-sm);
+  font-weight: 700;
   color: var(--ds-text-dim);
   padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  border: var(--ds-line) solid var(--ds-border-strong);
   background: var(--ds-surface);
   cursor: pointer;
+  box-shadow: var(--fn-press-shadow);
   transition:
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
-    background var(--dur-fast) ease;
+    background var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .fn-context-chip.is-archive {
@@ -5543,14 +5645,15 @@ mark.branch-highlight:hover {
 }
 
 .fn-context-chip:hover {
-  border-color: color-mix(in srgb, var(--ds-accent) 30%, var(--ds-border));
-  color: var(--ds-accent);
-  background: var(--ds-accent-soft);
-  transform: none;
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow-hover);
 }
 
 .fn-context-chip.is-archive:hover {
-  border-color: color-mix(in srgb, var(--ds-accent) 40%, var(--ds-border));
+  border-color: var(--ds-border-strong);
   color: var(--ds-accent-hover);
 }
 
