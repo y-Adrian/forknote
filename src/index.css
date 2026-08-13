@@ -2378,6 +2378,42 @@ mark.branch-highlight:hover {
   background: color-mix(in srgb, var(--ds-composer-bg) 90%, transparent);
 }
 
+.float-panel-detail-footer.is-collapsed {
+  padding: 8px 18px 12px;
+  background: transparent;
+}
+
+.float-panel-detail-continue-ask {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ds-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ds-muted);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.float-panel-detail-continue-ask:hover:not(:disabled) {
+  color: var(--ds-text);
+  border-color: var(--ds-border-strong, var(--ds-border));
+  background: color-mix(in srgb, var(--ds-text) 3%, transparent);
+}
+
+.float-panel-detail-continue-ask:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .float-panel-detail-footer textarea {
   width: 100%;
   box-sizing: border-box;
@@ -2416,6 +2452,13 @@ mark.branch-highlight:hover {
 .float-panel-detail-footer-actions .hint {
   margin: 0;
   font-size: 0.75rem;
+}
+
+.float-panel-detail-footer-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .float-branch-turn {
