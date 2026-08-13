@@ -3,6 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin, ProxyOptions } from "vite";
@@ -10,8 +11,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { isValidApiBaseUrl, normalizeBaseUrl } from "./src/lib/settings";
 
+const require = createRequire(import.meta.url);
+const { loadOrCreateSidecarToken } = require("./shared/sidecarAuth.cjs") as {
+  loadOrCreateSidecarToken: () => string;
+};
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
+const SIDECAR_AUTH_TOKEN = loadOrCreateSidecarToken();
 const SIDECAR_UNREACHABLE = JSON.stringify({
   error:
     "Sidecar unreachable on 127.0.0.1:8787. Run npm run sidecar (or npm run dev), then retry Open project.",
@@ -49,7 +55,10 @@ function sidecarDevPlugin(): Plugin {
         child = spawn(process.execPath, [path.join(root, "sidecar/index.js")], {
           cwd: root,
           stdio: "inherit",
-          env: process.env,
+          env: {
+            ...process.env,
+            SIDECAR_AUTH_TOKEN,
+          },
         });
         weStarted = true;
         child.on("exit", (code, signal) => {
@@ -116,6 +125,12 @@ const sidecarProxy: ProxyOptions = {
   rewrite: (p) => p.replace(/^\/sidecar/, "") || "/",
   configure: (proxy) => {
     proxy.on("error", sidecarProxyError);
+    proxy.on("proxyReq", (proxyReq) => {
+      proxyReq.setHeader(
+        "X-ForkNote-Sidecar-Token",
+        SIDECAR_AUTH_TOKEN,
+      );
+    });
   },
 };
 

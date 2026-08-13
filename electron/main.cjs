@@ -11,6 +11,7 @@ const net = require("node:net");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { startUiServer } = require("./uiServer.cjs");
+const { loadOrCreateSidecarToken } = require("../shared/sidecarAuth.cjs");
 
 /**
  * Floor must sit below the web shell’s narrow-sidebar breakpoint (768px in
@@ -49,6 +50,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
+const SIDECAR_AUTH_TOKEN = loadOrCreateSidecarToken();
 const isDev = process.env.ELECTRON_DEV === "1";
 
 /** @type {import('node:child_process').ChildProcess | null} */
@@ -80,7 +82,10 @@ async function ensureUiServer() {
       `[forknote-desktop] missing ${path.join(dist, "index.html")} — run npm run build first`,
     );
   }
-  uiServerStart = startUiServer({ distDir: dist })
+  uiServerStart = startUiServer({
+    distDir: dist,
+    sidecarToken: SIDECAR_AUTH_TOKEN,
+  })
     .then(({ server, origin }) => {
       uiServer = server;
       uiOrigin = origin;
@@ -110,7 +115,14 @@ function isPortOpen(port, host) {
 function sidecarHealthy() {
   return new Promise((resolve) => {
     const req = http.get(
-      `http://${SIDECAR_HOST}:${SIDECAR_PORT}/health`,
+      {
+        host: SIDECAR_HOST,
+        port: SIDECAR_PORT,
+        path: "/health",
+        headers: {
+          "X-ForkNote-Sidecar-Token": SIDECAR_AUTH_TOKEN,
+        },
+      },
       (res) => {
         res.resume();
         resolve(res.statusCode === 200);
@@ -151,6 +163,7 @@ async function ensureSidecar() {
       ELECTRON_RUN_AS_NODE: "1",
       SIDECAR_HOST,
       SIDECAR_PORT: String(SIDECAR_PORT),
+      SIDECAR_AUTH_TOKEN,
     },
   });
   weStartedSidecar = true;
