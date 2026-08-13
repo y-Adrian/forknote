@@ -4298,6 +4298,7 @@ mark.branch-highlight:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
 }
 
 .fn-chat-kicker {
@@ -4306,6 +4307,33 @@ mark.branch-highlight:hover {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ds-accent);
+}
+
+.fn-chat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fn-chat-title-edit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--ds-text-dim);
+}
+
+.fn-chat-title-edit:hover:not(:disabled) {
+  color: var(--ds-text);
+}
+
+.fn-chat-title-edit svg {
+  width: 18px;
+  height: 18px;
 }
 
 .fn-chat-title {
@@ -4318,6 +4346,25 @@ mark.branch-highlight:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.fn-chat-title-input {
+  width: min(100%, 360px);
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: var(--ds-radius);
+  border: var(--ds-line) solid var(--ds-focus-border);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 
 .fn-archive-base {

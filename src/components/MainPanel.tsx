@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { messagesAfterArchive } from "../lib/archive";
 import { countBranchesInThread } from "../lib/branches";
 import {
@@ -71,6 +72,25 @@ function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
         </span>
       )}
     </div>
+  );
+}
+
+function TitleEditIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0 0-2.12L16.62 5.5a1.5 1.5 0 0 0-2.12 0L4 16v4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.5 6.5l4 4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -156,6 +176,7 @@ export function MainPanel({
   const archiveAlreadyCurrent = useAppStore((s) => s.archiveAlreadyCurrent);
   const setContextMode = useAppStore((s) => s.setContextMode);
   const setThreadView = useAppStore((s) => s.setThreadView);
+  const renameSession = useAppStore((s) => s.renameSession);
 
   const [input, setInput] = useState("");
   const [openBranchId, setOpenBranchId] = useState<NodeId | null>(null);
@@ -168,9 +189,13 @@ export function MainPanel({
     useState<NodeId | null>(null);
   const [archiveHistoryOpen, setArchiveHistoryOpen] = useState(false);
   const [forkMapOpen, setForkMapOpen] = useState(false);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
   const archiveHistoryRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const skipTitleBlurCommit = useRef(false);
   /** When true, keep the chat pinned to the latest message as content grows. */
   const stickToBottomRef = useRef(true);
   const lastSentPromptRef = useRef("");
@@ -250,6 +275,8 @@ export function MainPanel({
     setModeNotice(null);
     setArchiveHistoryOpen(false);
     setForkMapOpen(false);
+    setRenamingTitle(false);
+    setDraftTitle("");
     closeAllBranchFloats();
     const session = useAppStore
       .getState()
@@ -266,7 +293,7 @@ export function MainPanel({
         setArchiveHistoryOpen(false);
       }
     };
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") setArchiveHistoryOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -277,6 +304,11 @@ export function MainPanel({
     };
   }, [archiveHistoryOpen]);
 
+  useEffect(() => {
+    if (!renamingTitle) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [renamingTitle]);
   useEffect(() => {
     return () => {
       if (suppressComposerTimerRef.current) {
@@ -477,6 +509,43 @@ export function MainPanel({
     setInput(text);
   };
 
+  const startTitleRename = () => {
+    if (!activeSessionId || !activeSession) return;
+    setDraftTitle(displaySessionTitle(activeSession.title));
+    setRenamingTitle(true);
+  };
+
+  const cancelTitleRename = () => {
+    setRenamingTitle(false);
+    setDraftTitle("");
+  };
+
+  const commitTitleRename = () => {
+    if (!activeSessionId) return;
+    const ok = renameSession(activeSessionId, draftTitle);
+    if (ok) cancelTitleRename();
+    else titleInputRef.current?.focus();
+  };
+
+  const handleTitleBlur = () => {
+    if (skipTitleBlurCommit.current) {
+      skipTitleBlurCommit.current = false;
+      return;
+    }
+    commitTitleRename();
+  };
+
+  const handleTitleKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitTitleRename();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      skipTitleBlurCommit.current = true;
+      cancelTitleRename();
+    }
+  };
+
   if (!thread) {
     return (
       <main className="ds-main ds-main-empty fn-main-empty">
@@ -551,9 +620,35 @@ export function MainPanel({
           {t("main.notesKicker") ? (
             <span className="fn-chat-kicker">{t("main.notesKicker")}</span>
           ) : null}
-          <h1 className="fn-chat-title" title={title}>
-            {title}
-          </h1>
+          <div className="fn-chat-title-row">
+            {renamingTitle ? (
+              <input
+                ref={titleInputRef}
+                className="fn-chat-title-input"
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onKeyDown={handleTitleKey}
+                onBlur={handleTitleBlur}
+                aria-label={t("sidebar.renameAria")}
+                maxLength={80}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn ghost fn-chat-title-edit"
+                  title={t("main.renameTitle")}
+                  aria-label={t("sidebar.renameAria")}
+                  onClick={startTitleRename}
+                >
+                  <TitleEditIcon />
+                </button>
+                <h1 className="fn-chat-title" title={title}>
+                  {title}
+                </h1>
+              </>
+            )}
+          </div>
         </div>
         {forkCount > 0 && (
           <div className="fn-chat-header-meta">
