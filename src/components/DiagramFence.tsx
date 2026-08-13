@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { diagramKindFromLanguage } from "../lib/diagramFence";
 import { useLocale } from "../lib/i18n";
-import { useTheme } from "../lib/theme";
+import { useTheme, type Theme } from "../lib/theme";
 
 function languageFromClass(className?: string): string | null {
   if (!className) return null;
@@ -12,7 +12,36 @@ function languageFromClass(className?: string): string | null {
 type FenceCodeProps = {
   className?: string;
   children: ReactNode;
+  /** While the parent answer is still streaming, defer Mermaid render. */
+  streaming?: boolean;
 };
+
+type MermaidApi = {
+  initialize: (config: Record<string, unknown>) => void;
+  render: (
+    id: string,
+    text: string,
+  ) => Promise<{ svg: string }>;
+};
+
+let mermaidMod: MermaidApi | null = null;
+let mermaidTheme: string | null = null;
+
+async function getMermaid(theme: Theme): Promise<MermaidApi> {
+  if (!mermaidMod) {
+    mermaidMod = (await import("mermaid")).default as MermaidApi;
+  }
+  const themeName = theme === "dark" ? "dark" : "default";
+  if (mermaidTheme !== themeName) {
+    mermaidMod.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: themeName,
+    });
+    mermaidTheme = themeName;
+  }
+  return mermaidMod;
+}
 
 /** Shared chrome for source fallback / plantuml / mermaid error. */
 function SourceFence({
@@ -67,7 +96,13 @@ function SourceFence({
   );
 }
 
-function MermaidDiagram({ source }: { source: string }) {
+function MermaidDiagram({
+  source,
+  streaming = false,
+}: {
+  source: string;
+  streaming?: boolean;
+}) {
   const { t } = useLocale();
   const { theme } = useTheme();
   const reactId = useId().replace(/:/g, "");
@@ -75,36 +110,40 @@ function MermaidDiagram({ source }: { source: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    setSvg(null);
-    setError(null);
+    if (streaming) {
+      // Keep last good SVG if any; avoid parse-error flash on partial fences.
+      setError(null);
+      return;
+    }
 
-    void (async () => {
-      try {
-        const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "strict",
-          theme: theme === "dark" ? "dark" : "default",
-        });
-        const { svg: rendered } = await mermaid.render(
-          `fn-mermaid-${reactId}`,
-          source.trim(),
-        );
-        if (!cancelled) setSvg(rendered);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const mermaid = await getMermaid(theme);
+          const { svg: rendered } = await mermaid.render(
+            `fn-mermaid-${reactId}`,
+            source.trim(),
+          );
+          if (!cancelled) {
+            setSvg(rendered);
+            setError(null);
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setError(e instanceof Error ? e.message : String(e));
+          }
         }
-      }
-    })();
+      })();
+    }, 180);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [source, theme, reactId]);
+  }, [source, theme, reactId, streaming]);
 
-  if (error) {
+  if (error && !streaming) {
     return (
       <SourceFence
         className="language-mermaid"
@@ -144,14 +183,18 @@ function MermaidDiagram({ source }: { source: string }) {
  * Fenced ```mermaid / ```plantuml blocks: render Mermaid; PlantUML stays source
  * (no client PlantUML engine bundled).
  */
-export function DiagramFence({ className, children }: FenceCodeProps) {
+export function DiagramFence({
+  className,
+  children,
+  streaming = false,
+}: FenceCodeProps) {
   const { t } = useLocale();
   const language = languageFromClass(className);
   const kind = diagramKindFromLanguage(language);
   const text = String(children).replace(/\n$/, "");
 
   if (kind === "mermaid") {
-    return <MermaidDiagram source={text} />;
+    return <MermaidDiagram source={text} streaming={streaming} />;
   }
 
   if (kind === "plantuml") {

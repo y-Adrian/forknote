@@ -321,9 +321,10 @@ export function SelectableMarkdown({
             onClarifyPoint={(idx) => openPointClarify(idx)}
             onIntegrateProgress={() => void archiveCurrent()}
             integrating={integrating}
+            streaming={loading}
           />
         ) : (
-          <MarkdownBody content={content} />
+          <MarkdownBody content={content} streaming={loading} />
         )}
       </div>
 
