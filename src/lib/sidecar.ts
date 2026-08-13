@@ -308,6 +308,75 @@ export async function globFiles(
   return parseJson(res);
 }
 
+export type SymbolHit = {
+  path: string;
+  name: string;
+  kind: string;
+  line: number;
+  exported: boolean;
+  snippet: string;
+};
+
+export async function findSymbol(
+  name: string,
+  subpath = ".",
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  name: string;
+  symbols: SymbolHit[];
+  truncated: boolean;
+  count: number;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/find_symbol`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, path: subpath }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function goToDefinition(
+  name: string,
+  hintPath?: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  name: string;
+  definition: SymbolHit | null;
+  candidates: SymbolHit[];
+  found: boolean;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/go_to_definition`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, path: hintPath || undefined }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+export async function findReferences(
+  name: string,
+  subpath = ".",
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  name: string;
+  references: Array<{ path: string; line: number; snippet: string }>;
+  truncated: boolean;
+  count: number;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/find_references`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, path: subpath }),
+    signal,
+  });
+  return parseJson(res);
+}
+
 export async function deleteFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
