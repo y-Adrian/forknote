@@ -13,9 +13,12 @@ import {
   saveSettings,
 } from "../lib/settings";
 import {
+  captureSessionImportBackup,
   exportSessionStoreJson,
   LOCAL_STORAGE_KEYS,
   parseSessionStoreImport,
+  summarizeSessionStoreImport,
+  type SessionImportSummary,
 } from "../lib/storage";
 import { useTheme, type ThemePreference } from "../lib/theme";
 import {
@@ -152,6 +155,16 @@ function SettingsRow({
       <div className="ss-row-control">{children}</div>
     </div>
   );
+}
+
+function downloadJson(json: string, filename: string): void {
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function GeneralPanel({
@@ -652,17 +665,19 @@ function DataPanel() {
   const replaceSessionStore = useAppStore((s) => s.replaceSessionStore);
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<{
+    store: ReturnType<typeof parseSessionStoreImport>;
+    summary: SessionImportSummary;
+  } | null>(null);
+  const [backupReady, setBackupReady] = useState(false);
 
   const onExport = () => {
     try {
       const json = exportSessionStoreJson();
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `forknote-sessions-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJson(
+        json,
+        `forknote-sessions-${new Date().toISOString().slice(0, 10)}.json`,
+      );
       setStatus(t("data.exported"));
     } catch {
       setStatus(t("data.exportFailed"));
@@ -673,11 +688,54 @@ function DataPanel() {
     try {
       const text = await file.text();
       const store = parseSessionStoreImport(text);
-      replaceSessionStore(store);
-      setStatus(t("data.imported", { count: store.sessions.length }));
+      setPendingImport({
+        store,
+        summary: summarizeSessionStoreImport(store, file.name),
+      });
+      setBackupReady(false);
+      setStatus(null);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : t("data.importFailed"));
     }
+  };
+
+  const onBackupPendingImport = () => {
+    try {
+      const backup = captureSessionImportBackup();
+      downloadJson(
+        backup.json,
+        `forknote-sessions-before-import-${new Date().toISOString().slice(0, 10)}.json`,
+      );
+      setBackupReady(true);
+      setStatus(
+        backup.stored
+          ? t("data.importBackupReady")
+          : t("data.importBackupDownloadedOnly"),
+      );
+    } catch {
+      setStatus(t("data.importBackupFailed"));
+    }
+  };
+
+  const onConfirmImport = () => {
+    if (!pendingImport || !backupReady) return;
+    try {
+      replaceSessionStore(pendingImport.store);
+      setStatus(t("data.imported", { count: pendingImport.store.sessions.length }));
+      setPendingImport(null);
+      setBackupReady(false);
+    } catch (e) {
+      setStatus(
+        e instanceof Error
+          ? t("data.importSaveFailed", { error: e.message })
+          : t("data.importSaveFailed", { error: t("data.importFailed") }),
+      );
+    }
+  };
+
+  const closePendingImport = () => {
+    setPendingImport(null);
+    setBackupReady(false);
   };
 
   const onClear = () => {
@@ -728,6 +786,66 @@ function DataPanel() {
       </div>
 
       {status ? <p className="ss-status">{status}</p> : null}
+
+      {pendingImport
+        ? createPortal(
+            <div
+              className="modal-backdrop fn-import-confirm-backdrop"
+              onClick={closePendingImport}
+            >
+              <div
+                className="modal fn-import-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t("data.importConfirmAria")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3>{t("data.importConfirmTitle")}</h3>
+                <p className="fn-import-confirm-body">
+                  {t("data.importConfirmBody", {
+                    importCount: pendingImport.summary.count,
+                    currentCount: sessions.length,
+                    title: pendingImport.summary.activeTitle,
+                    source: pendingImport.summary.source,
+                  })}
+                </p>
+                <div className="ss-callout fn-import-backup-callout">
+                  <strong>{t("data.importBackupTitle")}</strong>
+                  <p>
+                    {backupReady
+                      ? t("data.importBackupReady")
+                      : t("data.importBackupRequired")}
+                  </p>
+                </div>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={closePendingImport}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onBackupPendingImport}
+                  >
+                    {t("data.importBackup")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={!backupReady}
+                    onClick={onConfirmImport}
+                  >
+                    {t("data.importConfirm")}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="ss-callout">
         <strong>{t("data.alsoStored")}</strong>

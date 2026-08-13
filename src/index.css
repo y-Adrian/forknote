@@ -3492,6 +3492,21 @@ mark.branch-highlight:hover {
   color: var(--ds-text-dim);
 }
 
+.fn-import-confirm-modal {
+  max-width: 520px;
+}
+
+.fn-import-confirm-body {
+  margin: 8px 0 0;
+  color: var(--ds-text);
+  font-size: var(--fn-text-ui);
+  line-height: 1.55;
+}
+
+.fn-import-backup-callout {
+  margin-top: 16px;
+}
+
 .ss-about-brand {
   margin-bottom: 12px;
 }
