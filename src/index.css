@@ -1824,13 +1824,18 @@ body {
   flex: 1;
   min-width: 0;
   border: none;
-  border-left: 3px solid var(--ds-focus-border);
-  border-radius: 0;
-  padding: 2px 0 2px 12px;
-  background: transparent;
+  border-radius: 10px;
+  padding: 10px 12px 8px;
+  /* Soft segment wash — no left accent bar */
+  background: color-mix(in srgb, var(--ds-text) 4%, var(--ds-surface, var(--ds-bg)));
   transition:
-    border-color var(--dur-base) ease,
+    background var(--dur-base) ease,
     opacity var(--dur-base) ease;
+}
+
+/* Mild alternating tint so adjacent segments stay distinguishable */
+.pointized-answer > .point-row:nth-child(even) > .point-block:not(.is-accept):not(.is-unsure):not(.is-reject) {
+  background: color-mix(in srgb, var(--ds-accent) 7%, var(--ds-surface, var(--ds-bg)));
 }
 
 .point-verdict-group {
@@ -1954,20 +1959,17 @@ body {
   border-color: rgba(120, 120, 120, 0.35);
 }
 
-/* Verdict state on the whole block */
+/* Verdict state on the whole block (tint only — no side bar) */
 .point-block.is-accept {
-  border-left-color: #4ade80;
-  background: rgba(74, 222, 128, 0.04);
+  background: color-mix(in srgb, #4ade80 12%, var(--ds-surface, var(--ds-bg)));
 }
 
 .point-block.is-unsure {
-  border-left-color: #facc15;
-  background: rgba(250, 204, 21, 0.04);
+  background: color-mix(in srgb, #facc15 12%, var(--ds-surface, var(--ds-bg)));
 }
 
 .point-block.is-reject {
-  border-left-color: rgba(248, 113, 113, 0.6);
-  background: rgba(248, 113, 113, 0.04);
+  background: color-mix(in srgb, #f87171 10%, var(--ds-surface, var(--ds-bg)));
   opacity: 0.55;
 }
 
@@ -1979,6 +1981,19 @@ body {
 
 .point-content {
   font-size: inherit;
+}
+
+/* First-line indent for segment prose (skip lists / code / quotes) */
+.point-content .fn-markdown-mount > p {
+  text-indent: 2em;
+}
+
+.point-content .fn-markdown-mount > p:first-child {
+  margin-top: 0;
+}
+
+.point-content .fn-markdown-mount > p:last-child {
+  margin-bottom: 0;
 }
 
 .point-hypo {
@@ -2460,7 +2475,7 @@ mark.branch-highlight:hover {
 }
 
 .float-panel-detail .point-block {
-  padding: 2px 0 2px 10px;
+  padding: 8px 10px 6px;
 }
 
 .float-panel-detail .point-verdict-group {
@@ -5551,11 +5566,6 @@ mark.branch-highlight:hover {
 
 
 /* ── Manga ink-line polish ─────────────────────────────── */
-.point-block {
-  border-left-width: 3px;
-  border-left-style: solid;
-}
-
 .modal-card,
 .ss-panel,
 .ds-settings-panel,
