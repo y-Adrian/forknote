@@ -41,7 +41,7 @@ function isPrivateOrLocalHost(hostname) {
 /**
  * @param {string} ip
  */
-function isPrivateIp(ip) {
+export function isPrivateIp(ip) {
   const version = net.isIP(ip);
   if (version === 4) {
     const parts = ip.split(".").map((n) => Number(n));
@@ -54,11 +54,13 @@ function isPrivateIp(ip) {
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    // Note: do NOT treat 198.18.0.0/15 as private. VPN/proxy fake-IP modes
+    // (Clash, Surge, …) map public hostnames there; blocking breaks web tools.
     return false;
   }
   if (version === 6) {
     const lower = ip.toLowerCase();
-    if (lower === "::1") return true;
+    if (lower === "::1" || lower === "::") return true;
     if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA
     if (lower.startsWith("fe80")) return true; // link-local
     if (lower.startsWith("::ffff:")) {
@@ -68,6 +70,18 @@ function isPrivateIp(ip) {
     return false;
   }
   return true;
+}
+
+/**
+ * Allow hostname when at least one resolved address is publicly routable.
+ * VPN fake-IP stacks often return dual A (198.18.x) + AAAA (ULA); blocking on
+ * *any* private address false-positives those environments.
+ * Literal private IPs in the URL are still blocked by the caller.
+ * @param {Array<{ address: string }>} records
+ */
+export function hasPublicResolvedAddress(records) {
+  if (!Array.isArray(records) || records.length === 0) return false;
+  return records.some((rec) => rec && !isPrivateIp(String(rec.address || "")));
 }
 
 /**
@@ -90,7 +104,7 @@ export async function assertPublicHttpUrl(rawUrl) {
   if (!host || isPrivateOrLocalHost(host)) {
     throw new Error("Private / local hosts are blocked");
   }
-  // Literal IP in URL
+  // Literal IP in URL — always enforce (no "any public" escape hatch).
   if (net.isIP(host)) {
     if (isPrivateIp(host)) throw new Error("Private IP addresses are blocked");
     return parsed;
@@ -102,10 +116,9 @@ export async function assertPublicHttpUrl(rawUrl) {
     throw new Error(`Could not resolve host: ${host}`);
   }
   if (!records.length) throw new Error(`Could not resolve host: ${host}`);
-  for (const rec of records) {
-    if (isPrivateIp(rec.address)) {
-      throw new Error("Host resolves to a private address (blocked)");
-    }
+  // Only block when *every* address is private (DNS sinkhole / pure LAN name).
+  if (!hasPublicResolvedAddress(records)) {
+    throw new Error("Host resolves to a private address (blocked)");
   }
   return parsed;
 }
@@ -268,24 +281,42 @@ export async function handleNetSearch(body) {
   }
 }
 
-/** Cheap reachability probe (not a full internet guarantee). */
+/** Soft connectivity probe URLs (no SSRF gate — known public endpoints only). */
+const STATUS_PROBE_URLS = [
+  "https://www.google.com/generate_204",
+  "https://www.gstatic.com/generate_204",
+  "https://cloudflare.com/cdn-cgi/trace",
+  "https://example.com/",
+];
+
+/**
+ * Cheap reachability probe. Soft-fail: never throws; DNS/SSRF quirks must not
+ * hard-fail the Network toggle or spam chat.
+ */
 export async function handleNetStatus() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4_000);
-  try {
-    const res = await fetch("https://www.google.com/generate_204", {
-      method: "GET",
-      signal: controller.signal,
-      redirect: "manual",
-    });
-    return {
-      online: true,
-      probed: true,
-      status: res.status,
-    };
-  } catch {
-    return { online: false, probed: true, status: 0 };
-  } finally {
-    clearTimeout(timer);
+  for (const url of STATUS_PROBE_URLS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3_000);
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+        redirect: "manual",
+      });
+      // Any HTTP response means the stack can reach the public net (or a proxy).
+      if (res.status > 0) {
+        return {
+          online: true,
+          probed: true,
+          status: res.status,
+          via: url,
+        };
+      }
+    } catch {
+      // try next endpoint
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return { online: false, probed: true, status: 0 };
 }

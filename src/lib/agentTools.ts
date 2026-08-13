@@ -4642,24 +4642,48 @@ export async function executeToolCall(
             },
           };
         }
-        const search = await sidecarWebSearch(query, sidecarUrl, signal);
-        const lines = search.results.map(
-          (r, i) =>
-            `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`,
-        );
-        return {
-          ok: true,
-          resultText:
-            lines.join("\n\n") ||
-            `(no results for ${JSON.stringify(query)})`,
-          activity: {
-            kind: "search",
-            message:
-              locale === "zh"
-                ? `网页搜索：${query}`
-                : `Web search: ${query}`,
-          },
-        };
+        try {
+          const search = await sidecarWebSearch(query, sidecarUrl, signal);
+          const lines = search.results.map(
+            (r, i) =>
+              `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`,
+          );
+          return {
+            ok: true,
+            resultText:
+              lines.join("\n\n") ||
+              `(no results for ${JSON.stringify(query)})`,
+            activity: {
+              kind: "search",
+              message:
+                locale === "zh"
+                  ? `网页搜索：${query}`
+                  : `Web search: ${query}`,
+            },
+          };
+        } catch (e) {
+          if (
+            (e instanceof Error && e.name === "AbortError") ||
+            (typeof DOMException !== "undefined" &&
+              e instanceof DOMException &&
+              e.name === "AbortError")
+          ) {
+            throw e;
+          }
+          const detail =
+            e instanceof Error ? e.message : String(e || "search failed");
+          return {
+            ok: false,
+            resultText: `Error: web_search failed — ${detail}`,
+            activity: {
+              kind: "error",
+              message:
+                locale === "zh"
+                  ? `网页搜索失败：${query}`
+                  : `Web search failed: ${query}`,
+            },
+          };
+        }
       }
       case "web_fetch": {
         if (!allowNetwork) {
@@ -4687,19 +4711,43 @@ export async function executeToolCall(
             },
           };
         }
-        const fetched = await sidecarWebFetch(url, sidecarUrl, signal);
-        const header = `URL: ${fetched.url}\nHTTP: ${fetched.status}\nType: ${fetched.contentType || "(unknown)"}\n\n`;
-        return {
-          ok: fetched.ok,
-          resultText: header + (fetched.text || "(empty body)"),
-          activity: {
-            kind: "read",
-            message:
-              locale === "zh"
-                ? `抓取网页：${fetched.url}`
-                : `Fetched: ${fetched.url}`,
-          },
-        };
+        try {
+          const fetched = await sidecarWebFetch(url, sidecarUrl, signal);
+          const header = `URL: ${fetched.url}\nHTTP: ${fetched.status}\nType: ${fetched.contentType || "(unknown)"}\n\n`;
+          return {
+            ok: fetched.ok,
+            resultText: header + (fetched.text || "(empty body)"),
+            activity: {
+              kind: "read",
+              message:
+                locale === "zh"
+                  ? `抓取网页：${fetched.url}`
+                  : `Fetched: ${fetched.url}`,
+            },
+          };
+        } catch (e) {
+          if (
+            (e instanceof Error && e.name === "AbortError") ||
+            (typeof DOMException !== "undefined" &&
+              e instanceof DOMException &&
+              e.name === "AbortError")
+          ) {
+            throw e;
+          }
+          const detail =
+            e instanceof Error ? e.message : String(e || "fetch failed");
+          return {
+            ok: false,
+            resultText: `Error: web_fetch failed — ${detail}`,
+            activity: {
+              kind: "error",
+              message:
+                locale === "zh"
+                  ? `网页抓取失败`
+                  : `Web fetch failed`,
+            },
+          };
+        }
       }
       default:
         return {
