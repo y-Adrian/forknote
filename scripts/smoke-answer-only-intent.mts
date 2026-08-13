@@ -26,6 +26,10 @@ const agentTurnSrc = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../src/lib/agentTurn.ts"),
   "utf8",
 );
+const agentToolsSrc = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../src/lib/agentTools.ts"),
+  "utf8",
+);
 assert.ok(
   !/if\s*\(\s*isAnswerOnlySampleCodeRequest\s*\(\s*trimmed\s*\)\s*\)/.test(
     agentTurnSrc,
@@ -59,6 +63,26 @@ assert.ok(
     agentTurnSrc,
   ),
   "chat-only diagram should not rely on soft useNativeTools alone",
+);
+assert.ok(
+  /Default to a ```mermaid fence/.test(agentTurnSrc) &&
+    /默认且优先使用 ```mermaid 围栏/.test(agentTurnSrc),
+  "diagram plain-chat system must default to mermaid (live preview)",
+);
+assert.ok(
+  !/prefer ```mermaid or ```plantuml/.test(agentTurnSrc) &&
+    !/优先 ```mermaid 或 ```plantuml/.test(agentTurnSrc),
+  "must not treat plantuml as equal default for live diagrams",
+);
+assert.ok(
+  /use ```plantuml only if the user explicitly asked/.test(agentTurnSrc) &&
+    /仅当用户明确要求 PlantUML/.test(agentTurnSrc),
+  "plantuml only when user explicitly requests it",
+);
+assert.ok(
+  /mermaid fence \(plantuml only if/.test(agentToolsSrc) &&
+    /mermaid 围栏输出图/.test(agentToolsSrc),
+  "planning-phase diagram guidance defaults to mermaid",
 );
 
 function expectSampleCodeSoft(q: string) {
