@@ -167,7 +167,17 @@ export function BranchRail({ thread, scrollRef }: Props) {
     [thread],
   );
 
-  if (msgs.length === 0) return null;
+  // Always keep the rail column mounted so Archive ↔ Live/Evolution does not
+  // expand/collapse the main chat width while measurements catch up.
+  if (msgs.length === 0) {
+    return (
+      <div
+        className="ds-branch-rail"
+        style={{ width: railW }}
+        aria-hidden
+      />
+    );
+  }
 
   return (
     <div
