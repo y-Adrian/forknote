@@ -897,6 +897,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const isBranch = Boolean(plan.branchId);
     const branchId = plan.branchId ?? null;
+    // Decision-bound feedback: plan approval is a first-class signal.
+    {
+      const event = createFeedbackEvent({
+        targetId: plan.assistantId ?? sessionId,
+        pointIndex: 0,
+        signal: "accept",
+        source: "agent_decision",
+        decisionId: `plan_${plan.id}`,
+        decisionType: "plan_approval",
+        turnId: plan.assistantId,
+        phase: "await_approval",
+        contextSnapshot: plan.steps.slice(0, 3).join(" | ").slice(0, 160),
+      });
+      set((state) => ({
+        sessions: applySessionFeedback(state.sessions, sessionId, event),
+      }));
+    }
     clearPendingAgentPlan(set, sessionId);
     if (isBranch && branchId) {
       setSessionBranchLoading(set, sessionId, branchId);
@@ -939,6 +956,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().activeSessionId !== plan.sessionId) return;
     const sessionId = plan.sessionId;
     const isBranch = Boolean(plan.branchId);
+    {
+      const event = createFeedbackEvent({
+        targetId: plan.assistantId ?? sessionId,
+        pointIndex: 0,
+        signal: "reject",
+        source: "agent_decision",
+        decisionId: `plan_${plan.id}`,
+        decisionType: "plan_approval",
+        turnId: plan.assistantId,
+        phase: "await_approval",
+        contextSnapshot: plan.steps.slice(0, 3).join(" | ").slice(0, 160),
+      });
+      set((state) => ({
+        sessions: applySessionFeedback(state.sessions, sessionId, event),
+      }));
+    }
     // Dismiss the approval bar only — keep the user's message (and the plan
     // reply) so Cancel never erases their question / fork.
     clearPendingAgentPlan(set, sessionId);

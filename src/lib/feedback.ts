@@ -148,6 +148,12 @@ export function createFeedbackEvent(input: {
   note?: string;
   source?: FeedbackEvent["source"];
   weight?: number;
+  strategyId?: string;
+  decisionId?: string;
+  decisionType?: FeedbackEvent["decisionType"];
+  turnId?: string;
+  phase?: string;
+  contextSnapshot?: string;
 }): FeedbackEvent {
   const source = input.source ?? "explicit";
   const weight =
@@ -160,11 +166,20 @@ export function createFeedbackEvent(input: {
     targetId: input.targetId,
     pointIndex: input.pointIndex,
     signal: input.signal,
-    explicit: source === "explicit" || source === "hypothesis_confirm",
+    explicit:
+      source === "explicit" ||
+      source === "hypothesis_confirm" ||
+      source === "agent_decision",
     weight,
     attribution: input.attribution,
     note: input.note?.trim() || undefined,
+    strategyId: input.strategyId,
     source,
+    decisionId: input.decisionId,
+    decisionType: input.decisionType,
+    turnId: input.turnId,
+    phase: input.phase,
+    contextSnapshot: input.contextSnapshot?.trim() || undefined,
     at: Date.now(),
   };
 }

@@ -48,7 +48,23 @@ export interface FeedbackEvent {
     | "explicit"
     | "hypothesis_confirm"
     | "hypothesis_deny"
-    | "passive_copy";
+    | "passive_copy"
+    | "agent_decision";
+  /**
+   * Decision-bound feedback (plan/tool/param) — optional so point verdicts
+   * stay backward compatible.
+   */
+  decisionId?: string;
+  decisionType?:
+    | "tool_selection"
+    | "param_generation"
+    | "plan_structure"
+    | "plan_approval"
+    | "point_verdict";
+  turnId?: string;
+  phase?: string;
+  /** Short context for User Model keys (tool name, plan step, …). */
+  contextSnapshot?: string;
   at: number;
 }
 
