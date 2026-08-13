@@ -1529,6 +1529,44 @@ body {
   font-family: var(--ds-font-sans, inherit);
 }
 
+.answer-body .fn-code-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.answer-body .fn-md-image {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  margin: 16px 0;
+  border-radius: var(--ds-radius);
+  background: var(--ds-code-bg);
+  border: 1px solid var(--ds-code-border);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.answer-body .fn-md-image-frame {
+  padding: 12px 14px 16px;
+  overflow: auto;
+}
+
+.answer-body .fn-md-image-frame img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: calc(var(--ds-radius) - 2px);
+}
+
+.answer-body .fn-md-image-failed {
+  margin: 0;
+  padding: 12px 14px 16px;
+  color: var(--ds-muted);
+  font-size: 0.85rem;
+}
+
 .answer-body .fn-code-lang {
   font-size: 0.72rem;
   font-weight: 600;
@@ -1550,6 +1588,7 @@ body {
   font-size: 0.72rem;
   font-weight: 500;
   line-height: 1;
+  text-decoration: none;
   cursor: pointer;
   transition:
     color var(--dur-fast) ease,

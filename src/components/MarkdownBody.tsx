@@ -3,7 +3,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { splitAdoptedSegments } from "../lib/adoptBranch";
 import { useLocale } from "../lib/i18n";
-import { useState, type HTMLAttributes, type ReactNode } from "react";
+import {
+  useState,
+  type HTMLAttributes,
+  type ImgHTMLAttributes,
+  type ReactNode,
+} from "react";
 import { AdoptedClarifyCard } from "./AdoptedClarifyCard";
 import { DiagramFence, isDiagramFenceClass } from "./DiagramFence";
 
@@ -51,15 +56,17 @@ function FencedCodeBlock({
     <div className="fn-code-block">
       <div className="fn-code-toolbar">
         <span className="fn-code-lang">{language ?? "text"}</span>
-        <button
-          type="button"
-          className="fn-code-copy"
-          onClick={() => void copy()}
-          aria-label={copied ? t("chat.copied") : t("chat.copy")}
-          title={copied ? t("chat.copied") : t("chat.copy")}
-        >
-          {copied ? t("chat.copied") : t("chat.copy")}
-        </button>
+        <div className="fn-code-toolbar-actions">
+          <button
+            type="button"
+            className="fn-code-copy"
+            onClick={() => void copy()}
+            aria-label={copied ? t("chat.copied") : t("chat.copy")}
+            title={copied ? t("chat.copied") : t("chat.copy")}
+          >
+            {copied ? t("chat.copied") : t("chat.copy")}
+          </button>
+        </div>
       </div>
       <div className="fn-code-body">
         <div className="fn-code-gutter" aria-hidden>
@@ -74,6 +81,76 @@ function FencedCodeBlock({
         </pre>
       </div>
     </div>
+  );
+}
+
+/** Markdown images: stable chrome + copyable `![alt](src)` source. */
+function MarkdownImage({
+  src,
+  alt,
+  title,
+}: ImgHTMLAttributes<HTMLImageElement>) {
+  const { t } = useLocale();
+  const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const safeSrc = typeof src === "string" ? src.trim() : "";
+  const safeAlt = typeof alt === "string" ? alt : "";
+  const markdown = safeSrc
+    ? `![${safeAlt}](${safeSrc}${title ? ` "${String(title)}"` : ""})`
+    : "";
+
+  const copy = async () => {
+    if (!markdown) return;
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // ignore
+    }
+  };
+
+  if (!safeSrc) return null;
+
+  return (
+    <figure className="fn-md-image">
+      <div className="fn-code-toolbar">
+        <span className="fn-code-lang">image</span>
+        <div className="fn-code-toolbar-actions">
+          <a
+            className="fn-code-copy"
+            href={safeSrc}
+            target="_blank"
+            rel="noreferrer noopener"
+            title={t("chat.image.open")}
+          >
+            {t("chat.image.open")}
+          </a>
+          <button
+            type="button"
+            className="fn-code-copy"
+            onClick={() => void copy()}
+            aria-label={copied ? t("chat.copied") : t("chat.image.copyMarkdown")}
+            title={copied ? t("chat.copied") : t("chat.image.copyMarkdown")}
+          >
+            {copied ? t("chat.copied") : t("chat.image.copyMarkdown")}
+          </button>
+        </div>
+      </div>
+      {failed ? (
+        <p className="fn-md-image-failed">{t("chat.image.failed")}</p>
+      ) : (
+        <div className="fn-md-image-frame">
+          <img
+            src={safeSrc}
+            alt={safeAlt}
+            title={title}
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
+        </div>
+      )}
+    </figure>
   );
 }
 
@@ -127,6 +204,9 @@ export function MarkdownBody({
     // point cards do not nest an extra pre around the code chrome.
     pre({ children }) {
       return <>{children}</>;
+    },
+    img({ src, alt, title }) {
+      return <MarkdownImage src={src} alt={alt} title={title} />;
     },
     code({ className, children, node: _node, ...props }: HTMLAttributes<HTMLElement> & ExtraProps) {
       const text = String(children).replace(/\n$/, "");
