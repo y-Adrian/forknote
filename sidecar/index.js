@@ -260,18 +260,39 @@ async function readBody(req) {
   return pending;
 }
 
+function isPathInside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+function symlinkEscapeError(relative) {
+  return Object.assign(
+    new Error(`Path resolves outside the project root: ${relative}`),
+    { status: 403 },
+  );
+}
+
 /**
- * Resolve a user path relative to project root.
- * Absolute paths are accepted only when they point inside the open project
- * (converted to relative). Otherwise rejected with a clear error.
+ * Resolve a user path relative to the real project root, then verify its
+ * existing target (or nearest existing ancestor) with realpath. Leaf symlinks
+ * may be addressed without following them only for operations such as
+ * delete/rename that mutate the directory entry itself.
+ *
  * @param {string} rel
+ * @param {{ followFinal?: boolean }} [options]
  */
-function resolveSafe(rel) {
+async function resolveSafe(rel, options = {}) {
   const activeRoot = currentProjectRoot();
   if (!activeRoot) {
     throw Object.assign(new Error("No project open"), { status: 400 });
   }
   const root = path.resolve(activeRoot);
+  const followFinal = options.followFinal !== false;
   let input = String(rel ?? ".").trim() || ".";
 
   // Normalize model typos: "//foo.c", "///src/a.cpp" → treat as project-relative
@@ -293,19 +314,16 @@ function resolveSafe(rel) {
   if (path.isAbsolute(input)) {
     const abs = path.resolve(input);
     const relToRoot = path.relative(root, abs);
-    if (!relToRoot.startsWith("..") && !path.isAbsolute(relToRoot)) {
-      return {
-        root,
-        resolved: abs,
-        relative: relToRoot.split(path.sep).join("/") || ".",
-      };
+    if (isPathInside(root, abs)) {
+      input = relToRoot || ".";
+    } else {
+      throw Object.assign(
+        new Error(
+          `Absolute paths outside the project are not allowed. Use a path relative to the project root, e.g. "array_and_subarrays.cpp" or "src/main.cpp" (project: ${root}). Received: ${String(rel).trim()}`,
+        ),
+        { status: 400 },
+      );
     }
-    throw Object.assign(
-      new Error(
-        `Absolute paths outside the project are not allowed. Use a path relative to the project root, e.g. "array_and_subarrays.cpp" or "src/main.cpp" (project: ${root}). Received: ${String(rel).trim()}`,
-      ),
-      { status: 400 },
-    );
   }
 
   if (input.split(/[/\\]/).some((seg) => seg === "..")) {
@@ -316,15 +334,50 @@ function resolveSafe(rel) {
 
   const resolved = path.resolve(root, input);
   const relToRoot = path.relative(root, resolved);
-  if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+  if (!isPathInside(root, resolved)) {
     throw Object.assign(new Error("Path escapes project root"), {
       status: 400,
     });
   }
+
+  const relative = relToRoot.split(path.sep).join("/") || ".";
+  let checkPath = resolved;
+  if (!followFinal && relative !== ".") {
+    checkPath = path.dirname(resolved);
+  }
+
+  // For non-existent write destinations, climb to the nearest existing
+  // ancestor. realpath on that ancestor catches every symlinked parent.
+  let existing = checkPath;
+  while (true) {
+    try {
+      await fs.lstat(existing);
+      break;
+    } catch (e) {
+      if (/** @type {{ code?: string }} */ (e).code !== "ENOENT") throw e;
+      const parent = path.dirname(existing);
+      if (parent === existing) throw e;
+      existing = parent;
+    }
+  }
+  const realExisting = await fs.realpath(existing);
+  if (!isPathInside(root, realExisting)) {
+    throw symlinkEscapeError(relative);
+  }
+
+  // Rebuild through the canonical ancestor. This narrows the check/use window
+  // and avoids retaining an in-project symlink alias in the operation path.
+  const canonicalResolved = path.resolve(
+    realExisting,
+    path.relative(existing, resolved),
+  );
+  if (!isPathInside(root, canonicalResolved)) {
+    throw symlinkEscapeError(relative);
+  }
   return {
     root,
-    resolved,
-    relative: relToRoot.split(path.sep).join("/") || ".",
+    resolved: canonicalResolved,
+    relative,
   };
 }
 
@@ -354,7 +407,7 @@ async function handleOpen(body) {
   if (!stat.isDirectory()) {
     throw Object.assign(new Error("path must be a directory"), { status: 400 });
   }
-  projectRoot = resolved;
+  projectRoot = await fs.realpath(resolved);
   return { root: projectRoot };
 }
 
@@ -451,7 +504,7 @@ async function handlePickFolder() {
 }
 
 async function handleList(query) {
-  const { resolved, relative } = resolveSafe(query.get("path") || ".");
+  const { resolved, relative } = await resolveSafe(query.get("path") || ".");
   let entries;
   try {
     entries = await fs.readdir(resolved, { withFileTypes: true });
@@ -476,7 +529,7 @@ async function handleList(query) {
 }
 
 async function handleRead(query) {
-  const { resolved, relative } = resolveSafe(query.get("path") || "");
+  const { resolved, relative } = await resolveSafe(query.get("path") || "");
   if (!query.get("path")) {
     throw Object.assign(new Error("path is required"), { status: 400 });
   }
@@ -537,7 +590,7 @@ async function handleWrite(body) {
       { status: 413 },
     );
   }
-  const { resolved, relative } = resolveSafe(filePath);
+  const { resolved, relative } = await resolveSafe(filePath);
   let before = "";
   try {
     const prev = await fs.readFile(resolved);
@@ -592,7 +645,7 @@ async function handleSearchReplace(body) {
   }
   const replaceAll = Boolean(body?.replace_all);
 
-  const { resolved, relative } = resolveSafe(filePath);
+  const { resolved, relative } = await resolveSafe(filePath);
   let original;
   try {
     const stat = await fs.stat(resolved);
@@ -768,7 +821,7 @@ async function handleWriteDocx(body) {
     );
   }
 
-  const { resolved, relative } = resolveSafe(withExt);
+  const { resolved, relative } = await resolveSafe(withExt);
   try {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, buffer);
@@ -844,7 +897,7 @@ async function handleWriteXlsx(body) {
     );
   }
 
-  const { resolved, relative } = resolveSafe(withExt);
+  const { resolved, relative } = await resolveSafe(withExt);
   try {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await wb.xlsx.writeFile(resolved);
@@ -878,7 +931,7 @@ async function handleMkdir(body) {
   if (!dirPath) {
     throw Object.assign(new Error("path is required"), { status: 400 });
   }
-  const { resolved, relative } = resolveSafe(dirPath);
+  const { resolved, relative } = await resolveSafe(dirPath);
   await fs.mkdir(resolved, { recursive: true });
   return { path: relative, created: true };
 }
@@ -895,7 +948,7 @@ async function handleSearch(body) {
   if (query.length > 200) {
     throw Object.assign(new Error("query too long"), { status: 400 });
   }
-  const { root, resolved: start } = resolveSafe(body?.path || ".");
+  const { root, resolved: start } = await resolveSafe(body?.path || ".");
   const useRegex = Boolean(body?.regex);
   const glob = typeof body?.glob === "string" ? body.glob.trim() : "";
   const rgHits = await tryRipgrep(root, start, query, {
@@ -1013,7 +1066,7 @@ async function handleGlob(body) {
   if (!pattern) {
     throw Object.assign(new Error("pattern is required"), { status: 400 });
   }
-  const { root, resolved: start } = resolveSafe(body?.path || ".");
+  const { root, resolved: start } = await resolveSafe(body?.path || ".");
   const re = globToRegExp(pattern);
   /** @type {string[]} */
   const matches = [];
@@ -1057,7 +1110,7 @@ const MAX_SYMBOL_FILES = 400;
  * @param {(rel: string, source: string) => void | Promise<void>} onFile
  */
 async function walkCodeFiles(startRel, onFile) {
-  const { root, resolved: start } = resolveSafe(startRel || ".");
+  const { root, resolved: start } = await resolveSafe(startRel || ".");
   let filesSeen = 0;
 
   async function walk(dir) {
@@ -1317,7 +1370,9 @@ async function handleDelete(body) {
   if (!filePath || filePath === ".") {
     throw Object.assign(new Error("path is required"), { status: 400 });
   }
-  const { resolved, relative } = resolveSafe(filePath);
+  const { resolved, relative } = await resolveSafe(filePath, {
+    followFinal: false,
+  });
   let stat;
   try {
     stat = await fs.lstat(resolved);
@@ -1351,15 +1406,15 @@ async function handleRename(body) {
   if (!to || to === ".") {
     throw Object.assign(new Error("to is required"), { status: 400 });
   }
-  const src = resolveSafe(from);
-  const dest = resolveSafe(to);
+  const src = await resolveSafe(from, { followFinal: false });
+  const dest = await resolveSafe(to, { followFinal: false });
   try {
-    await fs.stat(src.resolved);
+    await fs.lstat(src.resolved);
   } catch {
     throw Object.assign(new Error(`Not found: ${src.relative}`), { status: 404 });
   }
   try {
-    await fs.stat(dest.resolved);
+    await fs.lstat(dest.resolved);
     throw Object.assign(new Error(`Target already exists: ${dest.relative}`), {
       status: 409,
     });
@@ -1385,7 +1440,7 @@ async function handleReadDocx(body) {
   if (!filePath) {
     throw Object.assign(new Error("path is required"), { status: 400 });
   }
-  const { resolved, relative } = resolveSafe(filePath);
+  const { resolved, relative } = await resolveSafe(filePath);
   try {
     await fs.stat(resolved);
   } catch {
@@ -1423,7 +1478,7 @@ async function handleReadXlsx(body) {
   if (!filePath) {
     throw Object.assign(new Error("path is required"), { status: 400 });
   }
-  const { resolved, relative } = resolveSafe(filePath);
+  const { resolved, relative } = await resolveSafe(filePath);
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   try {
@@ -1469,7 +1524,7 @@ async function handlePatchXlsx(body) {
   if (cells.length > 500) {
     throw Object.assign(new Error("Too many cells (max 500)"), { status: 413 });
   }
-  const { resolved, relative } = resolveSafe(filePath);
+  const { resolved, relative } = await resolveSafe(filePath);
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(resolved);
@@ -1534,7 +1589,7 @@ async function handleGitDiff(body) {
   const filePath = typeof body?.path === "string" ? body.path.trim() : "";
   const args = ["diff", "--no-color"];
   if (filePath) {
-    const { relative } = resolveSafe(filePath);
+    const { relative } = await resolveSafe(filePath, { followFinal: false });
     args.push("--", relative);
   }
   const r = await gitExec(args);
@@ -1560,7 +1615,11 @@ async function handleGitCommit(body) {
       { status: 400 },
     );
   }
-  const rels = paths.map((p) => resolveSafe(p).relative);
+  const rels = await Promise.all(
+    paths.map(
+      async (p) => (await resolveSafe(p, { followFinal: false })).relative,
+    ),
+  );
   const add = await gitExec(["add", "--", ...rels]);
   if (add.exitCode !== 0) {
     throw Object.assign(new Error(add.stderr || add.stdout || "git add failed"), {
@@ -1583,9 +1642,11 @@ async function handleDiagnostics(body) {
   }
   let hasTsconfig = false;
   try {
-    await fs.stat(path.join(root, "tsconfig.json"));
+    const { resolved } = await resolveSafe("tsconfig.json");
+    await fs.stat(resolved);
     hasTsconfig = true;
-  } catch {
+  } catch (e) {
+    if (/** @type {{ status?: number }} */ (e).status) throw e;
     hasTsconfig = false;
   }
   if (!hasTsconfig) {
@@ -1722,13 +1783,13 @@ async function withExpectedProjectRoot(expectedRaw, operation) {
  * @param {string} command
  * @param {string} root
  */
-function commandLeavesProject(command, root) {
+async function commandLeavesProject(command, root) {
   const raw = String(command ?? "").trim();
   if (!raw) return false;
   const rootAbs = path.resolve(root);
 
   /** @param {string} candidate */
-  const outside = (candidate) => {
+  const outside = async (candidate) => {
     const c = String(candidate ?? "").trim();
     if (!c) return false;
     if (c === "~" || c.startsWith("~/") || c === "$HOME" || c.startsWith("$HOME/") || c.startsWith("${HOME}")) {
@@ -1736,8 +1797,28 @@ function commandLeavesProject(command, root) {
     }
     if (!path.isAbsolute(c) && !/^[A-Za-z]:[\\/]/.test(c)) return false;
     const abs = path.resolve(c);
-    const rel = path.relative(rootAbs, abs);
-    return rel.startsWith("..") || path.isAbsolute(rel);
+    let existing = abs;
+    while (true) {
+      try {
+        await fs.lstat(existing);
+        break;
+      } catch (e) {
+        if (/** @type {{ code?: string }} */ (e).code !== "ENOENT") break;
+        const parent = path.dirname(existing);
+        if (parent === existing) break;
+        existing = parent;
+      }
+    }
+    try {
+      const realExisting = await fs.realpath(existing);
+      const canonical = path.resolve(
+        realExisting,
+        path.relative(existing, abs),
+      );
+      return !isPathInside(rootAbs, canonical);
+    } catch {
+      return !isPathInside(rootAbs, abs);
+    }
   };
 
   // cd / pushd to home, root, or absolute outside project
@@ -1747,7 +1828,9 @@ function commandLeavesProject(command, root) {
   while ((m = cdRe.exec(raw)) !== null) {
     let target = m[1].replace(/^['"]|['"]$/g, "");
     if (target === "-" || target === "--") continue;
-    if (outside(target) || target === "/" || target === "\\" ) return true;
+    if ((await outside(target)) || target === "/" || target === "\\") {
+      return true;
+    }
   }
 
   // Absolute path tokens (any POSIX /…, ~, $HOME, Windows drive) — not only /tmp|/Users.
@@ -1758,7 +1841,7 @@ function commandLeavesProject(command, root) {
     if (token === "/" || token === "~" || token.startsWith("~/") || /\$\{?HOME\}?/.test(token)) {
       return true;
     }
-    if (outside(token)) return true;
+    if (await outside(token)) return true;
   }
 
   return false;
@@ -1820,9 +1903,16 @@ function handleRun(body, res = null) {
 
   return (async () => {
     // Starting cwd is always under the bound project — never process.cwd().
-    const { resolved: cwd, relative, root: requestRoot } = resolveSafe(cwdInput);
+    const {
+      resolved: cwd,
+      relative,
+      root: requestRoot,
+    } = await resolveSafe(cwdInput);
 
-    if (commandLeavesProject(command, requestRoot) && !allowOutsideProject) {
+    if (
+      (await commandLeavesProject(command, requestRoot)) &&
+      !allowOutsideProject
+    ) {
       throw Object.assign(
         new Error(
           "Command targets paths outside the bound project. Approve outside-project terminal access (权限) before running.",

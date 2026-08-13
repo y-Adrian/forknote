@@ -18,6 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PROJECT = path.join(os.tmpdir(), `forknote-fs-agent-tools-${process.pid}`);
 const PROJECT_B = `${PROJECT}-other`;
+const PROJECT_EXTERNAL = `${PROJECT}-external`;
 const TEST_TOKEN = "a".repeat(64);
 let activeExpectedRoot = PROJECT;
 
@@ -161,17 +162,163 @@ async function testSidecar(base) {
   console.log("\n=== Sidecar FS / git / office ===\n");
   await fs.rm(PROJECT, { recursive: true, force: true });
   await fs.rm(PROJECT_B, { recursive: true, force: true });
+  await fs.rm(PROJECT_EXTERNAL, { recursive: true, force: true });
   await fs.mkdir(path.join(PROJECT, "src"), { recursive: true });
   await fs.mkdir(PROJECT_B, { recursive: true });
+  await fs.mkdir(PROJECT_EXTERNAL, { recursive: true });
   await fs.writeFile(path.join(PROJECT, "src", "a.ts"), "export const alpha = 1;\n");
   await fs.writeFile(path.join(PROJECT, "src", "b.ts"), "export const beta = 2;\n");
   await fs.writeFile(path.join(PROJECT, "notes.md"), "hello world\nfoo bar\n");
   await fs.writeFile(path.join(PROJECT_B, "marker.txt"), "project-b\n");
+  const externalSentinel = path.join(PROJECT_EXTERNAL, "sentinel.txt");
+  const externalSource = path.join(PROJECT_EXTERNAL, "external.ts");
+  await fs.writeFile(externalSentinel, "EXTERNAL SENTINEL\n");
+  await fs.writeFile(
+    externalSource,
+    "export const externalSecret = 'must stay outside';\n",
+  );
+  await fs.symlink(externalSentinel, path.join(PROJECT, "external-file-link"));
+  await fs.symlink(
+    externalSentinel,
+    path.join(PROJECT, "external-docx-link.docx"),
+  );
+  await fs.symlink(
+    externalSentinel,
+    path.join(PROJECT, "external-xlsx-link.xlsx"),
+  );
+  await fs.symlink(PROJECT_EXTERNAL, path.join(PROJECT, "external-dir-link"));
   const big = Array.from({ length: 5000 }, (_, i) => `line-${i + 1} ${"x".repeat(60)}`).join("\n");
   await fs.writeFile(path.join(PROJECT, "big.txt"), `${big}\n`);
 
   const opened = await json(base, "POST", "/project/open", { path: PROJECT });
   ok("open project", opened.status === 200, `status=${opened.status}`);
+
+  {
+    const rejected = await Promise.all([
+      json(base, "GET", "/fs/read?path=external-file-link"),
+      json(base, "GET", "/fs/read?path=external-file-link&offset=1&limit=1"),
+      json(base, "GET", "/fs/list?path=external-dir-link"),
+      json(base, "POST", "/fs/write", {
+        path: "external-file-link",
+        content: "OVERWRITTEN\n",
+      }),
+      json(base, "POST", "/fs/search_replace", {
+        path: "external-file-link",
+        old_string: "EXTERNAL",
+        new_string: "CHANGED",
+      }),
+      json(base, "POST", "/fs/apply_patch", {
+        path: "external-file-link",
+        edits: [{ old_string: "EXTERNAL", new_string: "CHANGED" }],
+      }),
+      json(base, "POST", "/fs/mkdir", {
+        path: "external-dir-link/new-dir",
+      }),
+      json(base, "POST", "/fs/search", {
+        path: "external-dir-link",
+        query: "externalSecret",
+      }),
+      json(base, "POST", "/fs/glob", {
+        path: "external-dir-link",
+        pattern: "**/*",
+      }),
+      json(base, "POST", "/fs/find_symbol", {
+        path: "external-dir-link",
+        name: "externalSecret",
+      }),
+      json(base, "POST", "/fs/go_to_definition", {
+        path: "external-file-link",
+        name: "externalSecret",
+      }),
+      json(base, "POST", "/fs/find_references", {
+        path: "external-dir-link",
+        name: "externalSecret",
+      }),
+      json(base, "POST", "/fs/dependency_graph", {
+        path: "external-dir-link",
+      }),
+      json(base, "POST", "/fs/semantic_search", {
+        path: "external-dir-link",
+        query: "external secret",
+      }),
+      json(base, "POST", "/fs/delete", {
+        path: "external-dir-link/sentinel.txt",
+      }),
+      json(base, "POST", "/fs/rename", {
+        from: "external-dir-link/sentinel.txt",
+        to: "moved-sentinel.txt",
+      }),
+      json(base, "POST", "/fs/read_docx", {
+        path: "external-docx-link.docx",
+      }),
+      json(base, "POST", "/fs/read_xlsx", {
+        path: "external-xlsx-link.xlsx",
+      }),
+      json(base, "POST", "/fs/write_docx", {
+        path: "external-docx-link.docx",
+        paragraphs: ["changed"],
+      }),
+      json(base, "POST", "/fs/write_xlsx", {
+        path: "external-xlsx-link.xlsx",
+        rows: [["changed"]],
+      }),
+      json(base, "POST", "/fs/patch_xlsx", {
+        path: "external-xlsx-link.xlsx",
+        cells: [{ row: 1, col: 1, value: "changed" }],
+      }),
+      json(base, "POST", "/fs/run", {
+        cwd: "external-dir-link",
+        command: "pwd",
+      }),
+    ]);
+    ok(
+      "filesystem routes reject external symlink targets",
+      rejected.every(
+        (result) =>
+          result.status === 403 &&
+          /outside the project root/i.test(result.data?.error ?? ""),
+      ),
+      `statuses=${rejected.map((result) => result.status).join(",")}`,
+    );
+
+    await fs.symlink(
+      externalSentinel,
+      path.join(PROJECT, "delete-external-link"),
+    );
+    const deletedLink = await json(base, "POST", "/fs/delete", {
+      path: "delete-external-link",
+    });
+    await fs.symlink(
+      externalSentinel,
+      path.join(PROJECT, "rename-external-link"),
+    );
+    const renamedLink = await json(base, "POST", "/fs/rename", {
+      from: "rename-external-link",
+      to: "renamed-external-link",
+    });
+    const sentinelAfter = await fs.readFile(externalSentinel, "utf8");
+    const renamedStat = await fs.lstat(
+      path.join(PROJECT, "renamed-external-link"),
+    );
+    ok(
+      "delete and rename mutate external symlink only",
+      deletedLink.status === 200 &&
+        renamedLink.status === 200 &&
+        renamedStat.isSymbolicLink() &&
+        sentinelAfter === "EXTERNAL SENTINEL\n",
+      `delete=${deletedLink.status} rename=${renamedLink.status}`,
+    );
+
+    await fs.symlink(externalSource, path.join(PROJECT, "tsconfig.json"));
+    const diagnostics = await json(base, "POST", "/fs/diagnostics", {});
+    await fs.unlink(path.join(PROJECT, "tsconfig.json"));
+    ok(
+      "diagnostics rejects external symlink config",
+      diagnostics.status === 403 &&
+        /outside the project root/i.test(diagnostics.data?.error ?? ""),
+      `status=${diagnostics.status}`,
+    );
+  }
 
   {
     const missing = await json(base, "POST", "/fs/glob", {
@@ -524,6 +671,9 @@ async function main() {
     child.kill("SIGTERM");
     await fs.rm(PROJECT, { recursive: true, force: true }).catch(() => {});
     await fs.rm(PROJECT_B, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(PROJECT_EXTERNAL, { recursive: true, force: true }).catch(
+      () => {},
+    );
   }
 
   const failed = results.filter((r) => !r.pass);
