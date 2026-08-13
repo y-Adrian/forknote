@@ -370,6 +370,8 @@ const en = {
   "sidebar.unpin": "Unpin",
   "sidebar.shareMemory": "Share memory with other sessions",
   "sidebar.isolateMemory": "Keep memory private to this session",
+  "sidebar.shareMemoryHint":
+    "On: use the shared project memory pack. Off: keep a private pack for this session.",
   "sidebar.share": "Share",
   "sidebar.shareCopied": "Copied session to clipboard",
   "sidebar.shareFailed": "Could not copy to clipboard",
@@ -1022,6 +1024,8 @@ const zh: Record<MessageKey, string> = {
   "sidebar.unpin": "取消置顶",
   "sidebar.shareMemory": "与其他会话共享记忆",
   "sidebar.isolateMemory": "仅本会话使用记忆",
+  "sidebar.shareMemoryHint":
+    "开：使用项目共享记忆包。关：仅本会话使用独立记忆。",
   "sidebar.share": "分享",
   "sidebar.shareCopied": "已复制到剪贴板",
   "sidebar.shareFailed": "无法复制到剪贴板",

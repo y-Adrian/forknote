@@ -1,8 +1,17 @@
 import { useAppStore } from "../store/useAppStore";
 import { useLocale } from "../lib/i18n";
 
+type ProjectStatusPart = "all" | "row" | "panels";
+
 /** Compact chip + activity / changes for the connected local project. */
-export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void }) {
+export function ProjectStatusBar({
+  onOpenProject,
+  part = "all",
+}: {
+  onOpenProject: () => void;
+  /** `row` = chip controls only; `panels` = activity/changes; `all` = both (empty state). */
+  part?: ProjectStatusPart;
+}) {
   const { t } = useLocale();
   const projectRoot = useAppStore((s) => s.projectRoot);
   const agentActivity = useAppStore((s) => s.agentActivity);
@@ -26,49 +35,54 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
   const showActivityPanel =
     agentExecuting && (agentActivity.length > 0 || agentChanges.length > 0);
 
-  return (
-    <div className="fn-project-bar">
-      <div className="fn-project-bar-row">
-        {projectRoot ? (
-          <button
-            type="button"
-            className="fn-project-chip is-connected"
-            title={projectRoot}
-            onClick={onOpenProject}
-          >
-            <span className="fn-project-dot" aria-hidden />
-            <span className="fn-project-chip-label">{shortRoot}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="fn-project-chip"
-            onClick={onOpenProject}
-          >
-            {t("projectBar.open")}
-          </button>
-        )}
-        {projectRoot && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            onClick={() => disconnectProject()}
-          >
-            {t("common.disconnect")}
-          </button>
-        )}
-        {showActivityPanel && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            onClick={() => clearAgentLog()}
-          >
-            {t("projectBar.clearLog")}
-          </button>
-        )}
-      </div>
+  const showRow = part === "all" || part === "row";
+  const showPanels = part === "all" || part === "panels";
 
-      {showActivityPanel && agentActivity.length > 0 && (
+  const row = showRow ? (
+    <div className="fn-project-bar-row">
+      {projectRoot ? (
+        <button
+          type="button"
+          className="fn-project-chip is-connected"
+          title={projectRoot}
+          onClick={onOpenProject}
+        >
+          <span className="fn-project-dot" aria-hidden />
+          <span className="fn-project-chip-label">{shortRoot}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="fn-project-chip"
+          onClick={onOpenProject}
+        >
+          {t("projectBar.open")}
+        </button>
+      )}
+      {projectRoot && (
+        <button
+          type="button"
+          className="btn ghost sm"
+          onClick={() => disconnectProject()}
+        >
+          {t("common.disconnect")}
+        </button>
+      )}
+      {showActivityPanel && (
+        <button
+          type="button"
+          className="btn ghost sm"
+          onClick={() => clearAgentLog()}
+        >
+          {t("projectBar.clearLog")}
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  const panels = showPanels && showActivityPanel ? (
+    <>
+      {agentActivity.length > 0 && (
         <ul className="fn-agent-activity" aria-label={t("projectBar.activityAria")}>
           {agentActivity.slice(-6).map((a) => (
             <li key={a.id} className={`is-${a.kind}`}>
@@ -77,8 +91,7 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
           ))}
         </ul>
       )}
-
-      {showActivityPanel && agentChanges.length > 0 && (
+      {agentChanges.length > 0 && (
         <div className="fn-agent-changes">
           <div className="fn-agent-changes-title">{t("projectBar.changes")}</div>
           <ul>
@@ -96,6 +109,16 @@ export function ProjectStatusBar({ onOpenProject }: { onOpenProject: () => void 
           </ul>
         </div>
       )}
+    </>
+  ) : null;
+
+  if (part === "row") return row;
+  if (part === "panels") return panels;
+
+  return (
+    <div className="fn-project-bar">
+      {row}
+      {panels}
     </div>
   );
 }

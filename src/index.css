@@ -4564,7 +4564,7 @@ mark.branch-highlight:hover {
 .fn-session-menu {
   position: fixed;
   z-index: 1200;
-  min-width: 148px;
+  min-width: 220px;
   padding: 6px;
   border-radius: 16px;
   border: 1px solid var(--ds-border);
@@ -4614,6 +4614,40 @@ mark.branch-highlight:hover {
 .fn-session-menu-label {
   flex: 1;
   min-width: 0;
+}
+
+.fn-session-menu-switch .fn-session-menu-label {
+  line-height: 1.3;
+}
+
+.fn-session-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--ds-border-strong);
+  transition: background var(--dur-fast) ease;
+}
+
+.fn-session-switch.is-on {
+  background: var(--ds-accent);
+}
+
+.fn-session-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ds-surface-elevated);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ds-ink) 25%, transparent);
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.fn-session-switch.is-on .fn-session-switch-thumb {
+  transform: translateX(14px);
 }
 
 .fn-session-share-toast {
@@ -5591,54 +5625,103 @@ mark.branch-highlight:hover {
   max-width: var(--ds-content-max-width);
   margin: 0 auto 8px;
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+/* Primary controls stay on one row; scroll horizontally if the viewport is tight.
+   Do not shrink controls below content width — that caused labels to paint over neighbors. */
+.fn-composer-toolbar-row {
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px 10px;
-  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .fn-composer-toolbar-sep {
   flex-shrink: 0;
   color: var(--ds-muted);
-  font-size: var(--fn-text-ui-sm);
+  font-size: var(--fn-text-ui-xs);
   line-height: 1;
   user-select: none;
 }
 
-.fn-composer-toolbar .fn-context-mode {
-  flex: 0 1 auto;
-  min-width: 0;
+.fn-composer-toolbar-row .fn-project-bar-row {
+  flex: 0 0 auto;
+  gap: 2px 4px;
 }
 
-/* Chip row shares the toolbar line; activity/changes wrap below when shown. */
-.fn-composer-toolbar .fn-project-bar {
-  display: contents;
+.fn-composer-toolbar-row .fn-project-chip {
+  max-width: 108px;
+  padding: 2px 8px;
+  font-size: var(--fn-text-ui-xs);
+  font-weight: 600;
 }
 
-.fn-composer-toolbar .fn-project-bar-row {
-  flex: 0 1 auto;
-  min-width: 0;
-  gap: 4px 6px;
+.fn-composer-toolbar-row .fn-project-dot {
+  width: 6px;
+  height: 6px;
 }
 
-.fn-composer-toolbar .fn-project-chip {
-  max-width: 180px;
-  padding: 3px 10px;
+.fn-composer-toolbar-row .btn.ghost.sm {
+  padding: 2px 8px;
+  font-size: var(--fn-text-ui-xs);
+  white-space: nowrap;
 }
 
-.fn-composer-toolbar .fn-agent-activity,
-.fn-composer-toolbar .fn-agent-changes {
-  flex: 1 1 100%;
+.fn-composer-toolbar-row .fn-context-mode {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: max-content;
+}
+
+.fn-composer-toolbar-row .fn-context-segment {
+  flex: 0 0 auto;
+  padding: 2px;
+  min-width: max-content;
+}
+
+.fn-composer-toolbar-row .fn-context-seg {
+  padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
+.fn-composer-toolbar-row .fn-archive-btn {
+  padding: 2px 8px;
+  font-size: var(--fn-text-ui-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fn-composer-toolbar-row .fn-archive-history {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* Agent strips sit under the control row (not mixed into the button line). */
+.fn-composer-toolbar > .fn-agent-activity,
+.fn-composer-toolbar > .fn-agent-changes {
+  flex: none;
   width: 100%;
   margin: 0;
 }
 
-.fn-composer-toolbar .fn-composer-memory-actions {
+.fn-composer-toolbar-row .fn-composer-memory-actions {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 2px;
+  flex: 0 0 auto;
 }
 
 @media (max-width: 560px) {
@@ -5646,8 +5729,12 @@ mark.branch-highlight:hover {
     display: none;
   }
 
-  .fn-composer-toolbar .fn-composer-memory-actions {
-    margin-left: 0;
+  .fn-composer-toolbar-row .fn-composer-memory-actions {
+    margin-left: 4px;
+  }
+
+  .fn-composer-toolbar-row .fn-project-chip {
+    max-width: 88px;
   }
 }
 

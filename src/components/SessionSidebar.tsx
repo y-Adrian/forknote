@@ -161,6 +161,43 @@ function MenuItem({
   );
 }
 
+function MenuSwitchItem({
+  checked,
+  onToggle,
+  icon,
+  children,
+  title,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  icon: ReactNode;
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      className="fn-session-menu-switch"
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <span className="fn-session-menu-icon">{icon}</span>
+      <span className="fn-session-menu-label">{children}</span>
+      <span
+        className={`fn-session-switch${checked ? " is-on" : ""}`}
+        aria-hidden
+      >
+        <span className="fn-session-switch-thumb" />
+      </span>
+    </button>
+  );
+}
+
 function ThemeToggleButton({
   theme,
   onToggle,
@@ -461,7 +498,6 @@ export function SessionSidebar({
   const handleToggleShareMemory = () => {
     if (!menuSession) return;
     setShareMemory(menuSession.id, menuSession.shareMemory === false);
-    closeMenu();
   };
 
   const handleShare = () => {
@@ -676,14 +712,14 @@ export function SessionSidebar({
                   >
                     {menuPinned ? t("sidebar.unpin") : t("sidebar.pin")}
                   </MenuItem>
-                  <MenuItem
+                  <MenuSwitchItem
                     icon={<IconMemoryShare shared={menuShareMemory} />}
-                    onClick={handleToggleShareMemory}
+                    checked={menuShareMemory}
+                    onToggle={handleToggleShareMemory}
+                    title={t("sidebar.shareMemoryHint")}
                   >
-                    {menuShareMemory
-                      ? t("sidebar.isolateMemory")
-                      : t("sidebar.shareMemory")}
-                  </MenuItem>
+                    {t("sidebar.shareMemory")}
+                  </MenuSwitchItem>
                   <MenuItem icon={<IconShare />} onClick={handleShare}>
                     {t("sidebar.share")}
                   </MenuItem>
