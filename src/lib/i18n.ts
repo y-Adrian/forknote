@@ -471,7 +471,7 @@ const en = {
   "main.archive": "Archive",
   "main.archiving": "Archiving…",
   "main.archiveTitle":
-    "Archive: turn the main thread into a development-log snapshot (for reading / continuing). Not the same as Compress memory pack.",
+    "Archive: turn the main thread into a dated 开发日志 (背景/目标 · 尝试过程 · 结论/结果 · 参考) for reading / continuing. Not the same as Compress memory pack.",
   "main.compress": "Compress",
   "main.compressing": "Compressing…",
   "main.compressTitle":
@@ -530,7 +530,7 @@ const en = {
 
   "archive.title": "Development log archive",
   "archive.hintLoading":
-    "Summarizing the main thread and point verdicts…",
+    "Writing a dated 开发日志 (背景/目标 · 尝试过程 · 结论/结果 · 参考)…",
   "archive.hintIdle":
     "Use an archive to continue, or switch back to the full thread",
   "archive.hintUpToDate":
@@ -1123,7 +1123,7 @@ const zh: Record<MessageKey, string> = {
   "main.archive": "归档",
   "main.archiving": "归档中…",
   "main.archiveTitle":
-    "归档：将主线归纳为开发日志快照（阅读/续聊）。与「压缩上下文」记忆包不同。",
+    "归档：将主线归纳为带日期的开发日志（背景/目标 · 尝试过程 · 结论/结果 · 参考），供阅读/续聊。与「压缩上下文」记忆包不同。",
   "main.compress": "压缩上下文",
   "main.compressing": "压缩中…",
   "main.compressTitle":
@@ -1180,7 +1180,7 @@ const zh: Record<MessageKey, string> = {
   "sessionApi.reset": "恢复默认",
 
   "archive.title": "开发日志归档",
-  "archive.hintLoading": "正在归纳主线与分点裁决…",
+  "archive.hintLoading": "正在生成开发日志（背景/目标 · 尝试过程 · 结论/结果 · 参考）…",
   "archive.hintIdle": "可用归档继续，或切回完整线程",
   "archive.hintUpToDate": "已归档，且自上一版以来没有新变化。可在下方查看当前归档。",
   "archive.hintUpToDateShort": "已是最新",

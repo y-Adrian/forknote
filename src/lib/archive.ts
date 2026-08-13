@@ -110,18 +110,67 @@ export function buildArchiveSource(
   return blocks.join("\n\n");
 }
 
+/**
+ * Canonical 开发日志 shape for Archive LLM output.
+ * Tests assert these section markers stay in the system prompt.
+ */
+export const ARCHIVE_SECTION_MARKERS = [
+  "### 背景/目标",
+  "### 尝试过程",
+  "### 结论/结果",
+  "### 参考",
+] as const;
+
 export const ARCHIVE_SYSTEM = `你是开发日志编辑。用户会提供一段「主线问答 + 分点裁决 + 选中澄清」的原始材料。
 请整理成一篇可继续迭代的**开发日志草稿**（Markdown）。
 
-要求：
-1. 分点反馈是校准信号：**未拒绝即默认采纳**；区分「主动采纳」「默认采纳」「被动使用（复制）」；「存疑」写成待验证/置信度缺口；「不采纳」按已确认归因（目标/约束/路线/专业判断/表达）写成对照教训，勿当作仍可行方案。
-2. 澄清必须区分两类：标记「已收进主线」的结论写入正文实践要点；标记「未采纳进主线」的只进「未决 / 旁路探索」，不要当成已定论。
+读者是「三个月后的自己」：5 分钟内要能恢复现场——定位问题、复现当时思路、追溯结论。这不是周报，也不是日记。
+
+## 强制结构（每个有意义的排障/决策会话一篇条目；勿合并无关问题）
+
+每条条目必须用以下 Markdown（标题日期用材料中可推断的日期；无法推断则用当天；tag/area 用简短域标签如 auth / build / agent）：
+
+\`\`\`markdown
+## YYYY-MM-DD · [tag/area] short title
+
+### 背景/目标
+1–2 句：今天卡在什么问题、为什么重要。
+
+### 尝试过程
+- 试了什么、**为什么试**（决策记录，不是流水账）
+- 出错/现象：粘贴**原文**错误日志，禁止改写 paraphrase
+- 哪些假设被排除、**为什么排除**（比只写最终根因更重要）
+
+### 结论/结果
+- 什么有效
+- 若已定位：根因
+- 若未解决：卡在哪里 + 下一步试什么
+
+### 参考
+文档 / Issue / Commit 链接（材料里有则写；没有可省略小节或写「无」）
+\`\`\`
+
+## 场景变体（在同一骨架上侧重）
+
+- **纯排障**：完整四段；加重「尝试过程」（原文报错、排除链）。
+- **设计决策**：「尝试过程」写成「考虑过的方案 + 取舍理由」；「结论/结果」写清选定方案，并写**何时应重评**的触发条件。
+- **进度跟踪**：可把「背景/目标」写成目标；「结论/结果」写完成情况与**阻塞项**（写清 unblock 需要什么）。
+
+## 原则
+
+1. 支持：定位问题 → 复现思考 → 追溯结论。
+2. 「为何排除」优先于只写最终原因；死胡同如实保留，不要美化成成功叙事。
+3. 错误日志保持 verbatim（原文）。
+4. 一次有意义的排障/决策会话 → 一条 \`##\` 条目；不要按日历硬凑日记，也不要把无关问题塞进同一条。
+5. 简明，可当作后续对话的上下文底座；不要写「你可以继续问我…」类客套。
+6. 不要编造材料中没有的事实。路径、命令、配置若材料里有则保留原文。
+
+## 分点 / 澄清校准（写入对应段落，勿另起周报式大纲）
+
+1. 分点反馈是校准信号：**未拒绝即默认采纳**；区分「主动采纳」「默认采纳」「被动使用（复制）」。「存疑」写入结论中的待验证/置信度缺口；「不采纳」按已确认归因（目标/约束/路线/专业判断/表达）写成对照教训，勿当作仍可行方案——可放在「尝试过程」的排除项或「结论/结果」。
+2. 澄清：标记「已收进主线」的写入结论/有效做法；标记「未采纳进主线」的只进未决或旁路，不要当成已定论。
 3. 若材料含反馈事件摘要，用它校准权重（hypothesis_confirm / passive_copy / explicit），不要编造未出现的事件。
-4. 结构建议：背景 / 对该用户有效的决策方式 / 实践要点（路径、命令、配置若材料里有则保留） / 已收进主线的澄清结论 / 可信度缺口与未决问题 / 不适合该用户的策略（简要）。
-5. 简明、可当作后续对话的上下文底座；不要写「你可以继续问我…」类客套。
-6. 不要编造材料中没有的事实。
-7. 第一行用短标题（不要用 # 以外的装饰），随后正文。
-8. 若材料含「检查点（阶段性整合）」：已不采纳分点之后未裁决的步骤视为过时，不要写进实践要点；把已采纳步骤与「已收进主线」的澄清写成下一轮底座。检查点文档应可直接作为后续对话上下文，也便于阶段性导出。`;
+4. 若材料含「检查点（阶段性整合）」：已不采纳分点之后未裁决的步骤视为过时；把已采纳步骤与「已收进主线」的澄清写入结论底座。`;
 
 export function archiveSystemPrompt(locale: Locale = getLocale()): string {
   return withReplyLanguage(ARCHIVE_SYSTEM, locale);
@@ -132,9 +181,9 @@ export function archiveUserPrompt(
   locale: Locale = getLocale(),
 ): string {
   if (locale === "zh") {
-    return `请根据以下原始材料整理开发日志草稿：\n\n${source}`;
+    return `请根据以下原始材料整理开发日志草稿。必须使用「## YYYY-MM-DD · [tag/area] 标题」条目，并包含 ### 背景/目标、### 尝试过程、### 结论/结果、### 参考：\n\n${source}`;
   }
-  return `Please turn the following raw material into a development-log draft:\n\n${source}`;
+  return `Please turn the following raw material into a development-log draft. Use dated entries \`## YYYY-MM-DD · [tag/area] title\` with sections ### 背景/目标, ### 尝试过程, ### 结论/结果, and ### 参考 (body language may follow the reply-language rule):\n\n${source}`;
 }
 
 export function archiveTitleFromContent(content: string, fallback: string): string {
@@ -399,9 +448,11 @@ export function buildIncrementalArchiveSource(
 export const INCREMENTAL_ARCHIVE_SYSTEM = `${ARCHIVE_SYSTEM}
 
 增量归档补充规则：
-- 材料含「上一版开发日志（底座）」与「新交互」。请在保留底座中仍正确结论的前提下更新日志。
-- 重点融入新对话、新澄清、新反馈；不要无故重写无关历史，不要丢掉仍有效的实践要点。
-- 若新交互与底座冲突，以新交互为准，并简要标明变更。`;
+- 材料含「上一版开发日志（底座）」与「新交互」。输出仍须是完整开发日志（可含多条 \`##\` 条目），不是补丁说明。
+- **同一问题续作**：就地更新对应条目的「尝试过程 / 结论/结果 / 参考」，保留仍有效的排除链与原文报错；不要无故抹掉死胡同。
+- **新的独立排障/决策会话**：追加一条新的 \`## YYYY-MM-DD · [tag/area] …\` 条目；不要把无关问题合并进旧条目。
+- 重点融入新对话、新澄清、新反馈；不要无故重写无关历史条目。
+- 若新交互与底座冲突，以新交互为准，并在该条目结论中简要标明变更。`;
 
 export function incrementalArchiveSystemPrompt(
   locale: Locale = getLocale(),
@@ -414,7 +465,7 @@ export function incrementalArchiveUserPrompt(
   locale: Locale = getLocale(),
 ): string {
   if (locale === "zh") {
-    return `请在上一版开发日志底座上做增量更新，整理成新一版开发日志草稿：\n\n${source}`;
+    return `请在上一版开发日志底座上做增量更新，整理成新一版开发日志草稿（保留强制结构：## 日期条目 + ### 背景/目标 / 尝试过程 / 结论/结果 / 参考；新会话追加条目，同题续作则更新原条目）：\n\n${source}`;
   }
-  return `Please produce an updated development-log draft by incrementally revising the previous log using the new material:\n\n${source}`;
+  return `Please produce an updated development-log draft by incrementally revising the previous log. Keep the required structure (dated \`##\` entries + ### 背景/目标 / 尝试过程 / 结论/结果 / 参考); append a new entry for a new session, or update the same entry when continuing the same problem:\n\n${source}`;
 }
