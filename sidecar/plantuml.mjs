@@ -6,9 +6,9 @@
  * Server URLs come from user Settings (not diagram source). Self-hosted /
  * localhost is allowed; cloud metadata and non-http(s) schemes are blocked.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import dns from "node:dns/promises";
@@ -16,12 +16,30 @@ import net from "node:net";
 import { URL } from "node:url";
 import { isPrivateIp } from "./network.mjs";
 
-const execFileAsync = promisify(execFile);
-
 const MAX_SOURCE_CHARS = 100_000;
 const MAX_RENDER_BYTES = 2 * 1024 * 1024;
 const RENDER_TIMEOUT_MS = 30_000;
 const LOCAL_TIMEOUT_MS = 45_000;
+const STDERR_ERROR_CHARS = 280;
+
+/** Homebrew / common macOS+Linux bin dirs for plantuml + Graphviz `dot`. */
+const EXTRA_PATH_DIRS = [
+  "/opt/homebrew/bin",
+  "/opt/homebrew/sbin",
+  "/usr/local/bin",
+  "/usr/local/sbin",
+];
+
+/**
+ * JVM flags for `java -jar plantuml.jar` so macOS does not bounce a Java Dock
+ * icon (AWT). Homebrew's `plantuml` wrapper already sets headless; we still
+ * inject these for raw jar spawns and via JAVA_TOOL_OPTIONS for other wrappers.
+ * `-Dapple.awt.UIElement=true` hides the Dock icon if AWT still initializes.
+ */
+export const PLANTUML_HEADLESS_JAVA_FLAGS = [
+  "-Djava.awt.headless=true",
+  "-Dapple.awt.UIElement=true",
+];
 
 const PLANTUML_ENCODE_TABLE =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
@@ -259,6 +277,18 @@ export async function handlePlantumlServerRender(body) {
 }
 
 /**
+ * @param {string} filePath
+ */
+async function isExistingFile(filePath) {
+  try {
+    const st = await fs.stat(filePath);
+    return st.isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * @param {string} toolPath
  */
 async function assertLocalToolPath(toolPath) {
@@ -271,20 +301,42 @@ async function assertLocalToolPath(toolPath) {
   }
   if (!path.isAbsolute(trimmed)) {
     throw Object.assign(
-      new Error("Local PlantUML path must be absolute (e.g. /usr/local/bin/plantuml or …/plantuml.jar)"),
+      new Error("Local PlantUML path must be absolute (e.g. /opt/homebrew/bin/plantuml or …/plantuml.jar)"),
       { status: 400 },
     );
   }
-  try {
-    const st = await fs.stat(trimmed);
-    if (!st.isFile()) {
-      throw Object.assign(new Error("Local PlantUML path is not a file"), { status: 400 });
-    }
-  } catch (e) {
-    if (e && typeof e === "object" && "status" in e) throw e;
+  if (!(await isExistingFile(trimmed))) {
     throw Object.assign(new Error(`Local PlantUML tool not found: ${trimmed}`), { status: 400 });
   }
   return trimmed;
+}
+
+/**
+ * Homebrew's `plantuml` formula installs a wrapper that sets headless Java +
+ * GRAPHVIZ_DOT. Prefer that over `java -jar …/Cellar/…/libexec/plantuml.jar`.
+ * @param {string} toolPath
+ * @returns {Promise<{ kind: "bin" | "jar"; path: string }>}
+ */
+export async function resolveLocalPlantumlInvocation(toolPath) {
+  const tool = await assertLocalToolPath(toolPath);
+  if (!/\.jar$/i.test(tool)) {
+    return { kind: "bin", path: tool };
+  }
+
+  /** @type {string[]} */
+  const candidates = [];
+  // Cellar: …/plantuml/<ver>/libexec/plantuml.jar → …/plantuml/<ver>/bin/plantuml
+  if (/[/\\](?:Cellar|opt)[/\\]plantuml[/\\]/i.test(tool) || /[/\\]libexec[/\\]plantuml\.jar$/i.test(tool)) {
+    candidates.push(path.resolve(path.dirname(tool), "..", "bin", "plantuml"));
+  }
+  candidates.push("/opt/homebrew/bin/plantuml", "/usr/local/bin/plantuml");
+
+  for (const candidate of candidates) {
+    if (await isExistingFile(candidate)) {
+      return { kind: "bin", path: candidate };
+    }
+  }
+  return { kind: "jar", path: tool };
 }
 
 /**
@@ -293,17 +345,232 @@ async function assertLocalToolPath(toolPath) {
 async function resolveJavaBin(javaPath) {
   const trimmed = String(javaPath || "java").trim() || "java";
   if (path.isAbsolute(trimmed)) {
-    try {
-      const st = await fs.stat(trimmed);
-      if (!st.isFile()) {
-        throw Object.assign(new Error("Java path is not a file"), { status: 400 });
-      }
-    } catch (e) {
-      if (e && typeof e === "object" && "status" in e) throw e;
+    if (!(await isExistingFile(trimmed))) {
       throw Object.assign(new Error(`Java binary not found: ${trimmed}`), { status: 400 });
     }
   }
   return trimmed;
+}
+
+/**
+ * Merge headless JVM options into JAVA_TOOL_OPTIONS for plantuml shell wrappers
+ * that invoke `java -jar` without our argv flags.
+ * @param {string} [prev]
+ */
+export function mergePlantumlJavaToolOptions(prev = "") {
+  const existing = String(prev || "").trim();
+  const parts = [];
+  if (existing) parts.push(existing);
+  for (const flag of PLANTUML_HEADLESS_JAVA_FLAGS) {
+    const key = flag.split("=")[0];
+    if (!key) continue;
+    const re = new RegExp(`(^|\\s)${key.replace(/\./g, "\\.")}=`);
+    if (!re.test(existing)) parts.push(flag);
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Build a PATH that can find Homebrew `dot` / plantuml even when the sidecar
+ * was launched from an Electron app with a minimal environment.
+ * Sets GRAPHVIZ_DOT when a known Graphviz binary exists, and JAVA_TOOL_OPTIONS
+ * so non-Homebrew wrappers still run headless (no Dock bounce).
+ * @param {NodeJS.ProcessEnv} [base]
+ */
+export async function buildPlantumlEnv(base = process.env) {
+  const home = base.HOME || os.homedir();
+  const mergedPath = [
+    ...EXTRA_PATH_DIRS,
+    ...(base.PATH ? base.PATH.split(path.delimiter) : []),
+    "/usr/bin",
+    "/bin",
+  ]
+    .filter(Boolean)
+    .filter((dir, i, arr) => arr.indexOf(dir) === i)
+    .join(path.delimiter);
+
+  /** @type {NodeJS.ProcessEnv} */
+  const env = {
+    ...base,
+    HOME: home,
+    PATH: mergedPath,
+    LANG: base.LANG || "en_US.UTF-8",
+    LC_ALL: base.LC_ALL || base.LANG || "en_US.UTF-8",
+    JAVA_TOOL_OPTIONS: mergePlantumlJavaToolOptions(base.JAVA_TOOL_OPTIONS),
+  };
+
+  if (!base.GRAPHVIZ_DOT) {
+    const dots = [
+      "/opt/homebrew/opt/graphviz/bin/dot",
+      "/usr/local/opt/graphviz/bin/dot",
+      "/opt/homebrew/bin/dot",
+      "/usr/local/bin/dot",
+    ];
+    for (const dot of dots) {
+      if (await isExistingFile(dot)) {
+        env.GRAPHVIZ_DOT = dot;
+        break;
+      }
+    }
+  }
+  return env;
+}
+
+/**
+ * @param {unknown} err
+ */
+function truncateProcessDetail(err) {
+  const stderr =
+    err && typeof err === "object" && "stderr" in err && err.stderr
+      ? Buffer.isBuffer(err.stderr)
+        ? err.stderr.toString("utf8")
+        : String(err.stderr)
+      : "";
+  const stdout =
+    err && typeof err === "object" && "stdout" in err && err.stdout
+      ? Buffer.isBuffer(err.stdout)
+        ? err.stdout.toString("utf8")
+        : String(err.stdout)
+      : "";
+  const raw = (stderr || stdout).trim().replace(/\s+/g, " ");
+  return raw.slice(0, STDERR_ERROR_CHARS);
+}
+
+/**
+ * @param {unknown} err
+ */
+function formatLocalPlantumlError(err) {
+  if (err && typeof err === "object" && "status" in err) {
+    return /** @type {Error} */ (err);
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    (err && typeof err === "object" && "code" in err && err.code === "ETIMEDOUT") ||
+    /ETIMEDOUT|timed out/i.test(message)
+  ) {
+    return Object.assign(new Error("Local PlantUML render timed out"), { status: 504 });
+  }
+
+  const detail = truncateProcessDetail(err);
+  const code =
+    err && typeof err === "object" && "code" in err && err.code != null
+      ? String(err.code)
+      : "";
+  let text = "Local PlantUML render failed";
+  if (code && code !== "ETIMEDOUT" && !/^ERR_/i.test(code)) {
+    text += ` (exit ${code})`;
+  }
+  if (detail) {
+    text += `: ${detail}`;
+  } else if (message && !/^Command failed:/i.test(message)) {
+    text += `: ${message}`;
+  } else {
+    text +=
+      ": no stderr captured — prefer the Homebrew `plantuml` binary over java -jar, and ensure Graphviz is installed (`brew install graphviz`)";
+  }
+  if (/(\bdot\b|graphviz)/i.test(`${detail}\n${message}`)) {
+    text += " — install Graphviz (`brew install graphviz`) or set GRAPHVIZ_DOT";
+  }
+  return Object.assign(new Error(text), { status: 502 });
+}
+
+/**
+ * Spawn plantuml with an explicit stdin end.
+ *
+ * IMPORTANT: Node `execFile(..., { input })` hangs for PlantUML `-pipe` on
+ * macOS (process never finishes; timeout → "Command failed: … java -jar …").
+ * Writing via spawn + stdin.end() works.
+ *
+ * @param {string} bin
+ * @param {string[]} args
+ * @param {string} input
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {Promise<{ stdout: Buffer; stderr: Buffer; code: number | null }>}
+ */
+export function spawnPlantumlPipe(bin, args, input, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, args, {
+      env,
+      cwd: env.HOME || os.homedir() || process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    /** @type {Buffer[]} */
+    const outChunks = [];
+    /** @type {Buffer[]} */
+    const errChunks = [];
+    let outBytes = 0;
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+      fail(Object.assign(new Error("Local PlantUML render timed out"), { code: "ETIMEDOUT" }));
+    }, LOCAL_TIMEOUT_MS);
+
+    function fail(/** @type {Error & { stdout?: Buffer; stderr?: Buffer; code?: unknown }} */ err) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      err.stdout = Buffer.concat(outChunks);
+      err.stderr = Buffer.concat(errChunks);
+      reject(err);
+    }
+
+    child.stdout.on("data", (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      outBytes += buf.length;
+      if (outBytes > MAX_RENDER_BYTES) {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          /* ignore */
+        }
+        fail(
+          Object.assign(
+            new Error(
+              `Local PlantUML output too large (>${MAX_RENDER_BYTES} bytes)`,
+            ),
+            { code: "EFBIG" },
+          ),
+        );
+        return;
+      }
+      outChunks.push(buf);
+    });
+    child.stderr.on("data", (chunk) => {
+      errChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    child.on("error", (err) => fail(err));
+    child.on("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const stdout = Buffer.concat(outChunks);
+      const stderr = Buffer.concat(errChunks);
+      if (code && code !== 0) {
+        const err = /** @type {Error & { code?: unknown; signal?: unknown; stdout?: Buffer; stderr?: Buffer }} */ (
+          new Error(`Command failed: ${bin} ${args.join(" ")}`)
+        );
+        err.code = code;
+        err.signal = signal;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr, code });
+    });
+
+    child.stdin.on("error", () => {
+      /* ignore EPIPE after early exit */
+    });
+    child.stdin.end(input, "utf8");
+  });
 }
 
 /**
@@ -329,33 +596,37 @@ export async function handlePlantumlLocalRender(body) {
   const format = formatRaw.toLowerCase() === "png" ? "png" : "svg";
 
   const wrapped = wrapPlantumlSource(source);
-  const tool = await assertLocalToolPath(localPath);
-  const isJar = /\.jar$/i.test(tool);
+  const invocation = await resolveLocalPlantumlInvocation(localPath);
+  const formatArg = format === "png" ? "-tpng" : "-tsvg";
 
   /** @type {string} */
   let bin;
   /** @type {string[]} */
   let args;
-  if (isJar) {
+  if (invocation.kind === "jar") {
     bin = await resolveJavaBin(javaPath);
-    args = ["-jar", tool, format === "png" ? "-tpng" : "-tsvg", "-pipe"];
+    args = [
+      ...PLANTUML_HEADLESS_JAVA_FLAGS,
+      "-jar",
+      invocation.path,
+      formatArg,
+      "-charset",
+      "UTF-8",
+      "-pipe",
+    ];
   } else {
-    bin = tool;
-    args = [format === "png" ? "-tpng" : "-tsvg", "-pipe"];
+    bin = invocation.path;
+    args = [formatArg, "-charset", "UTF-8", "-pipe"];
   }
 
+  const env = await buildPlantumlEnv();
+
   try {
-    const { stdout, stderr } = await execFileAsync(bin, args, {
-      encoding: "buffer",
-      timeout: LOCAL_TIMEOUT_MS,
-      maxBuffer: MAX_RENDER_BYTES,
-      input: wrapped,
-      windowsHide: true,
-    });
+    const { stdout, stderr } = await spawnPlantumlPipe(bin, args, wrapped, env);
     const out = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || "");
     if (!out.length) {
       const errText = Buffer.isBuffer(stderr)
-        ? stderr.toString("utf8", 0, 400)
+        ? stderr.toString("utf8", 0, STDERR_ERROR_CHARS)
         : String(stderr || "");
       throw Object.assign(
         new Error(
@@ -369,11 +640,6 @@ export async function handlePlantumlLocalRender(body) {
       format === "png" ? "image/png" : "image/svg+xml",
     );
   } catch (e) {
-    if (e && typeof e === "object" && "status" in e) throw e;
-    const message = e instanceof Error ? e.message : String(e);
-    if (/ETIMEDOUT|timed out/i.test(message)) {
-      throw Object.assign(new Error("Local PlantUML render timed out"), { status: 504 });
-    }
-    throw Object.assign(new Error(`Local PlantUML render failed: ${message}`), { status: 502 });
+    throw formatLocalPlantumlError(e);
   }
 }

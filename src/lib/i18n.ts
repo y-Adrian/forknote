@@ -150,16 +150,16 @@ const en = {
   "general.plantuml.mode.serverHint":
     "Prefers the sidecar proxy; if sidecar is down, public Kroki / plantuml.com can render directly in the browser. Self-hosted URLs usually still need the sidecar.",
   "general.plantuml.mode.localHint":
-    "Requires the sidecar (npm run sidecar / npm run dev). Spawns your plantuml binary or plantuml.jar (needs Java). Path must be absolute.",
+    "Requires the sidecar (npm run sidecar / npm run dev). Prefer the Homebrew plantuml binary (/opt/homebrew/bin/plantuml); jar mode needs Java. Graphviz (brew install graphviz) is required for some diagram types. If local fails, ForkNote soft-retries the server URL.",
   "general.plantuml.serverUrl": "Server base URL",
   "general.plantuml.serverUrlHint":
     "Kroki: https://kroki.io (or your host). Official: https://www.plantuml.com/plantuml",
   "general.plantuml.localPath": "Local PlantUML path",
   "general.plantuml.localPathHint":
-    "Absolute path to the plantuml binary or plantuml.jar.",
+    "Absolute path to the plantuml binary (preferred) or plantuml.jar. Homebrew Cellar jars are auto-mapped to the plantuml wrapper when present.",
   "general.plantuml.javaPath": "Java path (for .jar)",
   "general.plantuml.javaPathHint":
-    "Used only when the local path ends with .jar. Default: java",
+    "Used only when the local path ends with .jar (and no Homebrew wrapper is found). Default: java",
   "general.plantuml.save": "Save PlantUML settings",
   "general.noAccount": "No account",
   "general.noAccountBody":
@@ -858,16 +858,16 @@ const zh: Record<MessageKey, string> = {
   "general.plantuml.mode.serverHint":
     "优先经 sidecar 代理；sidecar 不可用时，公共 Kroki / plantuml.com 可在浏览器直连渲染。自建地址通常仍需 sidecar。",
   "general.plantuml.mode.localHint":
-    "需要 sidecar（npm run sidecar / npm run dev）。调用本机 plantuml 可执行文件或 plantuml.jar（需 Java）。路径必须为绝对路径。",
+    "需要 sidecar（npm run sidecar / npm run dev）。优先使用 Homebrew plantuml 可执行文件（/opt/homebrew/bin/plantuml）；jar 模式需 Java。部分图类型需要 Graphviz（brew install graphviz）。本地失败时会软重试服务端 URL。",
   "general.plantuml.serverUrl": "服务端 Base URL",
   "general.plantuml.serverUrlHint":
     "Kroki：https://kroki.io（或自建）。官方：https://www.plantuml.com/plantuml",
   "general.plantuml.localPath": "本地 PlantUML 路径",
   "general.plantuml.localPathHint":
-    "plantuml 可执行文件或 plantuml.jar 的绝对路径。",
+    "plantuml 可执行文件（推荐）或 plantuml.jar 的绝对路径。若指向 Homebrew Cellar 的 jar，会自动改用 plantuml 包装脚本。",
   "general.plantuml.javaPath": "Java 路径（用于 .jar）",
   "general.plantuml.javaPathHint":
-    "仅当本地路径以 .jar 结尾时使用。默认：java",
+    "仅当本地路径以 .jar 结尾且找不到 Homebrew 包装脚本时使用。默认：java",
   "general.plantuml.save": "保存 PlantUML 设置",
   "general.noAccount": "无需账号",
   "general.noAccountBody":

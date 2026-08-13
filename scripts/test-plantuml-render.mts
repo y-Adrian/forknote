@@ -10,6 +10,10 @@ import {
   encodePlantumlText,
   wrapPlantumlSource,
   assertPlantumlServerUrl,
+  resolveLocalPlantumlInvocation,
+  spawnPlantumlPipe,
+  buildPlantumlEnv,
+  handlePlantumlLocalRender,
 } from "../sidecar/plantuml.mjs";
 import {
   assertPlantumlServerUrlClient,
@@ -270,6 +274,7 @@ async function testLocalModeRequiresSidecarMessage() {
             mode: "local",
             source: "A -> B",
             localPath: "/tmp/plantuml.jar",
+            // No serverUrl → must surface sidecar hint (no soft fallback).
           },
           "http://127.0.0.1:8787",
         ),
@@ -286,6 +291,117 @@ async function testLocalModeRequiresSidecarMessage() {
   console.log("ok local mode actionable sidecar-down message");
 }
 
+async function testLocalModeSoftFallsBackToServer() {
+  const prevFetch = globalThis.fetch;
+  let localHits = 0;
+  let krokiHits = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("/plantuml/local")) {
+      localHits += 1;
+      return new Response(
+        JSON.stringify({
+          error:
+            "Local PlantUML render failed: Command failed: java -jar plantuml.jar -tsvg -pipe",
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.includes("/plantuml/server") || url.includes("127.0.0.1:8787")) {
+      throw new TypeError("Failed to fetch");
+    }
+    if (url.includes("kroki.io/plantuml/svg")) {
+      krokiHits += 1;
+      assert.equal(init?.method, "POST");
+      return new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>', {
+        status: 200,
+        headers: { "Content-Type": "image/svg+xml" },
+      });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const result = await renderPlantuml(
+      {
+        mode: "local",
+        source: "A -> B",
+        localPath: "/tmp/plantuml.jar",
+        serverUrl: "https://kroki.io",
+        format: "svg",
+      },
+      "http://127.0.0.1:8787",
+    );
+    assert.equal(result.format, "svg");
+    assert.ok(result.svg.includes("<svg"));
+    assert.equal(localHits, 1);
+    assert.equal(krokiHits, 1);
+  } finally {
+    globalThis.fetch = prevFetch;
+  }
+  console.log("ok local mode soft-falls back to Kroki when local spawn fails");
+}
+
+async function testResolveHomebrewJarToBinary() {
+  const jar =
+    "/opt/homebrew/Cellar/plantuml/1.2026.6/libexec/plantuml.jar";
+  const bin = "/opt/homebrew/bin/plantuml";
+  try {
+    const { accessSync, constants } = await import("node:fs");
+    accessSync(jar, constants.R_OK);
+    accessSync(bin, constants.R_OK);
+  } catch {
+    console.log("skip homebrew jar→binary resolve (plantuml not installed)");
+    return;
+  }
+  const resolved = await resolveLocalPlantumlInvocation(jar);
+  assert.equal(resolved.kind, "bin");
+  assert.match(resolved.path, /plantuml$/);
+  assert.notEqual(resolved.path, jar);
+  console.log("ok Homebrew cellar jar resolves to plantuml binary");
+}
+
+async function testLocalSpawnPipeAndStderr() {
+  const bin = "/opt/homebrew/bin/plantuml";
+  try {
+    const { accessSync, constants } = await import("node:fs");
+    accessSync(bin, constants.R_OK);
+  } catch {
+    console.log("skip local spawn pipe probe (plantuml not installed)");
+    return;
+  }
+
+  const env = await buildPlantumlEnv({
+    HOME: process.env.HOME,
+    PATH: "/usr/bin:/bin",
+    TMPDIR: process.env.TMPDIR || "/tmp",
+  });
+  const ok = await spawnPlantumlPipe(
+    bin,
+    ["-tsvg", "-charset", "UTF-8", "-pipe"],
+    "@startuml\nA -> B\n@enduml\n",
+    env,
+  );
+  assert.ok(ok.stdout.toString("utf8").includes("<svg"));
+
+  await assert.rejects(
+    () =>
+      handlePlantumlLocalRender({
+        source: "@startuml\nthis is not valid ((((\n@enduml",
+        localPath: bin,
+        format: "svg",
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /Local PlantUML render failed/i);
+      assert.match(err.message, /Syntax Error|ERROR/i);
+      assert.doesNotMatch(err.message, /^Local PlantUML render failed: Command failed:/);
+      return true;
+    },
+  );
+  console.log("ok local spawn pipe + stderr surfaced");
+}
+
 async function main() {
   testNormalizeDefaults();
   testNormalizeModes();
@@ -296,6 +412,9 @@ async function main() {
   testSidecarUnreachableDetection();
   await testServerDirectFallbackWithoutSidecar();
   await testLocalModeRequiresSidecarMessage();
+  await testLocalModeSoftFallsBackToServer();
+  await testResolveHomebrewJarToBinary();
+  await testLocalSpawnPipeAndStderr();
   console.log("test-plantuml-render: ok");
 }
 
