@@ -140,7 +140,7 @@ const en = {
     "Select text in answers to open a clarify prompt. Always on — no extra account.",
   "general.plantuml.title": "PlantUML rendering",
   "general.plantuml.lead":
-    "Mermaid fences still preview live by default. Enable PlantUML only when you want ```plantuml / @startuml blocks rendered too (via sidecar).",
+    "Mermaid fences still preview live by default (no sidecar). Enable PlantUML only when you want ```plantuml / @startuml blocks rendered too.",
   "general.plantuml.mode": "PlantUML mode",
   "general.plantuml.mode.off": "Off (source only)",
   "general.plantuml.mode.server": "Server (Kroki / PlantUML)",
@@ -148,9 +148,9 @@ const en = {
   "general.plantuml.mode.offHint":
     "PlantUML fences stay as copyable source. Prefer Mermaid for live diagrams.",
   "general.plantuml.mode.serverHint":
-    "Sidecar proxies to a Kroki-compatible base (default https://kroki.io) or plantuml.com. Self-hosted URLs are allowed.",
+    "Prefers the sidecar proxy; if sidecar is down, public Kroki / plantuml.com can render directly in the browser. Self-hosted URLs usually still need the sidecar.",
   "general.plantuml.mode.localHint":
-    "Sidecar runs your plantuml binary or plantuml.jar (needs Java). Path must be absolute.",
+    "Requires the sidecar (npm run sidecar / npm run dev). Spawns your plantuml binary or plantuml.jar (needs Java). Path must be absolute.",
   "general.plantuml.serverUrl": "Server base URL",
   "general.plantuml.serverUrlHint":
     "Kroki: https://kroki.io (or your host). Official: https://www.plantuml.com/plantuml",
@@ -842,7 +842,7 @@ const zh: Record<MessageKey, string> = {
     "在回答中选中文字即可打开澄清提问。始终开启 —— 无需额外账号。",
   "general.plantuml.title": "PlantUML 渲染",
   "general.plantuml.lead":
-    "Mermaid 围栏仍默认实时预览。仅在需要时启用 PlantUML，以便 ```plantuml / @startuml 也通过 sidecar 渲染。",
+    "Mermaid 围栏仍默认实时预览（无需 sidecar）。仅在需要时启用 PlantUML，以便 ```plantuml / @startuml 也渲染。",
   "general.plantuml.mode": "PlantUML 模式",
   "general.plantuml.mode.off": "关闭（仅源码）",
   "general.plantuml.mode.server": "服务端（Kroki / PlantUML）",
@@ -850,9 +850,9 @@ const zh: Record<MessageKey, string> = {
   "general.plantuml.mode.offHint":
     "PlantUML 围栏保持可复制源码。需要实时图示请优先用 Mermaid。",
   "general.plantuml.mode.serverHint":
-    "Sidecar 代理到 Kroki 兼容地址（默认 https://kroki.io）或 plantuml.com。允许自建地址。",
+    "优先经 sidecar 代理；sidecar 不可用时，公共 Kroki / plantuml.com 可在浏览器直连渲染。自建地址通常仍需 sidecar。",
   "general.plantuml.mode.localHint":
-    "Sidecar 调用本机 plantuml 可执行文件或 plantuml.jar（需 Java）。路径必须为绝对路径。",
+    "需要 sidecar（npm run sidecar / npm run dev）。调用本机 plantuml 可执行文件或 plantuml.jar（需 Java）。路径必须为绝对路径。",
   "general.plantuml.serverUrl": "服务端 Base URL",
   "general.plantuml.serverUrlHint":
     "Kroki：https://kroki.io（或自建）。官方：https://www.plantuml.com/plantuml",

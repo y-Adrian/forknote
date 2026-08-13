@@ -360,8 +360,9 @@ export interface ApiSettings {
   /**
    * PlantUML fence rendering. Default `off` — show source + hint (Mermaid stays
    * the live-preview default for chat diagram asks).
-   * - `server`: render via Kroki / plantuml.com / custom base URL (sidecar proxy)
-   * - `local`: spawn a local plantuml jar/binary via sidecar
+   * - `server`: render via Kroki / plantuml.com / custom base URL (sidecar proxy;
+   *   public hosts can fall back to a direct browser fetch if sidecar is down)
+   * - `local`: spawn a local plantuml jar/binary via sidecar (sidecar required)
    */
   plantumlRenderMode?: "off" | "server" | "local";
   /**
