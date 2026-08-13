@@ -11,6 +11,11 @@ interface Props {
   content: string;
   /** Skip adopted-note cards (used inside the card body itself). */
   skipAdoptedSplit?: boolean;
+  /**
+   * While the assistant reply is still streaming, keep a stable mount key and
+   * defer Mermaid render so partial fences do not thrash.
+   */
+  streaming?: boolean;
 }
 
 function languageFromClass(className?: string): string | null {
@@ -74,10 +79,14 @@ function FencedCodeBlock({
 
 /**
  * Prefer remounting the whole markdown tree when content changes during an
- * agent turn. Custom fenced-code UI replaces <code> with a <div>, which can
- * desync react-markdown reconciliation on rapid Allow→status swaps.
+ * agent turn — except while `streaming`, where remounting every token breaks
+ * Mermaid (and similar) stateful fences.
  */
-export function MarkdownBody({ content, skipAdoptedSplit = false }: Props) {
+export function MarkdownBody({
+  content,
+  skipAdoptedSplit = false,
+  streaming = false,
+}: Props) {
   const { t } = useLocale();
   if (!content) {
     return <p className="muted">{t("chat.generating")}</p>;
@@ -102,6 +111,7 @@ export function MarkdownBody({ content, skipAdoptedSplit = false }: Props) {
                 key={`md-${i}-${seg.text.length}`}
                 content={seg.text}
                 skipAdoptedSplit
+                streaming={streaming}
               />
             ),
           )}
@@ -124,7 +134,11 @@ export function MarkdownBody({ content, skipAdoptedSplit = false }: Props) {
         Boolean(languageFromClass(className)) || text.includes("\n");
       if (isFenced) {
         if (isDiagramFenceClass(className)) {
-          return <DiagramFence className={className}>{children}</DiagramFence>;
+          return (
+            <DiagramFence className={className} streaming={streaming}>
+              {children}
+            </DiagramFence>
+          );
         }
         return <FencedCodeBlock className={className}>{children}</FencedCodeBlock>;
       }
@@ -137,7 +151,7 @@ export function MarkdownBody({ content, skipAdoptedSplit = false }: Props) {
   };
 
   return (
-    <div className="fn-markdown-mount" key={markdown}>
+    <div className="fn-markdown-mount" key={streaming ? "streaming" : markdown}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {markdown}
       </ReactMarkdown>

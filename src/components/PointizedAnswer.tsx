@@ -41,6 +41,8 @@ interface Props {
   /** Integrate current verdicts + clarifies into an archive checkpoint. */
   onIntegrateProgress?: () => void;
   integrating?: boolean;
+  /** Defer Mermaid thrash while the parent reply is still streaming. */
+  streaming?: boolean;
 }
 
 const VERDICT_OPTIONS: Array<{
@@ -218,12 +220,13 @@ export function PointizedAnswer({
   onClarifyPoint,
   onIntegrateProgress,
   integrating = false,
+  streaming = false,
 }: Props) {
   const { t } = useLocale();
   const parsed = parseAnswerPoints(content);
 
   if (parsed.points.length < 2) {
-    return <MarkdownBody key="flat" content={content} />;
+    return <MarkdownBody key="flat" content={content} streaming={streaming} />;
   }
 
   const cut = earliestRejectIndex(verdicts);
@@ -234,7 +237,7 @@ export function PointizedAnswer({
     <div key={`points-${parsed.points.length}`} className="pointized-answer">
       {parsed.preamble && (
         <div className="point-preamble">
-          <MarkdownBody content={parsed.preamble} />
+          <MarkdownBody content={parsed.preamble} streaming={streaming} />
         </div>
       )}
 
@@ -250,7 +253,7 @@ export function PointizedAnswer({
           >
             <div className={`point-block${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}>
               <div className="point-content">
-                <MarkdownBody content={point.content} />
+                <MarkdownBody content={point.content} streaming={streaming} />
               </div>
               {truncated ? (
                 <p className="point-truncated-hint">{t("checkpoint.truncated")}</p>
