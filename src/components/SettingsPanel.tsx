@@ -154,7 +154,15 @@ function SettingsRow({
   );
 }
 
-function GeneralPanel() {
+function GeneralPanel({
+  draft,
+  setDraft,
+  onSave,
+}: {
+  draft: ApiSettings;
+  setDraft: (next: ApiSettings) => void;
+  onSave: (settings: ApiSettings) => void;
+}) {
   const { preference, setThemePreference } = useTheme();
   const { preference: uiFont, setUiFontPreference } = useUiFont();
   const { locale, t } = useLocale();
@@ -166,6 +174,12 @@ function GeneralPanel() {
   const [fontError, setFontError] = useState<string | null>(null);
   const [fontLoading, setFontLoading] = useState(false);
   const [fontFilter, setFontFilter] = useState("");
+
+  const plantumlMode = draft.plantumlRenderMode ?? "off";
+  const plantumlServerUrl =
+    draft.plantumlServerUrl ?? "https://kroki.io";
+  const plantumlLocalPath = draft.plantumlLocalPath ?? "";
+  const plantumlJavaPath = draft.plantumlJavaPath ?? "java";
 
   const pendingLabel = pendingLocale
     ? (LOCALE_OPTIONS.find((o) => o.value === pendingLocale)?.label ?? "")
@@ -348,6 +362,102 @@ function GeneralPanel() {
       <SettingsRow title={t("general.clarify")} description={t("general.clarifyDesc")}>
         <span className="ss-static-pill ss-static-pill-ok">{t("common.enabled")}</span>
       </SettingsRow>
+
+      <hr className="ss-divider" />
+
+      <h4 className="ss-subhead">{t("general.plantuml.title")}</h4>
+      <p className="ss-panel-lead">{t("general.plantuml.lead")}</p>
+
+      <label>
+        {t("general.plantuml.mode")}
+        <select
+          className="ss-select"
+          aria-label={t("general.plantuml.mode")}
+          value={plantumlMode}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              plantumlRenderMode: e.target.value as
+                | "off"
+                | "server"
+                | "local",
+            })
+          }
+        >
+          <option value="off">{t("general.plantuml.mode.off")}</option>
+          <option value="server">{t("general.plantuml.mode.server")}</option>
+          <option value="local">{t("general.plantuml.mode.local")}</option>
+        </select>
+      </label>
+      <p className="ss-panel-lead ss-panel-hint">
+        {plantumlMode === "server"
+          ? t("general.plantuml.mode.serverHint")
+          : plantumlMode === "local"
+            ? t("general.plantuml.mode.localHint")
+            : t("general.plantuml.mode.offHint")}
+      </p>
+
+      {plantumlMode === "server" ? (
+        <>
+          <label>
+            {t("general.plantuml.serverUrl")}
+            <input
+              value={plantumlServerUrl}
+              onChange={(e) =>
+                setDraft({ ...draft, plantumlServerUrl: e.target.value })
+              }
+              placeholder="https://kroki.io"
+              spellCheck={false}
+            />
+          </label>
+          <p className="ss-panel-lead ss-panel-hint">
+            {t("general.plantuml.serverUrlHint")}
+          </p>
+        </>
+      ) : null}
+
+      {plantumlMode === "local" ? (
+        <>
+          <label>
+            {t("general.plantuml.localPath")}
+            <input
+              value={plantumlLocalPath}
+              onChange={(e) =>
+                setDraft({ ...draft, plantumlLocalPath: e.target.value })
+              }
+              placeholder="/usr/local/bin/plantuml"
+              spellCheck={false}
+            />
+          </label>
+          <p className="ss-panel-lead ss-panel-hint">
+            {t("general.plantuml.localPathHint")}
+          </p>
+          <label>
+            {t("general.plantuml.javaPath")}
+            <input
+              value={plantumlJavaPath}
+              onChange={(e) =>
+                setDraft({ ...draft, plantumlJavaPath: e.target.value })
+              }
+              placeholder="java"
+              spellCheck={false}
+            />
+          </label>
+          <p className="ss-panel-lead ss-panel-hint">
+            {t("general.plantuml.javaPathHint")}
+          </p>
+        </>
+      ) : null}
+
+      <div className="modal-actions ss-panel-actions">
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => onSave(draft)}
+        >
+          {t("general.plantuml.save")}
+        </button>
+      </div>
 
       <div className="ss-callout">
         <strong>{t("general.noAccount")}</strong>
@@ -1036,7 +1146,13 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
           </nav>
 
           <div className="ss-content">
-            {settingsTab === "general" && <GeneralPanel />}
+            {settingsTab === "general" && (
+              <GeneralPanel
+                draft={draft}
+                setDraft={setDraft}
+                onSave={onSave}
+              />
+            )}
             {settingsTab === "api" && (
               <ApiPanel
                 draft={draft}

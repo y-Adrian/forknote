@@ -663,3 +663,47 @@ export async function runTerminal(
   });
   return parseJson(res);
 }
+
+export type PlantumlRenderResult =
+  | {
+      ok: true;
+      format: "svg";
+      contentType: string;
+      svg: string;
+    }
+  | {
+      ok: true;
+      format: "png";
+      contentType: string;
+      imageBase64: string;
+    };
+
+/** Render PlantUML via sidecar (server proxy or local jar/binary). */
+export async function renderPlantuml(
+  options: {
+    mode: "server" | "local";
+    source: string;
+    serverUrl?: string;
+    localPath?: string;
+    javaPath?: string;
+    format?: "svg" | "png";
+  },
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<PlantumlRenderResult> {
+  const endpoint =
+    options.mode === "local" ? "/plantuml/local" : "/plantuml/server";
+  const res = await fetch(`${base(sidecarUrl)}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: options.source,
+      serverUrl: options.serverUrl,
+      localPath: options.localPath,
+      javaPath: options.javaPath,
+      format: options.format ?? "svg",
+    }),
+    signal,
+  });
+  return parseJson(res);
+}

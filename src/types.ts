@@ -357,6 +357,22 @@ export interface ApiSettings {
    * Optional model id for final Chinese summary rounds. Empty = use {@link model}.
    */
   agentSummaryModel?: string;
+  /**
+   * PlantUML fence rendering. Default `off` — show source + hint (Mermaid stays
+   * the live-preview default for chat diagram asks).
+   * - `server`: render via Kroki / plantuml.com / custom base URL (sidecar proxy)
+   * - `local`: spawn a local plantuml jar/binary via sidecar
+   */
+  plantumlRenderMode?: "off" | "server" | "local";
+  /**
+   * Server base URL for PlantUML rendering. Default `https://kroki.io`.
+   * Kroki-compatible: POST `{base}/plantuml/svg`. plantuml.com uses encoded GET.
+   */
+  plantumlServerUrl?: string;
+  /** Absolute path to `plantuml` binary or `plantuml.jar` (local mode). */
+  plantumlLocalPath?: string;
+  /** Java binary for `plantuml.jar` (default `java`). */
+  plantumlJavaPath?: string;
 }
 
 /** Agent plan awaiting user approval before tool execution. */

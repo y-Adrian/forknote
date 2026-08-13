@@ -1631,6 +1631,12 @@ body {
   display: block;
 }
 
+.answer-body .fn-diagram-svg img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 .answer-body .fn-code-toolbar {
   display: flex;
   align-items: center;

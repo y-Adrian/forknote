@@ -62,12 +62,14 @@ assert.ok(
 );
 assert.ok(
   /chat\.diagram\.plantumlFallback/.test(i18nSrc) &&
-    /Use Mermaid fences for live diagrams/.test(i18nSrc),
-  "plantuml stays source-only with mermaid guidance",
+    /Enable server or local rendering/.test(i18nSrc),
+  "plantuml fallback points to Settings when rendering is off",
 );
 assert.ok(
-  /kind === "mermaid"/.test(fenceSrc) && /kind === "plantuml"/.test(fenceSrc),
-  "DiagramFence still branches mermaid render vs plantuml source",
+  /kind === "mermaid"/.test(fenceSrc) &&
+    /PlantumlDiagram/.test(fenceSrc) &&
+    /kind === "plantuml"/.test(fenceSrc),
+  "DiagramFence branches mermaid render vs plantuml (opt-in)",
 );
 
 const cssSrc = readFileSync(join(root, "src/index.css"), "utf8");

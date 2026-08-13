@@ -28,6 +28,10 @@ import {
   handleNetSearch,
   handleNetStatus,
 } from "./network.mjs";
+import {
+  handlePlantumlLocalRender,
+  handlePlantumlServerRender,
+} from "./plantuml.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -2032,6 +2036,14 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/net/search") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleNetSearch(body));
+    }
+    if (req.method === "POST" && pathname === "/plantuml/server") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handlePlantumlServerRender(body));
+    }
+    if (req.method === "POST" && pathname === "/plantuml/local") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handlePlantumlLocalRender(body));
     }
     if (req.method === "GET" && pathname === "/health") {
       return sendJson(res, 200, { ok: true, root: projectRoot });
