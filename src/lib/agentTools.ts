@@ -751,7 +751,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 当需要计划时，使用以下结构：
 ## 计划
-1. 第一步…
+1. 第一步…（可选：工具: tool_name；预期: 一句话可校验结果）
 
 ## 预期操作（可选）
 - 仅列出真正需要的工具；无操作则写「无」`;
@@ -772,7 +772,7 @@ Rules (must follow):
 
 When a plan is needed, use:
 ## Plan
-1. First step…
+1. First step… (optional: tool: tool_name; expected: one-line checkable outcome)
 
 ## Expected operations (optional)
 - Only required tools; write "none" if no tools`;
@@ -4580,6 +4580,7 @@ export function toolResultMessage(
   call: AgentToolCall,
   resultText: string,
   ok = !/^Error:/i.test(resultText),
+  errorType?: string,
 ): ChatMessage {
   const label =
     call.tool === "search_files"
@@ -4605,12 +4606,14 @@ export function toolResultMessage(
               : `${call.tool} path=${JSON.stringify(call.path ?? ".")}`;
   const truncated = truncateToolResultText(resultText, TOOL_RESULT_MAX_CHARS);
   const status = ok ? "成功" : "失败";
+  const errLine =
+    !ok && errorType ? `\nerror_type: ${errorType}` : "";
   const followUp = ok
     ? "若任务未完成请继续调用完成用户目标所必需的工具；若已完成请给出凝练最终回复（不要再输出 tool_call，勿长篇总结）。禁止声称未成功写入的文件已创建。"
     : "工具失败，文件可能未写入磁盘。禁止向用户声称创建成功；可修正参数后重试，或如实说明失败原因。";
   return {
     role: "user",
-    content: `【工具结果（${status}）：${label}】\n${truncated}\n\n${followUp}`,
+    content: `【工具结果（${status}）：${label}】${errLine}\n${truncated}\n\n${followUp}`,
   };
 }
 
@@ -4619,11 +4622,12 @@ export function nativeToolResultMessage(
   name: string,
   resultText: string,
   ok = !/^Error:/i.test(resultText),
+  errorType?: string,
 ): ChatMessage {
   const truncated = truncateToolResultText(resultText, TOOL_RESULT_MAX_CHARS);
   const statusLine = ok
     ? "[tool status: ok]"
-    : "[tool status: FAILED — do not claim the file was created]";
+    : `[tool status: FAILED${errorType ? `; error_type=${errorType}` : ""} — do not claim the file was created]`;
   const followUp = ok
     ? "\n\n(If the task is not finished, call the next tool. If done, reply with a final summary in Chinese — no more tool calls. Only claim a file exists if this result confirms a successful write.)"
     : "\n\n(Tool failed. Do NOT tell the user the file was created. Fix args and retry, or explain the failure.)";

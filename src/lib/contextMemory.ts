@@ -26,6 +26,11 @@ import {
   loadUserPreferences,
 } from "./userPreferences";
 import { formatPolicyForAgent } from "./policy";
+import { assembleMemoryLayers } from "./memoryBudget";
+import {
+  buildUserModelFromFeedbackLog,
+  formatUserModelForAgent,
+} from "./userModel";
 import type {
   ApiSettings,
   ChatSession,
@@ -543,10 +548,14 @@ export async function buildAgentMemoryAddendum(options: {
     settings, query, session, projectRoot, sidecarUrl, signal, includeFiles = [],
     omitProjectPack = false,
   } = options;
-  const blocks: string[] = [];
+  const layers: Array<{ kind: "preferences" | "longTerm" | "session" | "files"; text: string }> = [];
   if (isMemoryLayerPreferencesEnabled(settings)) {
     const prefs = formatPreferencesAddendum(loadUserPreferences());
-    if (prefs) blocks.push(prefs);
+    if (prefs) layers.push({ kind: "preferences", text: prefs });
+    const userModel = formatUserModelForAgent(
+      buildUserModelFromFeedbackLog(session?.feedbackLog),
+    );
+    if (userModel) layers.push({ kind: "preferences", text: userModel });
   }
   if (isMemoryLayerProjectEnabled(settings) && !omitProjectPack) {
     const pack = await loadContextMemoryPack({
@@ -554,26 +563,25 @@ export async function buildAgentMemoryAddendum(options: {
     });
     if (pack) {
       const project = formatLocalMemoryAddendum(pack, query);
-      if (project) blocks.push(project);
+      if (project) layers.push({ kind: "longTerm", text: project });
     }
   }
   if (isMemoryLayerSessionEnabled(settings)) {
     const sessionBlock = formatSessionMemoryAddendum(session?.sessionMemory);
-    if (sessionBlock) blocks.push(sessionBlock);
+    if (sessionBlock) layers.push({ kind: "session", text: sessionBlock });
   }
   const policyBlock = formatPolicyForAgent(session?.feedbackPolicy);
-  if (policyBlock) blocks.push(policyBlock);
+  if (policyBlock) layers.push({ kind: "preferences", text: policyBlock });
   if (projectRoot) {
     const paths = mergeIncludePaths(includeFiles, extractAtFileMentions(query));
     if (paths.length > 0) {
       const files = await buildIncludedFilesAddendum({
         paths, projectRoot, sidecarUrl, signal,
       });
-      if (files) blocks.push(files);
+      if (files) layers.push({ kind: "files", text: files });
     }
   }
-  if (blocks.length === 0) return null;
-  return blocks.join("\n\n");
+  return assembleMemoryLayers(layers);
 }
 
 export function compressChatMessages(

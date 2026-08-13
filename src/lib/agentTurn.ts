@@ -75,6 +75,12 @@ import {
   batchNeedsAutoDiagnostics,
   formatAutoDiagnosticsFeedback,
 } from "./agentExecFeedback";
+import { toToolResult } from "./agentResult";
+import {
+  AgentLoopController,
+  buildReflectNudge,
+  parseStructuredPlanHints,
+} from "./agentLoop";
 import { withAgentPhaseModel } from "./agentModelRouting";
 import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, ThreadRoot } from "../types";
@@ -508,6 +514,11 @@ export async function runAgentTurn(
   /** Successful mutating tool calls from the latest executeTools call. */
   let lastMutatingToolSuccesses = 0;
   let apiReasoning = "";
+  /** Explicit PLAN→ACT→OBSERVE→REFLECT controller for this turn. */
+  const agentLoop = new AgentLoopController({
+    maxStepRetries: 2,
+    maxReplans: 3,
+  });
 
   const patchAssistantContent = (content: string) => {
     if (!isOwned() || signal.aborted) return;
@@ -1144,12 +1155,18 @@ export async function runAgentTurn(
         path?: string;
         ok: boolean;
       }> = [];
+      const batchToolResults: Array<{
+        tool: string;
+        result: ReturnType<typeof toToolResult>;
+      }> = [];
 
       const applyExecuted = (
         item: PendingCall,
         executed: Awaited<ReturnType<typeof executeToolCall>>,
       ) => {
-        if (executed.ok) {
+        const toolResult = toToolResult(executed);
+        batchToolResults.push({ tool: item.agent.tool, result: toolResult });
+        if (toolResult.ok) {
           batchHadSuccess = true;
           if (
             isMutatingAgentTool(
@@ -1165,11 +1182,11 @@ export async function runAgentTurn(
         batchEditOutcomes.push({
           tool: item.agent.tool,
           path: item.agent.path,
-          ok: executed.ok,
+          ok: toolResult.ok,
         });
         if (
           item.agent.tool === "write_file" &&
-          executed.ok &&
+          toolResult.ok &&
           (pathsMatch(item.agent.path, createPath, projectRoot) ||
             (!createPath && Boolean(item.agent.path)))
         ) {
@@ -1178,7 +1195,7 @@ export async function runAgentTurn(
         if (
           officeIntent &&
           item.agent.tool === officeIntent.tool &&
-          executed.ok &&
+          toolResult.ok &&
           pathsMatch(item.agent.path, officeIntent.path, projectRoot)
         ) {
           wroteTarget = true;
@@ -1187,7 +1204,7 @@ export async function runAgentTurn(
         if (
           officeIntent &&
           item.agent.tool === officeIntent.tool &&
-          !executed.ok
+          !toolResult.ok
         ) {
           officeToolFailed = true;
         }
@@ -1206,13 +1223,19 @@ export async function runAgentTurn(
             nativeToolResultMessage(
               item.native.id,
               item.native.function.name,
-              executed.resultText,
-              executed.ok,
+              toolResult.resultText,
+              toolResult.ok,
+              toolResult.errorType,
             ),
           );
         } else {
           apiMessages.push(
-            toolResultMessage(item.agent, executed.resultText, executed.ok),
+            toolResultMessage(
+              item.agent,
+              toolResult.resultText,
+              toolResult.ok,
+              toolResult.errorType,
+            ),
           );
         }
       };
@@ -1288,6 +1311,48 @@ export async function runAgentTurn(
             role: "user",
             content: `【自动诊断】运行失败：${msg}`,
           });
+        }
+      }
+
+      // OBSERVE → REFLECT: structured decision (continue / retry / replan / abort)
+      if (!signal.aborted && batchToolResults.length > 0) {
+        agentLoop.enter("act");
+        const observed = agentLoop.recordToolResults(batchToolResults);
+        const expected =
+          agentLoop.structuredSteps.find((s) => s.expectedOutcome)
+            ?.expectedOutcome ?? agentLoop.structuredSteps[0]?.expectedOutcome;
+        const decision = agentLoop.reflect({
+          observed,
+          expectedOutcome: expected,
+        });
+        if (decision !== "continue") {
+          apiMessages.push({
+            role: "user",
+            content: buildReflectNudge({
+              decision,
+              observed,
+              expectedOutcome: expected,
+              locale: locale === "zh" ? "zh" : "en",
+            }),
+          });
+          onAgentActivity({
+            id: createId(),
+            at: Date.now(),
+            kind: decision === "abort" ? "error" : "info",
+            message: `reflect:${decision}${observed.primaryErrorType ? `/${observed.primaryErrorType}` : ""}`,
+          });
+        }
+        if (decision === "abort") {
+          const failNote =
+            locale === "zh"
+              ? `\n\n（已熔断：工具连续失败且无法自动恢复${observed.primaryErrorType ? `，错误类型 ${observed.primaryErrorType}` : ""}。请根据上方说明处理或换一种方式重试。）`
+              : `\n\n(Circuit open: tool failures could not be auto-recovered${observed.primaryErrorType ? ` [${observed.primaryErrorType}]` : ""}. Follow the notes above or try a different approach.)`;
+          visibleContent = (visibleContent || cleanedRound) + failNote;
+          patchAssistantContent(visibleContent.trim());
+          break;
+        }
+        if (decision === "replan") {
+          agentLoop.enter("plan", "reflect requested replan");
         }
       }
 
@@ -1508,6 +1573,10 @@ export async function runAgentTurn(
         locale,
       );
       const displayPlan = limited.planText || planRaw.trim();
+      agentLoop.setStructuredPlan(
+        parseStructuredPlanHints(displayPlan, limited.steps),
+      );
+      agentLoop.enter("await_approval", `steps=${limited.steps.length}`);
       patchAssistantContent(displayPlan);
       apiMessages.push({ role: "assistant", content: displayPlan });
       return {
