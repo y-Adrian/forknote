@@ -22,6 +22,47 @@ const RENDER_TIMEOUT_MS = 30_000;
 const LOCAL_TIMEOUT_MS = 45_000;
 const STDERR_ERROR_CHARS = 280;
 
+function requestAbortError() {
+  return Object.assign(new Error("Request aborted"), {
+    name: "AbortError",
+    code: "ABORT_ERR",
+  });
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw requestAbortError();
+}
+
+function isAbortError(error, signal) {
+  return Boolean(
+    signal?.aborted ||
+      (error &&
+        typeof error === "object" &&
+        ("name" in error && error.name === "AbortError" ||
+          "code" in error && error.code === "ABORT_ERR")),
+  );
+}
+
+function createTimedController(signal, timeoutMs) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    didTimeOut: () => timedOut,
+    cleanup() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
 /** Homebrew / common macOS+Linux bin dirs for plantuml + Graphviz `dot`. */
 const EXTRA_PATH_DIRS = [
   "/opt/homebrew/bin",
@@ -191,7 +232,8 @@ function shapeImageResult(buf, contentType) {
 /**
  * @param {unknown} body
  */
-export async function handlePlantumlServerRender(body) {
+export async function handlePlantumlServerRender(body, signal) {
+  throwIfAborted(signal);
   const source =
     body && typeof body === "object" && "source" in body
       ? String(/** @type {{ source?: unknown }} */ (body).source ?? "")
@@ -208,9 +250,9 @@ export async function handlePlantumlServerRender(body) {
 
   const wrapped = wrapPlantumlSource(source);
   const base = await assertPlantumlServerUrl(serverUrl || "https://kroki.io");
+  throwIfAborted(signal);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RENDER_TIMEOUT_MS);
+  const operation = createTimedController(signal, RENDER_TIMEOUT_MS);
   try {
     /** @type {Response} */
     let res;
@@ -222,7 +264,7 @@ export async function handlePlantumlServerRender(body) {
       res = await fetch(url, {
         method: "GET",
         redirect: "follow",
-        signal: controller.signal,
+        signal: operation.signal,
         headers: {
           Accept: format === "png" ? "image/png" : "image/svg+xml,text/plain;q=0.8,*/*;q=0.5",
           "User-Agent": "ForkNote-sidecar/1.0 (+plantuml server render)",
@@ -234,7 +276,7 @@ export async function handlePlantumlServerRender(body) {
       res = await fetch(url, {
         method: "POST",
         redirect: "follow",
-        signal: controller.signal,
+        signal: operation.signal,
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
           Accept: format === "png" ? "image/png" : "image/svg+xml,text/plain;q=0.8,*/*;q=0.5",
@@ -246,8 +288,10 @@ export async function handlePlantumlServerRender(body) {
 
     const finalUrl = res.url || base.toString();
     await assertPlantumlServerUrl(finalUrl);
+    throwIfAborted(signal);
 
     const buf = Buffer.from(await res.arrayBuffer());
+    throwIfAborted(signal);
     if (buf.length > MAX_RENDER_BYTES) {
       throw Object.assign(
         new Error(`PlantUML response too large (${buf.length} bytes; max ${MAX_RENDER_BYTES})`),
@@ -265,14 +309,15 @@ export async function handlePlantumlServerRender(body) {
     }
     return shapeImageResult(buf, res.headers.get("content-type") || "");
   } catch (e) {
+    if (isAbortError(e, signal)) throw requestAbortError();
     if (e && typeof e === "object" && "status" in e) throw e;
     const message = e instanceof Error ? e.message : String(e);
-    if (/aborted|AbortError/i.test(message)) {
+    if (operation.didTimeOut() || /aborted|AbortError/i.test(message)) {
       throw Object.assign(new Error("PlantUML server render timed out"), { status: 504 });
     }
     throw Object.assign(new Error(`PlantUML server render failed: ${message}`), { status: 502 });
   } finally {
-    clearTimeout(timer);
+    operation.cleanup();
   }
 }
 
@@ -485,15 +530,21 @@ function formatLocalPlantumlError(err) {
  * @param {string[]} args
  * @param {string} input
  * @param {NodeJS.ProcessEnv} env
+ * @param {AbortSignal} [signal]
  * @returns {Promise<{ stdout: Buffer; stderr: Buffer; code: number | null }>}
  */
-export function spawnPlantumlPipe(bin, args, input, env) {
+export function spawnPlantumlPipe(bin, args, input, env, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(requestAbortError());
+      return;
+    }
     const child = spawn(bin, args, {
       env,
       cwd: env.HOME || os.homedir() || process.cwd(),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      detached: process.platform !== "win32",
     });
 
     /** @type {Buffer[]} */
@@ -503,19 +554,38 @@ export function spawnPlantumlPipe(bin, args, input, env) {
     let outBytes = 0;
     let settled = false;
 
-    const timer = setTimeout(() => {
+    const killChild = (signalName) => {
       try {
-        child.kill("SIGKILL");
+        if (child.pid && process.platform !== "win32") {
+          try {
+            process.kill(-child.pid, signalName);
+            return;
+          } catch {
+            // Fall back to the direct child.
+          }
+        }
+        child.kill(signalName);
       } catch {
         /* ignore */
       }
+    };
+
+    const timer = setTimeout(() => {
+      killChild("SIGKILL");
       fail(Object.assign(new Error("Local PlantUML render timed out"), { code: "ETIMEDOUT" }));
     }, LOCAL_TIMEOUT_MS);
+
+    const onAbort = () => {
+      killChild("SIGKILL");
+      fail(requestAbortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     function fail(/** @type {Error & { stdout?: Buffer; stderr?: Buffer; code?: unknown }} */ err) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       err.stdout = Buffer.concat(outChunks);
       err.stderr = Buffer.concat(errChunks);
       reject(err);
@@ -525,11 +595,7 @@ export function spawnPlantumlPipe(bin, args, input, env) {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       outBytes += buf.length;
       if (outBytes > MAX_RENDER_BYTES) {
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          /* ignore */
-        }
+        killChild("SIGKILL");
         fail(
           Object.assign(
             new Error(
@@ -546,10 +612,11 @@ export function spawnPlantumlPipe(bin, args, input, env) {
       errChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
     child.on("error", (err) => fail(err));
-    child.on("close", (code, signal) => {
+    child.on("close", (code, exitSignal) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       const stdout = Buffer.concat(outChunks);
       const stderr = Buffer.concat(errChunks);
       if (code && code !== 0) {
@@ -557,7 +624,7 @@ export function spawnPlantumlPipe(bin, args, input, env) {
           new Error(`Command failed: ${bin} ${args.join(" ")}`)
         );
         err.code = code;
-        err.signal = signal;
+        err.signal = exitSignal;
         err.stdout = stdout;
         err.stderr = stderr;
         reject(err);
@@ -576,7 +643,8 @@ export function spawnPlantumlPipe(bin, args, input, env) {
 /**
  * @param {unknown} body
  */
-export async function handlePlantumlLocalRender(body) {
+export async function handlePlantumlLocalRender(body, signal) {
+  throwIfAborted(signal);
   const source =
     body && typeof body === "object" && "source" in body
       ? String(/** @type {{ source?: unknown }} */ (body).source ?? "")
@@ -597,6 +665,7 @@ export async function handlePlantumlLocalRender(body) {
 
   const wrapped = wrapPlantumlSource(source);
   const invocation = await resolveLocalPlantumlInvocation(localPath);
+  throwIfAborted(signal);
   const formatArg = format === "png" ? "-tpng" : "-tsvg";
 
   /** @type {string} */
@@ -620,9 +689,16 @@ export async function handlePlantumlLocalRender(body) {
   }
 
   const env = await buildPlantumlEnv();
+  throwIfAborted(signal);
 
   try {
-    const { stdout, stderr } = await spawnPlantumlPipe(bin, args, wrapped, env);
+    const { stdout, stderr } = await spawnPlantumlPipe(
+      bin,
+      args,
+      wrapped,
+      env,
+      signal,
+    );
     const out = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || "");
     if (!out.length) {
       const errText = Buffer.isBuffer(stderr)
@@ -640,6 +716,7 @@ export async function handlePlantumlLocalRender(body) {
       format === "png" ? "image/png" : "image/svg+xml",
     );
   } catch (e) {
+    if (isAbortError(e, signal)) throw requestAbortError();
     throw formatLocalPlantumlError(e);
   }
 }

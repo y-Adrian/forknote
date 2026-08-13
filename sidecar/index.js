@@ -22,7 +22,7 @@ import {
   shouldSkipDir,
 } from "../shared/codeIntel.mjs";
 import {
-  bm25Search,
+  bm25SearchAsync,
   chunkSource,
   MAX_CHUNKS,
 } from "../shared/codeSearch.mjs";
@@ -56,6 +56,15 @@ const MAX_GLOB_MATCHES = 200;
 const MAX_DIFF_LINES = 80;
 const DEFAULT_READ_LINES = 400;
 const MAX_SLICE_BYTES = 100 * 1024;
+const DEFAULT_REQUEST_BODY_BYTES = 256 * 1024;
+const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
+const LARGE_BODY_ROUTES = new Set([
+  "/fs/write",
+  "/fs/search_replace",
+  "/fs/apply_patch",
+  "/fs/write_docx",
+  "/fs/write_xlsx",
+]);
 const SEARCH_SKIP = new Set([
   "node_modules",
   ".git",
@@ -114,13 +123,14 @@ function looksBinary(buf) {
  * Read a UTF-8 line slice. Loads files up to MAX_WRITE_BYTES; larger files
  * require offset+limit and are streamed until the slice is filled.
  */
-async function readLineSlice(resolved, startLine, limit) {
+async function readLineSlice(resolved, startLine, limit, signal) {
+  throwIfAborted(signal);
   const stat = await fs.stat(resolved);
   const start = Math.max(1, startLine);
   const take = Math.max(1, limit);
 
   if (stat.size <= MAX_WRITE_BYTES) {
-    const raw = await fs.readFile(resolved);
+    const raw = await fs.readFile(resolved, { signal });
     if (looksBinary(raw)) {
       throw Object.assign(
         new Error("File looks binary — cannot read as UTF-8 text"),
@@ -157,6 +167,7 @@ async function readLineSlice(resolved, startLine, limit) {
     const buf = Buffer.alloc(64 * 1024);
     let pos = 0;
     while (pos < stat.size) {
+      throwIfAborted(signal);
       const { bytesRead: n } = await fh.read(buf, 0, buf.length, pos);
       if (n === 0) break;
       pos += n;
@@ -201,12 +212,18 @@ function currentProjectRoot() {
 }
 
 function sendJson(res, status, body) {
+  if (res.destroyed || res.writableEnded) return false;
   const data = JSON.stringify(body);
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(data),
-  });
-  res.end(data);
+  try {
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": Buffer.byteLength(data),
+    });
+    res.end(data);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isTrustedLoopbackOrigin(value) {
@@ -237,27 +254,150 @@ function hasValidAuthToken(req) {
 }
 
 function sendError(res, status, message) {
-  sendJson(res, status, { error: message });
+  return sendJson(res, status, { error: message });
 }
 
-async function readBody(req) {
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  throw Object.assign(new Error("Request aborted"), {
+    name: "AbortError",
+    code: "ABORT_ERR",
+  });
+}
+
+function isAbortError(error, signal) {
+  return Boolean(
+    signal?.aborted ||
+      (error &&
+        typeof error === "object" &&
+        ("name" in error && error.name === "AbortError" ||
+          "code" in error && error.code === "ABORT_ERR")),
+  );
+}
+
+function requestBodyLimit(pathname) {
+  return LARGE_BODY_ROUTES.has(pathname)
+    ? MAX_REQUEST_BODY_BYTES
+    : DEFAULT_REQUEST_BODY_BYTES;
+}
+
+function readBody(req, limit = DEFAULT_REQUEST_BODY_BYTES) {
   let pending = requestBodies.get(req);
   if (!pending) {
-    pending = (async () => {
+    pending = new Promise((resolve, reject) => {
       const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      if (chunks.length === 0) return {};
-      const raw = Buffer.concat(chunks).toString("utf8");
-      if (!raw.trim()) return {};
-      try {
-        return JSON.parse(raw);
-      } catch {
-        throw Object.assign(new Error("Invalid JSON body"), { status: 400 });
-      }
-    })();
+      let bytes = 0;
+      let settled = false;
+
+      const cleanup = () => {
+        req.off("data", onData);
+        req.off("end", onEnd);
+        req.off("error", onError);
+        req.off("aborted", onAborted);
+      };
+      const fail = (error, drain = false) => {
+        if (settled) return;
+        settled = true;
+        chunks.length = 0;
+        cleanup();
+        if (drain && !req.complete && !req.destroyed) req.resume();
+        reject(error);
+      };
+      const onData = (chunk) => {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        bytes += buf.length;
+        if (bytes > limit || bytes > MAX_REQUEST_BODY_BYTES) {
+          fail(
+            Object.assign(
+              new Error(`Request body too large (max ${limit} bytes)`),
+              { status: 413 },
+            ),
+            true,
+          );
+          return;
+        }
+        chunks.push(buf);
+      };
+      const onEnd = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (chunks.length === 0) {
+          resolve({});
+          return;
+        }
+        const raw = Buffer.concat(chunks, bytes).toString("utf8");
+        chunks.length = 0;
+        if (!raw.trim()) {
+          resolve({});
+          return;
+        }
+        try {
+          resolve(JSON.parse(raw));
+        } catch {
+          reject(Object.assign(new Error("Invalid JSON body"), { status: 400 }));
+        }
+      };
+      const onError = (error) => fail(error);
+      const onAborted = () =>
+        fail(
+          Object.assign(new Error("Request aborted"), {
+            name: "AbortError",
+            code: "ABORT_ERR",
+          }),
+        );
+
+      req.on("data", onData);
+      req.on("end", onEnd);
+      req.on("error", onError);
+      req.on("aborted", onAborted);
+      if (req.readableEnded) onEnd();
+    });
     requestBodies.set(req, pending);
   }
   return pending;
+}
+
+function rejectDeclaredOversize(req, res, limit) {
+  const raw = req.headers["content-length"];
+  if (raw === undefined) return false;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const length = Number(value);
+  if (!Number.isSafeInteger(length) || length < 0) {
+    sendError(res, 400, "Invalid Content-Length");
+    req.resume();
+    return true;
+  }
+  if (length <= limit && length <= MAX_REQUEST_BODY_BYTES) return false;
+  sendError(res, 413, `Request body too large (max ${limit} bytes)`);
+  req.resume();
+  return true;
+}
+
+function createRequestAbort(req, res) {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+  const onRequestClose = () => {
+    // A fully consumed request normally emits close. That is not cancellation.
+    if (!req.complete) abort();
+  };
+  const onResponseClose = () => {
+    // A response also closes after a normal res.end(); only abort unfinished work.
+    if (!res.writableEnded) abort();
+  };
+  req.on("aborted", abort);
+  req.on("close", onRequestClose);
+  res.on("close", onResponseClose);
+  return {
+    signal: controller.signal,
+    cleanup() {
+      req.off("aborted", abort);
+      req.off("close", onRequestClose);
+      res.off("close", onResponseClose);
+    },
+  };
 }
 
 function isPathInside(root, candidate) {
@@ -528,7 +668,8 @@ async function handleList(query) {
   return { path: relative, entries: items };
 }
 
-async function handleRead(query) {
+async function handleRead(query, signal) {
+  throwIfAborted(signal);
   const { resolved, relative } = await resolveSafe(query.get("path") || "");
   if (!query.get("path")) {
     throw Object.assign(new Error("path is required"), { status: 400 });
@@ -559,7 +700,7 @@ async function handleRead(query) {
     limit = DEFAULT_READ_LINES;
   }
 
-  const slice = await readLineSlice(resolved, startLine, limit);
+  const slice = await readLineSlice(resolved, startLine, limit, signal);
   let content = slice.content;
   if (Buffer.byteLength(content, "utf8") > MAX_SLICE_BYTES && slice.truncated) {
     content = content.slice(0, MAX_SLICE_BYTES);
@@ -940,7 +1081,8 @@ async function handleMkdir(body) {
  * Simple recursive text search (ripgrep when available, else walk).
  * Body: { query, path?, regex?, glob? }
  */
-async function handleSearch(body) {
+async function handleSearch(body, signal) {
+  throwIfAborted(signal);
   const query = String(body?.query ?? "").trim();
   if (!query) {
     throw Object.assign(new Error("query is required"), { status: 400 });
@@ -951,10 +1093,16 @@ async function handleSearch(body) {
   const { root, resolved: start } = await resolveSafe(body?.path || ".");
   const useRegex = Boolean(body?.regex);
   const glob = typeof body?.glob === "string" ? body.glob.trim() : "";
-  const rgHits = await tryRipgrep(root, start, query, {
-    regex: useRegex,
-    glob,
-  });
+  const rgHits = await tryRipgrep(
+    root,
+    start,
+    query,
+    {
+      regex: useRegex,
+      glob,
+    },
+    signal,
+  );
   if (rgHits) return rgHits;
 
   let matcher;
@@ -972,6 +1120,7 @@ async function handleSearch(body) {
   const hits = [];
 
   async function walk(dir) {
+    throwIfAborted(signal);
     if (hits.length >= MAX_SEARCH_HITS) return;
     let entries;
     try {
@@ -980,6 +1129,7 @@ async function handleSearch(body) {
       return;
     }
     for (const ent of entries) {
+      throwIfAborted(signal);
       if (hits.length >= MAX_SEARCH_HITS) return;
       if (shouldSkipName(ent.name)) continue;
       const full = path.join(dir, ent.name);
@@ -999,14 +1149,16 @@ async function handleSearch(body) {
       if (stat.size > MAX_WRITE_BYTES || stat.size === 0) continue;
       let text;
       try {
-        const raw = await fs.readFile(full);
+        const raw = await fs.readFile(full, { signal });
         if (looksBinary(raw)) continue;
         text = raw.toString("utf8");
-      } catch {
+      } catch (error) {
+        if (isAbortError(error, signal)) throw error;
         continue;
       }
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
+        if (i % 100 === 0) throwIfAborted(signal);
         if (hits.length >= MAX_SEARCH_HITS) return;
         const line = lines[i];
         const ok = matcher ? matcher.test(line) : line.toLowerCase().includes(query.toLowerCase());
@@ -1021,7 +1173,8 @@ async function handleSearch(body) {
   return { query, hits, truncated: hits.length >= MAX_SEARCH_HITS, regex: useRegex };
 }
 
-async function tryRipgrep(root, startAbs, query, opts) {
+async function tryRipgrep(root, startAbs, query, opts, signal) {
+  throwIfAborted(signal);
   const relStart = path.relative(root, startAbs) || ".";
   const args = ["-n", "--no-heading", "--color", "never", "-g", "!node_modules", "-g", "!.git"];
   if (!opts.regex) args.push("-F");
@@ -1032,6 +1185,7 @@ async function tryRipgrep(root, startAbs, query, opts) {
       cwd: root,
       maxBuffer: 2 * 1024 * 1024,
       timeout: 15_000,
+      signal,
     });
     const hits = [];
     for (const line of stdout.split("\n")) {
@@ -1052,6 +1206,7 @@ async function tryRipgrep(root, startAbs, query, opts) {
       engine: "rg",
     };
   } catch (e) {
+    if (isAbortError(e, signal)) throw e;
     const err = /** @type {{ code?: string|number, status?: number }} */ (e);
     if (err.code === "ENOENT") return null;
     if (err.code === 1 || err.status === 1) {
@@ -1061,7 +1216,8 @@ async function tryRipgrep(root, startAbs, query, opts) {
   }
 }
 
-async function handleGlob(body) {
+async function handleGlob(body, signal) {
+  throwIfAborted(signal);
   const pattern = String(body?.pattern ?? "").trim();
   if (!pattern) {
     throw Object.assign(new Error("pattern is required"), { status: 400 });
@@ -1072,6 +1228,7 @@ async function handleGlob(body) {
   const matches = [];
 
   async function walk(dir) {
+    throwIfAborted(signal);
     if (matches.length >= MAX_GLOB_MATCHES) return;
     let entries;
     try {
@@ -1080,6 +1237,7 @@ async function handleGlob(body) {
       return;
     }
     for (const ent of entries) {
+      throwIfAborted(signal);
       if (matches.length >= MAX_GLOB_MATCHES) return;
       if (shouldSkipName(ent.name)) continue;
       const full = path.join(dir, ent.name);
@@ -1109,11 +1267,13 @@ const MAX_SYMBOL_FILES = 400;
  * @param {string} startRel
  * @param {(rel: string, source: string) => void | Promise<void>} onFile
  */
-async function walkCodeFiles(startRel, onFile) {
+async function walkCodeFiles(startRel, onFile, signal) {
+  throwIfAborted(signal);
   const { root, resolved: start } = await resolveSafe(startRel || ".");
   let filesSeen = 0;
 
   async function walk(dir) {
+    throwIfAborted(signal);
     if (filesSeen >= MAX_SYMBOL_FILES) return;
     let entries;
     try {
@@ -1122,6 +1282,7 @@ async function walkCodeFiles(startRel, onFile) {
       return;
     }
     for (const ent of entries) {
+      throwIfAborted(signal);
       if (filesSeen >= MAX_SYMBOL_FILES) return;
       if (ent.isDirectory()) {
         if (shouldSkipDir(ent.name) || shouldSkipName(ent.name)) continue;
@@ -1136,12 +1297,14 @@ async function walkCodeFiles(startRel, onFile) {
       try {
         const st = await fs.stat(full);
         if (st.size > 400 * 1024) continue;
-        source = await fs.readFile(full, "utf8");
-      } catch {
+        source = await fs.readFile(full, { encoding: "utf8", signal });
+      } catch (error) {
+        if (isAbortError(error, signal)) throw error;
         continue;
       }
       filesSeen++;
       await onFile(rel, source);
+      throwIfAborted(signal);
     }
   }
 
@@ -1149,7 +1312,7 @@ async function walkCodeFiles(startRel, onFile) {
   if (st?.isFile()) {
     const rel = path.relative(root, start).split(path.sep).join("/");
     if (isCodeFile(rel)) {
-      const source = await fs.readFile(start, "utf8");
+      const source = await fs.readFile(start, { encoding: "utf8", signal });
       await onFile(rel, source);
     }
     return { root, filesSeen: 1 };
@@ -1158,7 +1321,7 @@ async function walkCodeFiles(startRel, onFile) {
   return { root, filesSeen };
 }
 
-async function handleFindSymbol(body) {
+async function handleFindSymbol(body, signal) {
   const name = String(body?.name ?? body?.query ?? "").trim();
   if (!name) {
     throw Object.assign(new Error("name is required"), { status: 400 });
@@ -1168,24 +1331,29 @@ async function handleFindSymbol(body) {
   const symbols = [];
   let truncated = false;
 
-  await walkCodeFiles(startRel, (rel, source) => {
-    if (symbols.length >= MAX_SYMBOL_HITS) {
-      truncated = true;
-      return;
-    }
-    for (const sym of extractSymbols(source, name)) {
-      symbols.push({ path: rel, ...sym });
+  await walkCodeFiles(
+    startRel,
+    (rel, source) => {
+      throwIfAborted(signal);
       if (symbols.length >= MAX_SYMBOL_HITS) {
         truncated = true;
-        break;
+        return;
       }
-    }
-  });
+      for (const sym of extractSymbols(source, name)) {
+        symbols.push({ path: rel, ...sym });
+        if (symbols.length >= MAX_SYMBOL_HITS) {
+          truncated = true;
+          break;
+        }
+      }
+    },
+    signal,
+  );
 
   return { name, symbols, truncated, count: symbols.length };
 }
 
-async function handleGoToDefinition(body) {
+async function handleGoToDefinition(body, signal) {
   const name = String(body?.name ?? body?.query ?? "").trim();
   if (!name) {
     throw Object.assign(new Error("name is required"), { status: 400 });
@@ -1198,20 +1366,22 @@ async function handleGoToDefinition(body) {
 
   if (hintPath) {
     await walkCodeFiles(hintPath, (rel, source) => {
+      throwIfAborted(signal);
       for (const sym of extractSymbols(source, name)) {
         all.push({ path: rel, ...sym });
       }
-    });
+    }, signal);
   }
 
   if (all.length === 0) {
     await walkCodeFiles(".", (rel, source) => {
+      throwIfAborted(signal);
       if (all.length >= MAX_SYMBOL_HITS) return;
       for (const sym of extractSymbols(source, name)) {
         all.push({ path: rel, ...sym });
         if (all.length >= MAX_SYMBOL_HITS) break;
       }
-    });
+    }, signal);
   }
 
   const exported = all.filter((s) => s.exported);
@@ -1225,7 +1395,7 @@ async function handleGoToDefinition(body) {
   };
 }
 
-async function handleFindReferences(body) {
+async function handleFindReferences(body, signal) {
   const name = String(body?.name ?? body?.query ?? "").trim();
   if (!name) {
     throw Object.assign(new Error("name is required"), { status: 400 });
@@ -1235,19 +1405,24 @@ async function handleFindReferences(body) {
   const references = [];
   let truncated = false;
 
-  await walkCodeFiles(startRel, (rel, source) => {
-    if (references.length >= MAX_SYMBOL_HITS) {
-      truncated = true;
-      return;
-    }
-    for (const ref of findIdentifierRefs(source, name)) {
-      references.push({ path: rel, ...ref });
+  await walkCodeFiles(
+    startRel,
+    (rel, source) => {
+      throwIfAborted(signal);
       if (references.length >= MAX_SYMBOL_HITS) {
         truncated = true;
-        break;
+        return;
       }
-    }
-  });
+      for (const ref of findIdentifierRefs(source, name)) {
+        references.push({ path: rel, ...ref });
+        if (references.length >= MAX_SYMBOL_HITS) {
+          truncated = true;
+          break;
+        }
+      }
+    },
+    signal,
+  );
 
   return { name, references, truncated, count: references.length };
 }
@@ -1267,7 +1442,7 @@ function matchProjectFile(fileSet, resolvedNoExt) {
   return null;
 }
 
-async function handleDependencyGraph(body) {
+async function handleDependencyGraph(body, signal) {
   const startRel = String(body?.path ?? ".").trim() || ".";
   const focus = String(body?.focus ?? body?.file ?? "").trim();
   const maxEdges = Math.min(
@@ -1278,13 +1453,15 @@ async function handleDependencyGraph(body) {
   /** @type {Map<string, string>} */
   const sources = new Map();
   await walkCodeFiles(startRel, (rel, source) => {
+    throwIfAborted(signal);
     sources.set(rel, source);
-  });
+  }, signal);
   const fileSet = new Set(sources.keys());
 
   /** @type {Array<{ from: string, to: string, resolved: string | null, kind: string, line: number, external: boolean }>} */
   const edges = [];
   for (const [rel, source] of sources) {
+    throwIfAborted(signal);
     for (const edge of extractImports(source, rel)) {
       const resolved = resolveImportSpec(rel, edge.to);
       const external = resolved.kind === "external";
@@ -1330,7 +1507,7 @@ async function handleDependencyGraph(body) {
   };
 }
 
-async function handleSemanticSearch(body) {
+async function handleSemanticSearch(body, signal) {
   const query = String(body?.query ?? body?.q ?? "").trim();
   if (!query) {
     throw Object.assign(new Error("query is required"), { status: 400 });
@@ -1340,15 +1517,23 @@ async function handleSemanticSearch(body) {
 
   /** @type {ReturnType<typeof chunkSource>} */
   const chunks = [];
-  await walkCodeFiles(startRel, (rel, source) => {
-    if (chunks.length >= MAX_CHUNKS) return;
-    for (const c of chunkSource(rel, source)) {
-      chunks.push(c);
-      if (chunks.length >= MAX_CHUNKS) break;
-    }
-  });
+  await walkCodeFiles(
+    startRel,
+    (rel, source) => {
+      throwIfAborted(signal);
+      if (chunks.length >= MAX_CHUNKS) return;
+      for (const c of chunkSource(rel, source)) {
+        throwIfAborted(signal);
+        chunks.push(c);
+        if (chunks.length >= MAX_CHUNKS) break;
+      }
+    },
+    signal,
+  );
 
-  const hits = bm25Search(chunks, query, limit).map(({ chunk, score }) => ({
+  const hits = (
+    await bm25SearchAsync(chunks, query, limit, { signal })
+  ).map(({ chunk, score }) => ({
     path: chunk.path,
     startLine: chunk.startLine,
     endLine: chunk.endLine,
@@ -1435,7 +1620,8 @@ function decodeXmlEntities(s) {
     .replace(/&apos;/g, "'");
 }
 
-async function handleReadDocx(body) {
+async function handleReadDocx(body, signal) {
+  throwIfAborted(signal);
   const filePath = String(body?.path ?? "").trim();
   if (!filePath) {
     throw Object.assign(new Error("path is required"), { status: 400 });
@@ -1451,9 +1637,11 @@ async function handleReadDocx(body) {
     const { stdout } = await execFileAsync("unzip", ["-p", resolved, "word/document.xml"], {
       maxBuffer: 2 * 1024 * 1024,
       timeout: 10_000,
+      signal,
     });
     xml = stdout;
   } catch (e) {
+    if (isAbortError(e, signal)) throw e;
     const msg = e instanceof Error ? e.message : "unzip failed";
     throw Object.assign(
       new Error(`Cannot read .docx (${relative}): ${msg}`),
@@ -1555,7 +1743,8 @@ async function handlePatchXlsx(body) {
   };
 }
 
-async function gitExec(args) {
+async function gitExec(args, signal) {
+  throwIfAborted(signal);
   const root = currentProjectRoot();
   if (!root) {
     throw Object.assign(new Error("No project open"), { status: 400 });
@@ -1565,9 +1754,11 @@ async function gitExec(args) {
       cwd: root,
       maxBuffer: 2 * 1024 * 1024,
       timeout: 20_000,
+      signal,
     });
     return { stdout: stdout || "", stderr: stderr || "", exitCode: 0 };
   } catch (e) {
+    if (isAbortError(e, signal)) throw e;
     const err = /** @type {{ stdout?: string, stderr?: string, code?: number }} */ (e);
     if (err.code === "ENOENT") {
       throw Object.assign(new Error("git is not installed"), { status: 500 });
@@ -1580,25 +1771,25 @@ async function gitExec(args) {
   }
 }
 
-async function handleGitStatus() {
-  const r = await gitExec(["status", "--porcelain=v1", "-b"]);
+async function handleGitStatus(signal) {
+  const r = await gitExec(["status", "--porcelain=v1", "-b"], signal);
   return { ok: r.exitCode === 0, output: (r.stdout || r.stderr).trim(), exitCode: r.exitCode };
 }
 
-async function handleGitDiff(body) {
+async function handleGitDiff(body, signal) {
   const filePath = typeof body?.path === "string" ? body.path.trim() : "";
   const args = ["diff", "--no-color"];
   if (filePath) {
     const { relative } = await resolveSafe(filePath, { followFinal: false });
     args.push("--", relative);
   }
-  const r = await gitExec(args);
+  const r = await gitExec(args, signal);
   let output = (r.stdout || r.stderr).trim();
   if (output.length > 30_000) output = `${output.slice(0, 30_000)}\n…(truncated)`;
   return { ok: r.exitCode === 0, output, exitCode: r.exitCode };
 }
 
-async function handleGitCommit(body) {
+async function handleGitCommit(body, signal) {
   const message = String(body?.message ?? "").trim();
   if (!message) {
     throw Object.assign(new Error("commit message is required"), { status: 400 });
@@ -1620,13 +1811,16 @@ async function handleGitCommit(body) {
       async (p) => (await resolveSafe(p, { followFinal: false })).relative,
     ),
   );
-  const add = await gitExec(["add", "--", ...rels]);
+  const add = await gitExec(["add", "--", ...rels], signal);
   if (add.exitCode !== 0) {
     throw Object.assign(new Error(add.stderr || add.stdout || "git add failed"), {
       status: 400,
     });
   }
-  const commit = await gitExec(["commit", "-m", message, "--", ...rels]);
+  const commit = await gitExec(
+    ["commit", "-m", message, "--", ...rels],
+    signal,
+  );
   return {
     ok: commit.exitCode === 0,
     output: (commit.stdout || commit.stderr).trim(),
@@ -1635,7 +1829,8 @@ async function handleGitCommit(body) {
   };
 }
 
-async function handleDiagnostics(body) {
+async function handleDiagnostics(body, signal) {
+  throwIfAborted(signal);
   const root = currentProjectRoot();
   if (!root) {
     throw Object.assign(new Error("No project open"), { status: 400 });
@@ -1664,11 +1859,13 @@ async function handleDiagnostics(body) {
         cwd: root,
         maxBuffer: 2 * 1024 * 1024,
         timeout: 45_000,
+        signal,
       },
     );
     const output = `${stdout || ""}${stderr || ""}`.trim() || "tsc: no errors";
     return { ok: true, skipped: false, output: output.slice(0, 12_000) };
   } catch (e) {
+    if (isAbortError(e, signal)) throw e;
     const err = /** @type {{ stdout?: string, stderr?: string, code?: string|number }} */ (e);
     if (err.code === "ENOENT") {
       return { ok: false, skipped: true, output: "npx/tsc not available" };
@@ -1856,13 +2053,11 @@ async function commandLeavesProject(command, root) {
  * bound project (never process.cwd()). Commands that reference paths outside
  * the project require allowOutsideProject: true (UI approval).
  *
- * When `res` is provided, client disconnect / AbortSignal cancels the child
- * (response `close` before settle).
- *
  * @param {Record<string, unknown>} body
- * @param {http.ServerResponse | null} [res]
+ * @param {AbortSignal} [signal]
  */
-function handleRun(body, res = null) {
+function handleRun(body, signal) {
+  throwIfAborted(signal);
   const root = currentProjectRoot();
   if (!root) {
     throw Object.assign(new Error("No project open"), { status: 400 });
@@ -1965,11 +2160,8 @@ function handleRun(body, res = null) {
         setTimeout(() => forceKillRunChild(child), 2_000).unref?.();
       };
 
-      // Client AbortSignal / disconnect: response closes before we finish.
-      // (Request 'close' is unreliable here — body was already fully read.)
-      if (res) {
-        res.on("close", onClientGone);
-      }
+      if (signal?.aborted) onClientGone();
+      else signal?.addEventListener("abort", onClientGone, { once: true });
 
       child.stdout?.on("data", (chunk) => appendCapped(stdoutState, chunk));
       child.stderr?.on("data", (chunk) => appendCapped(stderrState, chunk));
@@ -1993,7 +2185,7 @@ function handleRun(body, res = null) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (res) res.off?.("close", onClientGone);
+        signal?.removeEventListener("abort", onClientGone);
         reject(
           Object.assign(
             new Error(err instanceof Error ? err.message : "Failed to spawn"),
@@ -2006,9 +2198,9 @@ function handleRun(body, res = null) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (res) res.off?.("close", onClientGone);
+        signal?.removeEventListener("abort", onClientGone);
         // Client already gone — do not bother shaping a body they will not read.
-        if (aborted && res && res.writableEnded === false && res.destroyed) {
+        if (aborted) {
           resolve(
             shapeResult({
               exitCode: 130,
@@ -2040,8 +2232,9 @@ function handleRun(body, res = null) {
  * @param {http.IncomingMessage} req
  * @param {http.ServerResponse} res
  */
-async function dispatchRequest(req, res, url, pathname) {
+async function dispatchRequest(req, res, url, pathname, signal) {
   try {
+    throwIfAborted(signal);
     if (req.method === "POST" && pathname === "/project/open") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleOpen(body));
@@ -2057,10 +2250,11 @@ async function dispatchRequest(req, res, url, pathname) {
       return sendJson(res, 200, { root: null });
     }
     if (req.method === "GET" && pathname === "/fs/list") {
+      throwIfAborted(signal);
       return sendJson(res, 200, await handleList(url.searchParams));
     }
     if (req.method === "GET" && pathname === "/fs/read") {
-      return sendJson(res, 200, await handleRead(url.searchParams));
+      return sendJson(res, 200, await handleRead(url.searchParams, signal));
     }
     if (req.method === "POST" && pathname === "/fs/write") {
       const body = await readBody(req);
@@ -2088,31 +2282,31 @@ async function dispatchRequest(req, res, url, pathname) {
     }
     if (req.method === "POST" && pathname === "/fs/search") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleSearch(body));
+      return sendJson(res, 200, await handleSearch(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/glob") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleGlob(body));
+      return sendJson(res, 200, await handleGlob(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/find_symbol") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleFindSymbol(body));
+      return sendJson(res, 200, await handleFindSymbol(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/go_to_definition") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleGoToDefinition(body));
+      return sendJson(res, 200, await handleGoToDefinition(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/find_references") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleFindReferences(body));
+      return sendJson(res, 200, await handleFindReferences(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/dependency_graph") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleDependencyGraph(body));
+      return sendJson(res, 200, await handleDependencyGraph(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/semantic_search") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleSemanticSearch(body));
+      return sendJson(res, 200, await handleSemanticSearch(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/delete") {
       const body = await readBody(req);
@@ -2124,7 +2318,7 @@ async function dispatchRequest(req, res, url, pathname) {
     }
     if (req.method === "POST" && pathname === "/fs/read_docx") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleReadDocx(body));
+      return sendJson(res, 200, await handleReadDocx(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/read_xlsx") {
       const body = await readBody(req);
@@ -2136,60 +2330,82 @@ async function dispatchRequest(req, res, url, pathname) {
     }
     if (req.method === "POST" && pathname === "/fs/diagnostics") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleDiagnostics(body));
+      return sendJson(res, 200, await handleDiagnostics(body, signal));
     }
     if (req.method === "POST" && pathname === "/git/status") {
-      return sendJson(res, 200, await handleGitStatus());
+      return sendJson(res, 200, await handleGitStatus(signal));
     }
     if (req.method === "POST" && pathname === "/git/diff") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleGitDiff(body));
+      return sendJson(res, 200, await handleGitDiff(body, signal));
     }
     if (req.method === "POST" && pathname === "/git/commit") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleGitCommit(body));
+      return sendJson(res, 200, await handleGitCommit(body, signal));
     }
     if (req.method === "POST" && pathname === "/fs/run") {
       const body = await readBody(req);
-      const result = await handleRun(body, res);
+      const result = await handleRun(body, signal);
       if (res.writableEnded || res.destroyed) return;
       return sendJson(res, 200, result);
     }
     if (req.method === "GET" && pathname === "/net/status") {
-      return sendJson(res, 200, await handleNetStatus());
+      return sendJson(res, 200, await handleNetStatus(signal));
     }
     if (req.method === "POST" && pathname === "/net/fetch") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleNetFetch(body));
+      return sendJson(res, 200, await handleNetFetch(body, signal));
     }
     if (req.method === "POST" && pathname === "/net/search") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handleNetSearch(body));
+      return sendJson(res, 200, await handleNetSearch(body, signal));
     }
     if (req.method === "POST" && pathname === "/plantuml/server") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handlePlantumlServerRender(body));
+      return sendJson(
+        res,
+        200,
+        await handlePlantumlServerRender(body, signal),
+      );
     }
     if (req.method === "POST" && pathname === "/plantuml/local") {
       const body = await readBody(req);
-      return sendJson(res, 200, await handlePlantumlLocalRender(body));
+      return sendJson(
+        res,
+        200,
+        await handlePlantumlLocalRender(body, signal),
+      );
     }
     if (req.method === "GET" && pathname === "/health") {
       return sendJson(res, 200, { ok: true, root: projectRoot });
     }
     sendError(res, 404, `Unknown route: ${req.method} ${pathname}`);
   } catch (e) {
+    if (isAbortError(e, signal) || res.destroyed || res.writableEnded) return;
     const status = /** @type {{ status?: number }} */ (e).status || 500;
     const message = e instanceof Error ? e.message : "Internal error";
     sendError(res, status, message);
   }
 }
 
-async function handler(req, res) {
+async function handler(req, res, signal) {
   const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
   const pathname = url.pathname.replace(/\/$/, "") || "/";
+  const bodyLimit = requestBodyLimit(pathname);
+  if (rejectDeclaredOversize(req, res, bodyLimit)) return;
+  if (req.method === "POST") {
+    try {
+      await readBody(req, bodyLimit);
+    } catch (e) {
+      if (isAbortError(e, signal) || res.destroyed || res.writableEnded) return;
+      const status = /** @type {{ status?: number }} */ (e).status || 500;
+      const message = e instanceof Error ? e.message : "Internal error";
+      sendError(res, status, message);
+      return;
+    }
+  }
   if (!/^\/(?:fs|git)\//.test(pathname)) {
-    return dispatchRequest(req, res, url, pathname);
+    return dispatchRequest(req, res, url, pathname, signal);
   }
   try {
     const expectedRoot =
@@ -2197,9 +2413,10 @@ async function handler(req, res) {
         ? url.searchParams.get("expectedRoot")
         : (await readBody(req))?.expectedRoot;
     return await withExpectedProjectRoot(expectedRoot, () =>
-      dispatchRequest(req, res, url, pathname),
+      dispatchRequest(req, res, url, pathname, signal),
     );
   } catch (e) {
+    if (isAbortError(e, signal) || res.destroyed || res.writableEnded) return;
     const status = /** @type {{ status?: number }} */ (e).status || 500;
     const message = e instanceof Error ? e.message : "Internal error";
     sendError(res, status, message);
@@ -2230,7 +2447,8 @@ const server = http.createServer((req, res) => {
     sendError(res, 401, "Missing or invalid sidecar token");
     return;
   }
-  void handler(req, res);
+  const requestAbort = createRequestAbort(req, res);
+  void handler(req, res, requestAbort.signal).finally(requestAbort.cleanup);
 });
 
 server.listen(PORT, HOST, () => {

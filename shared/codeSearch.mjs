@@ -137,4 +137,90 @@ export function bm25Search(chunks, query, limit = 10) {
   return scored.slice(0, Math.min(limit, MAX_RESULTS));
 }
 
+/**
+ * Cancellable BM25 variant for sidecar requests. Yielding between batches lets
+ * a client disconnect reach the AbortSignal while a large corpus is scored.
+ *
+ * @param {CodeChunk[]} chunks
+ * @param {string} query
+ * @param {number} [limit]
+ * @param {{ signal?: AbortSignal }} [options]
+ */
+export async function bm25SearchAsync(
+  chunks,
+  query,
+  limit = 10,
+  options = {},
+) {
+  const { signal } = options;
+  const check = () => {
+    if (!signal?.aborted) return;
+    throw Object.assign(new Error("Request aborted"), {
+      name: "AbortError",
+      code: "ABORT_ERR",
+    });
+  };
+  const yieldToEvents = () =>
+    new Promise((resolve) => setImmediate(resolve));
+  const qTokens = tokenize(query);
+  if (!qTokens.length || !chunks.length) return [];
+
+  const N = chunks.length;
+  /** @type {Map<string, number>} */
+  const df = new Map();
+  /** @type {Array<Map<string, number>>} */
+  const tfs = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    check();
+    const tokens = tokenize(chunks[i].text);
+    /** @type {Map<string, number>} */
+    const tf = new Map();
+    for (const t of tokens) tf.set(t, (tf.get(t) || 0) + 1);
+    tfs.push(tf);
+    for (const t of new Set(tf.keys())) {
+      df.set(t, (df.get(t) || 0) + 1);
+    }
+    if (i > 0 && i % 25 === 0) await yieldToEvents();
+  }
+
+  let totalLength = 0;
+  for (let i = 0; i < tfs.length; i++) {
+    check();
+    for (const value of tfs[i].values()) totalLength += value;
+    if (i > 0 && i % 50 === 0) await yieldToEvents();
+  }
+  const avgdl = totalLength / Math.max(1, N);
+  const k1 = 1.2;
+  const b = 0.75;
+  /** @type {Array<{ chunk: CodeChunk, score: number }>} */
+  const scored = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    check();
+    const tf = tfs[i];
+    let dl = 0;
+    for (const value of tf.values()) dl += value;
+    let score = 0;
+    for (const term of qTokens) {
+      const f = tf.get(term) || 0;
+      if (!f) continue;
+      const n = df.get(term) || 0;
+      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
+      const denom = f + k1 * (1 - b + (b * dl) / Math.max(1, avgdl));
+      score += idf * ((f * (k1 + 1)) / denom);
+    }
+    const pathTokens = tokenize(`${chunks[i].path} ${chunks[i].title}`);
+    for (const term of qTokens) {
+      if (pathTokens.includes(term)) score += 1.5;
+    }
+    if (score > 0) scored.push({ chunk: chunks[i], score });
+    if (i > 0 && i % 25 === 0) await yieldToEvents();
+  }
+
+  check();
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.min(limit, MAX_RESULTS));
+}
+
 export { MAX_CHUNKS, isCodeFile, shouldSkipDir };
