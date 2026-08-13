@@ -62,12 +62,13 @@ export async function saveArchiveMarkdownToProject(options: {
   const dir = resolveArchivesDir();
   const relPath = archiveRelativePath(snapshot);
   try {
-    await mkdir(dir, sidecarUrl, signal);
+    await mkdir(dir, sidecarUrl, signal, projectRoot);
     await writeFile(
       relPath,
       formatArchiveMarkdownFile(snapshot),
       sidecarUrl,
       signal,
+      projectRoot,
     );
     return relPath;
   } catch (e) {

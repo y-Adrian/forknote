@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { isDeniedTerminalCommand } from "../shared/terminalDenyList.mjs";
 import {
   extractImports,
@@ -192,6 +193,12 @@ async function readLineSlice(resolved, startLine, limit) {
 
 /** @type {string | null} */
 let projectRoot = null;
+const requestProjectRoot = new AsyncLocalStorage();
+const requestBodies = new WeakMap();
+
+function currentProjectRoot() {
+  return requestProjectRoot.getStore()?.root ?? projectRoot;
+}
 
 function sendJson(res, status, body) {
   const data = JSON.stringify(body);
@@ -234,16 +241,23 @@ function sendError(res, status, message) {
 }
 
 async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  if (chunks.length === 0) return {};
-  const raw = Buffer.concat(chunks).toString("utf8");
-  if (!raw.trim()) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("Invalid JSON body");
+  let pending = requestBodies.get(req);
+  if (!pending) {
+    pending = (async () => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      if (chunks.length === 0) return {};
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw.trim()) return {};
+      try {
+        return JSON.parse(raw);
+      } catch {
+        throw Object.assign(new Error("Invalid JSON body"), { status: 400 });
+      }
+    })();
+    requestBodies.set(req, pending);
   }
+  return pending;
 }
 
 /**
@@ -253,10 +267,11 @@ async function readBody(req) {
  * @param {string} rel
  */
 function resolveSafe(rel) {
-  if (!projectRoot) {
+  const activeRoot = currentProjectRoot();
+  if (!activeRoot) {
     throw Object.assign(new Error("No project open"), { status: 400 });
   }
-  const root = path.resolve(projectRoot);
+  const root = path.resolve(activeRoot);
   let input = String(rel ?? ".").trim() || ".";
 
   // Normalize model typos: "//foo.c", "///src/a.cpp" → treat as project-relative
@@ -1486,12 +1501,13 @@ async function handlePatchXlsx(body) {
 }
 
 async function gitExec(args) {
-  if (!projectRoot) {
+  const root = currentProjectRoot();
+  if (!root) {
     throw Object.assign(new Error("No project open"), { status: 400 });
   }
   try {
     const { stdout, stderr } = await execFileAsync("git", args, {
-      cwd: projectRoot,
+      cwd: root,
       maxBuffer: 2 * 1024 * 1024,
       timeout: 20_000,
     });
@@ -1561,12 +1577,13 @@ async function handleGitCommit(body) {
 }
 
 async function handleDiagnostics(body) {
-  if (!projectRoot) {
+  const root = currentProjectRoot();
+  if (!root) {
     throw Object.assign(new Error("No project open"), { status: 400 });
   }
   let hasTsconfig = false;
   try {
-    await fs.stat(path.join(projectRoot, "tsconfig.json"));
+    await fs.stat(path.join(root, "tsconfig.json"));
     hasTsconfig = true;
   } catch {
     hasTsconfig = false;
@@ -1583,7 +1600,7 @@ async function handleDiagnostics(body) {
       "npx",
       ["tsc", "--noEmit", "--pretty", "false"],
       {
-        cwd: projectRoot,
+        cwd: root,
         maxBuffer: 2 * 1024 * 1024,
         timeout: 45_000,
       },
@@ -1676,6 +1693,28 @@ async function rootsMatch(a, b) {
   }
 }
 
+async function withExpectedProjectRoot(expectedRaw, operation) {
+  const expectedText = String(expectedRaw ?? "").trim();
+  if (!expectedText) {
+    throw Object.assign(new Error("expectedRoot is required"), { status: 400 });
+  }
+  const bound = projectRoot;
+  if (!bound) {
+    throw Object.assign(new Error("No project open"), { status: 400 });
+  }
+  const expected = path.resolve(expectedText);
+  const matches = await rootsMatch(bound, expected);
+  if (!matches || projectRoot !== bound) {
+    throw Object.assign(
+      new Error(
+        `Sidecar project root mismatch. Bound: ${projectRoot ?? "(none)"}. Expected: ${expected}. Re-open the project and retry.`,
+      ),
+      { status: 409 },
+    );
+  }
+  return requestProjectRoot.run({ root: bound }, operation);
+}
+
 /**
  * Heuristic: does this shell command target paths outside the project?
  * Catches `cd /`, `cd ~`, `ls /tmp`, `ls /debris`, any absolute path not under
@@ -1727,7 +1766,7 @@ function commandLeavesProject(command, root) {
 
 /**
  * Run a shell command with starting cwd under the bound project root.
- * Body: { command, cwd?, timeoutMs?, expectedRoot?, allowOutsideProject? }
+ * Body: { command, cwd?, timeoutMs?, expectedRoot, allowOutsideProject? }
  *
  * Uses `shell: true` so pipelines like `npm test && echo ok` work (same class
  * of agent UX as Cline). Starting cwd is always confined via resolveSafe to the
@@ -1741,7 +1780,8 @@ function commandLeavesProject(command, root) {
  * @param {http.ServerResponse | null} [res]
  */
 function handleRun(body, res = null) {
-  if (!projectRoot) {
+  const root = currentProjectRoot();
+  if (!root) {
     throw Object.assign(new Error("No project open"), { status: 400 });
   }
   const command = String(body?.command ?? "").trim();
@@ -1766,11 +1806,6 @@ function handleRun(body, res = null) {
   }
 
   const allowOutsideProject = Boolean(body?.allowOutsideProject);
-  const expectedRaw =
-    body?.expectedRoot === undefined || body?.expectedRoot === null
-      ? ""
-      : String(body.expectedRoot).trim();
-
   const cwdInput =
     body?.cwd === undefined || body?.cwd === null
       ? "."
@@ -1784,22 +1819,10 @@ function handleRun(body, res = null) {
   );
 
   return (async () => {
-    if (expectedRaw) {
-      const expected = path.resolve(expectedRaw);
-      if (!(await rootsMatch(projectRoot, expected))) {
-        throw Object.assign(
-          new Error(
-            `Sidecar project root mismatch. Bound: ${projectRoot}. Expected: ${expected}. Re-open the project and retry.`,
-          ),
-          { status: 409 },
-        );
-      }
-    }
-
     // Starting cwd is always under the bound project — never process.cwd().
-    const { resolved: cwd, relative, root } = resolveSafe(cwdInput);
+    const { resolved: cwd, relative, root: requestRoot } = resolveSafe(cwdInput);
 
-    if (commandLeavesProject(command, root) && !allowOutsideProject) {
+    if (commandLeavesProject(command, requestRoot) && !allowOutsideProject) {
       throw Object.assign(
         new Error(
           "Command targets paths outside the bound project. Approve outside-project terminal access (权限) before running.",
@@ -1871,7 +1894,7 @@ function handleRun(body, res = null) {
         /** Absolute starting cwd (always under project root). */
         cwdAbsolute: cwd,
         /** Absolute bound project root used for this run. */
-        projectRoot: root,
+        projectRoot: requestRoot,
         timedOut: Boolean(extra.timedOut),
         ...(extra.aborted ? { aborted: true } : {}),
       });
@@ -1927,10 +1950,7 @@ function handleRun(body, res = null) {
  * @param {http.IncomingMessage} req
  * @param {http.ServerResponse} res
  */
-async function handler(req, res) {
-  const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
-  const pathname = url.pathname.replace(/\/$/, "") || "/";
-
+async function dispatchRequest(req, res, url, pathname) {
   try {
     if (req.method === "POST" && pathname === "/project/open") {
       const body = await readBody(req);
@@ -2068,6 +2088,27 @@ async function handler(req, res) {
       return sendJson(res, 200, { ok: true, root: projectRoot });
     }
     sendError(res, 404, `Unknown route: ${req.method} ${pathname}`);
+  } catch (e) {
+    const status = /** @type {{ status?: number }} */ (e).status || 500;
+    const message = e instanceof Error ? e.message : "Internal error";
+    sendError(res, status, message);
+  }
+}
+
+async function handler(req, res) {
+  const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
+  const pathname = url.pathname.replace(/\/$/, "") || "/";
+  if (!/^\/(?:fs|git)\//.test(pathname)) {
+    return dispatchRequest(req, res, url, pathname);
+  }
+  try {
+    const expectedRoot =
+      req.method === "GET"
+        ? url.searchParams.get("expectedRoot")
+        : (await readBody(req))?.expectedRoot;
+    return await withExpectedProjectRoot(expectedRoot, () =>
+      dispatchRequest(req, res, url, pathname),
+    );
   } catch (e) {
     const status = /** @type {{ status?: number }} */ (e).status || 500;
     const message = e instanceof Error ? e.message : "Internal error";

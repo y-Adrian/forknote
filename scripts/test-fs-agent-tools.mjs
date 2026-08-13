@@ -17,6 +17,9 @@ const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PROJECT = path.join(os.tmpdir(), `forknote-fs-agent-tools-${process.pid}`);
+const PROJECT_B = `${PROJECT}-other`;
+const TEST_TOKEN = "a".repeat(64);
+let activeExpectedRoot = PROJECT;
 
 const results = [];
 
@@ -39,10 +42,28 @@ async function freePort() {
 }
 
 async function json(base, method, pathname, body) {
-  const res = await fetch(`${base}${pathname}`, {
+  const guarded = /^\/(?:fs|git)\//.test(pathname);
+  const url = new URL(`${base}${pathname}`);
+  if (
+    guarded &&
+    method === "GET" &&
+    !url.searchParams.has("expectedRoot")
+  ) {
+    url.searchParams.set("expectedRoot", activeExpectedRoot);
+  }
+  const requestBody =
+    guarded &&
+    method !== "GET" &&
+    !(body && Object.prototype.hasOwnProperty.call(body, "expectedRoot"))
+      ? { ...(body ?? {}), expectedRoot: activeExpectedRoot }
+      : body;
+  const res = await fetch(url, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: {
+      "X-ForkNote-Sidecar-Token": TEST_TOKEN,
+      ...(requestBody ? { "Content-Type": "application/json" } : {}),
+    },
+    body: requestBody ? JSON.stringify(requestBody) : undefined,
   });
   const text = await res.text();
   let data;
@@ -75,6 +96,19 @@ function waitHealth(base, timeoutMs = 8000) {
     };
     void tick();
   });
+}
+
+async function waitForFile(filePath, timeoutMs = 3000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      await fs.stat(filePath);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  throw new Error(`timed out waiting for ${filePath}`);
 }
 
 async function testClientLogic() {
@@ -126,15 +160,126 @@ process.stdout.write(JSON.stringify(out));
 async function testSidecar(base) {
   console.log("\n=== Sidecar FS / git / office ===\n");
   await fs.rm(PROJECT, { recursive: true, force: true });
+  await fs.rm(PROJECT_B, { recursive: true, force: true });
   await fs.mkdir(path.join(PROJECT, "src"), { recursive: true });
+  await fs.mkdir(PROJECT_B, { recursive: true });
   await fs.writeFile(path.join(PROJECT, "src", "a.ts"), "export const alpha = 1;\n");
   await fs.writeFile(path.join(PROJECT, "src", "b.ts"), "export const beta = 2;\n");
   await fs.writeFile(path.join(PROJECT, "notes.md"), "hello world\nfoo bar\n");
+  await fs.writeFile(path.join(PROJECT_B, "marker.txt"), "project-b\n");
   const big = Array.from({ length: 5000 }, (_, i) => `line-${i + 1} ${"x".repeat(60)}`).join("\n");
   await fs.writeFile(path.join(PROJECT, "big.txt"), `${big}\n`);
 
   const opened = await json(base, "POST", "/project/open", { path: PROJECT });
   ok("open project", opened.status === 200, `status=${opened.status}`);
+
+  {
+    const missing = await json(base, "POST", "/fs/glob", {
+      pattern: "**/*",
+      expectedRoot: undefined,
+    });
+    ok(
+      "filesystem request requires expectedRoot",
+      missing.status === 400 && /expectedRoot is required/.test(missing.data?.error ?? ""),
+      `status=${missing.status} error=${missing.data?.error ?? ""}`,
+    );
+
+    const matching = await json(base, "GET", "/fs/read?path=notes.md");
+    ok(
+      "matching expectedRoot succeeds",
+      matching.status === 200 && /hello world/.test(matching.data?.content ?? ""),
+      `status=${matching.status}`,
+    );
+
+    await json(base, "POST", "/project/open", { path: PROJECT_B });
+    activeExpectedRoot = PROJECT_B;
+    const guardedRoutes = [
+      ["GET", "/fs/list?path=.", null],
+      ["GET", "/fs/read?path=marker.txt", null],
+      ["POST", "/fs/write", { path: "x", content: "x" }],
+      ["POST", "/fs/search_replace", {}],
+      ["POST", "/fs/apply_patch", {}],
+      ["POST", "/fs/write_docx", {}],
+      ["POST", "/fs/write_xlsx", {}],
+      ["POST", "/fs/mkdir", { path: "x" }],
+      ["POST", "/fs/search", { query: "x" }],
+      ["POST", "/fs/glob", { pattern: "*" }],
+      ["POST", "/fs/find_symbol", { name: "x" }],
+      ["POST", "/fs/go_to_definition", { name: "x" }],
+      ["POST", "/fs/find_references", { name: "x" }],
+      ["POST", "/fs/dependency_graph", {}],
+      ["POST", "/fs/semantic_search", { query: "x" }],
+      ["POST", "/fs/delete", { path: "x" }],
+      ["POST", "/fs/rename", { from: "x", to: "y" }],
+      ["POST", "/fs/read_docx", { path: "x" }],
+      ["POST", "/fs/read_xlsx", { path: "x" }],
+      ["POST", "/fs/patch_xlsx", { path: "x", cells: [] }],
+      ["POST", "/fs/diagnostics", {}],
+      ["POST", "/fs/run", { command: "pwd" }],
+      ["POST", "/git/status", {}],
+      ["POST", "/git/diff", {}],
+      ["POST", "/git/commit", { message: "x", paths: ["x"] }],
+    ];
+    const mismatches = await Promise.all(
+      guardedRoutes.map(([method, pathname, body]) => {
+        if (method === "GET") {
+          const separator = pathname.includes("?") ? "&" : "?";
+          return json(
+            base,
+            method,
+            `${pathname}${separator}expectedRoot=${encodeURIComponent(PROJECT)}`,
+          );
+        }
+        return json(base, method, pathname, {
+          ...(body ?? {}),
+          expectedRoot: PROJECT,
+        });
+      }),
+    );
+    ok(
+      "all filesystem and git routes reject stale roots",
+      mismatches.every(
+        (result) =>
+          result.status === 409 &&
+          /project root mismatch/i.test(result.data?.error ?? ""),
+      ),
+      `statuses=${mismatches.map((result) => result.status).join(",")}`,
+    );
+
+    const current = await json(base, "GET", "/fs/read?path=marker.txt");
+    ok(
+      "new session matching root remains usable",
+      current.status === 200 && current.data?.content === "project-b\n",
+      `status=${current.status} content=${JSON.stringify(current.data?.content)}`,
+    );
+
+    await json(base, "POST", "/project/open", { path: PROJECT });
+    activeExpectedRoot = PROJECT;
+  }
+
+  {
+    const command =
+      "touch request-started.txt; sleep 1; printf project-a > request-pinned.txt";
+    const running = json(base, "POST", "/fs/run", {
+      command,
+      timeoutMs: 5_000,
+    });
+    await waitForFile(path.join(PROJECT, "request-started.txt"));
+    await json(base, "POST", "/project/open", { path: PROJECT_B });
+    activeExpectedRoot = PROJECT_B;
+    const completed = await running;
+    const [inA, inB] = await Promise.all([
+      fs.readFile(path.join(PROJECT, "request-pinned.txt"), "utf8").catch(() => ""),
+      fs.readFile(path.join(PROJECT_B, "request-pinned.txt"), "utf8").catch(() => ""),
+    ]);
+    ok(
+      "in-flight request stays pinned after rebind",
+      completed.status === 200 && inA === "project-a" && inB === "",
+      `status=${completed.status} inA=${JSON.stringify(inA)} inB=${JSON.stringify(inB)}`,
+    );
+    await json(base, "POST", "/project/open", { path: PROJECT });
+    activeExpectedRoot = PROJECT;
+  }
 
   {
     const r = await json(base, "POST", "/fs/glob", { pattern: "**/*.ts" });
@@ -351,7 +496,12 @@ async function main() {
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, [path.join(ROOT, "sidecar/index.js")], {
     cwd: ROOT,
-    env: { ...process.env, SIDECAR_PORT: String(port), SIDECAR_HOST: "127.0.0.1" },
+    env: {
+      ...process.env,
+      SIDECAR_PORT: String(port),
+      SIDECAR_HOST: "127.0.0.1",
+      SIDECAR_AUTH_TOKEN: TEST_TOKEN,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let logs = "";
@@ -373,6 +523,7 @@ async function main() {
   } finally {
     child.kill("SIGTERM");
     await fs.rm(PROJECT, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(PROJECT_B, { recursive: true, force: true }).catch(() => {});
   }
 
   const failed = results.filter((r) => !r.pass);
