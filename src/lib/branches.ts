@@ -33,3 +33,22 @@ export function allBranchesInThread(thread: ThreadRoot): BranchNode[] {
   }
   return list;
 }
+
+/** Host main-thread assistant message id for a fork node, if any. */
+export function findBranchHostMessageId(
+  thread: ThreadRoot,
+  branchId: string,
+): string | null {
+  const walk = (nodes: BranchNode[]): boolean => {
+    for (const node of nodes) {
+      if (node.id === branchId) return true;
+      if (walk(node.children)) return true;
+    }
+    return false;
+  };
+  for (const m of thread.messages) {
+    if (m.role !== "assistant") continue;
+    if (walk(m.children)) return m.id;
+  }
+  return null;
+}

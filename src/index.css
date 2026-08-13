@@ -2181,11 +2181,6 @@ body {
   font-size: inherit;
 }
 
-/* First-line indent for segment prose (skip lists / code / quotes) */
-.point-content .fn-markdown-mount > p {
-  text-indent: 2em;
-}
-
 .point-content .fn-markdown-mount > p:first-child {
   margin-top: 0;
 }
@@ -4333,6 +4328,14 @@ mark.branch-highlight:hover {
   border-bottom: 1px dashed var(--ds-border);
 }
 
+.fn-archive-base-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
 .fn-archive-base-kicker {
   display: block;
   font-size: var(--fn-text-ui-sm);
@@ -4356,14 +4359,147 @@ mark.branch-highlight:hover {
   font-size: var(--fn-text-chat);
 }
 
+.fn-archive-path-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.fn-archive-path {
+  max-width: min(100%, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-mono);
+  font-size: var(--fn-text-ui-xs);
+  color: var(--ds-text-dim);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.fn-archive-path-hint {
+  font-size: var(--fn-text-ui-xs);
+  color: var(--ds-muted);
+}
+
+.fn-archive-history {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.fn-archive-history-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.fn-archive-history-btn.is-open {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-surface-hover);
+  box-shadow: var(--fn-press-shadow);
+}
+
+.fn-archive-history-caret {
+  font-size: 0.72em;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.fn-archive-history-menu {
+  left: 0;
+  right: auto;
+  min-width: max(180px, 100%);
+  max-width: min(320px, 70vw);
+  max-height: min(280px, 40vh);
+  overflow-y: auto;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .fn-fork-chip {
   flex-shrink: 0;
+  font: inherit;
   font-size: var(--fn-text-ui-sm);
   color: var(--ds-muted);
   padding: 5px 12px;
   border-radius: 999px;
   border: 1px solid var(--ds-border);
   background: var(--ds-surface);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.fn-fork-chip:hover {
+  color: var(--ds-text);
+  border-color: var(--ds-border-strong);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--fn-press-shadow);
+}
+
+.fn-fork-chip:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--fn-press-shadow-active);
+}
+
+.fn-fork-map-backdrop {
+  z-index: 160;
+}
+
+.fn-fork-map-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+}
+
+.fn-fork-map-scroll {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: min(52vh, 480px);
+  overflow: auto;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px solid var(--ds-border);
+  border-radius: 12px;
+  background: var(--ds-surface);
+}
+
+.fn-fork-map-svg {
+  display: block;
+  color: var(--ds-text);
+}
+
+.fn-fork-map-node:hover circle:last-of-type {
+  filter: brightness(1.08);
+}
+
+.fn-fork-map-empty {
+  margin: 24px 12px;
+  color: var(--ds-muted);
+  font-size: var(--fn-text-ui-sm);
 }
 
 .fn-selection-toolbar {
@@ -5524,10 +5660,10 @@ mark.branch-highlight:hover {
   color: var(--ds-text);
   padding: 5px 14px;
   border-radius: var(--ds-radius);
-  border: var(--ds-line) solid var(--ds-border-strong);
-  background: var(--ds-surface);
+  border: var(--ds-line) solid transparent;
+  background: transparent;
   cursor: pointer;
-  box-shadow: var(--fn-press-shadow);
+  box-shadow: none;
   transition:
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
@@ -5542,7 +5678,7 @@ mark.branch-highlight:hover {
   border-color: var(--ds-border-strong);
   background: var(--ds-surface-hover);
   transform: translate(-1px, -1px);
-  box-shadow: var(--fn-press-shadow-hover);
+  box-shadow: var(--fn-press-shadow);
 }
 
 .fn-archive-btn:active:not(:disabled),
@@ -5555,6 +5691,8 @@ mark.branch-highlight:hover {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
+  border-color: transparent;
+  background: transparent;
 }
 
 .fn-context-mode {

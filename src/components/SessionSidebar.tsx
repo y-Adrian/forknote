@@ -93,6 +93,36 @@ function IconShare() {
   );
 }
 
+function IconMemoryShare({ shared }: { shared?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 3v6M8 7h8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <rect
+        x="5"
+        y="11"
+        width="14"
+        height="9"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        fill={shared ? "currentColor" : "none"}
+        fillOpacity={shared ? 0.15 : 0}
+      />
+      <path
+        d="M9 15h6M9 17.5h4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function IconTrash() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -199,6 +229,7 @@ export function SessionSidebar({
   const deleteSession = useAppStore((s) => s.deleteSession);
   const renameSession = useAppStore((s) => s.renameSession);
   const togglePinSession = useAppStore((s) => s.togglePinSession);
+  const setShareMemory = useAppStore((s) => s.setShareMemory);
   const { theme, toggleTheme } = useTheme();
 
   const [renamingId, setRenamingId] = useState<NodeId | null>(null);
@@ -246,6 +277,7 @@ export function SessionSidebar({
 
   const menuPinned =
     typeof menuSession?.pinnedAt === "number" && menuSession.pinnedAt > 0;
+  const menuShareMemory = menuSession?.shareMemory !== false;
 
   const closeMenu = () => {
     setMenuId(null);
@@ -423,6 +455,12 @@ export function SessionSidebar({
   const handlePin = () => {
     if (!menuSession) return;
     togglePinSession(menuSession.id);
+    closeMenu();
+  };
+
+  const handleToggleShareMemory = () => {
+    if (!menuSession) return;
+    setShareMemory(menuSession.id, menuSession.shareMemory === false);
     closeMenu();
   };
 
@@ -637,6 +675,14 @@ export function SessionSidebar({
                     onClick={handlePin}
                   >
                     {menuPinned ? t("sidebar.unpin") : t("sidebar.pin")}
+                  </MenuItem>
+                  <MenuItem
+                    icon={<IconMemoryShare shared={menuShareMemory} />}
+                    onClick={handleToggleShareMemory}
+                  >
+                    {menuShareMemory
+                      ? t("sidebar.isolateMemory")
+                      : t("sidebar.shareMemory")}
                   </MenuItem>
                   <MenuItem icon={<IconShare />} onClick={handleShare}>
                     {t("sidebar.share")}

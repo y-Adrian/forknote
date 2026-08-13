@@ -216,3 +216,205 @@ ${modeNote}`;
     })),
   ];
 }
+
+/** Prefer active archive, else the latest snapshot in the list. */
+export function resolveBaseArchive(
+  archives: ArchiveSnapshot[] | null | undefined,
+  activeArchiveId?: string | null,
+): ArchiveSnapshot | null {
+  const list = archives ?? [];
+  if (!list.length) return null;
+  if (activeArchiveId) {
+    const active = list.find((a) => a.id === activeArchiveId);
+    if (active) return active;
+  }
+  return list[list.length - 1] ?? null;
+}
+
+function branchTreeHasUpdatesAfter(
+  nodes: BranchNode[],
+  since: number,
+): boolean {
+  for (const node of nodes) {
+    if (node.createdAt > since) return true;
+    if (typeof node.adoptedAt === "number" && node.adoptedAt > since) {
+      return true;
+    }
+    for (const reply of node.replies ?? []) {
+      if (reply.createdAt > since) return true;
+    }
+    if (branchTreeHasUpdatesAfter(node.children, since)) return true;
+  }
+  return false;
+}
+
+function coveredMessages(
+  thread: ThreadRoot,
+  archive: ArchiveSnapshot,
+): ChatMessage[] {
+  const idx = thread.messages.findIndex((m) => m.id === archive.throughMessageId);
+  if (idx < 0) return thread.messages;
+  return thread.messages.slice(0, idx + 1);
+}
+
+/**
+ * True when there is new mainline chat and/or new interactions
+ * (feedback / clarifications / adopts) since the given archive.
+ */
+export function archiveHasNewMaterial(
+  thread: ThreadRoot,
+  archive: ArchiveSnapshot,
+  feedbackLog?: FeedbackEvent[] | null,
+): boolean {
+  if (messagesAfterArchive(thread, archive).length > 0) return true;
+
+  const since = archive.createdAt;
+  if ((feedbackLog ?? []).some((e) => e.at > since)) return true;
+
+  for (const msg of coveredMessages(thread, archive)) {
+    if (msg.role !== "assistant") continue;
+    if (branchTreeHasUpdatesAfter(msg.children, since)) return true;
+  }
+  return false;
+}
+
+function formatMessageBlocks(
+  messages: ChatMessage[],
+  startTurn = 0,
+): string[] {
+  const blocks: string[] = [];
+  let turn = startTurn;
+  for (const msg of messages) {
+    if (!msg.content.trim()) continue;
+    if (msg.role === "user") {
+      turn += 1;
+      blocks.push(`## 用户 · 第 ${turn} 轮\n${truncate(msg.content, MSG_MAX)}`);
+      continue;
+    }
+    const annotated = annotateContentWithVerdicts(
+      flattenAdoptedForPlaintext(msg.content),
+      msg.pointVerdicts,
+      msg.pointDoubts,
+      msg.pointAttributions,
+    );
+    blocks.push(
+      `## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${truncate(annotated, MSG_MAX)}`,
+    );
+    const clarifications: string[] = [];
+    flattenClarifications(msg.children, clarifications);
+    if (clarifications.length) {
+      blocks.push(`### 本轮澄清（含是否已收进主线）\n${clarifications.join("\n")}`);
+    }
+    const checkpoint = formatCheckpointForArchive(msg.content, msg.pointVerdicts);
+    if (checkpoint) blocks.push(checkpoint);
+  }
+  return blocks;
+}
+
+function collectNewClarificationsAfter(
+  nodes: BranchNode[],
+  since: number,
+  lines: string[],
+): void {
+  for (const node of nodes) {
+    const isNew =
+      node.createdAt > since ||
+      (typeof node.adoptedAt === "number" && node.adoptedAt > since) ||
+      (node.replies ?? []).some((r) => r.createdAt > since);
+    if (isNew) {
+      const answer = annotateContentWithVerdicts(
+        flattenAdoptedForPlaintext(node.assistantMessage),
+        node.pointVerdicts,
+        node.pointDoubts,
+        node.pointAttributions,
+      );
+      const adopted = Boolean(node.adoptedAt);
+      const body = adopted
+        ? truncate(
+            node.adoptedSummary?.trim() || answer,
+            CLARIFY_ADOPTED_MAX,
+          )
+        : truncate(answer, CLARIFY_MAX);
+      const flag = adopted ? "【已收进主线】" : "【未采纳进主线】";
+      const point =
+        node.anchor.pointIndex != null
+          ? ` · 分点【${node.anchor.pointIndex}】`
+          : "";
+      lines.push(
+        `- ${flag}${point} 澄清「${truncate(node.anchor.quotedText, QUOTE_MAX)}」→ ${body}`,
+      );
+    }
+    if (node.children.length) {
+      collectNewClarificationsAfter(node.children, since, lines);
+    }
+  }
+}
+
+/**
+ * Build LLM source for incremental archive: previous log as base + only
+ * new turns / clarifications / feedback since that snapshot.
+ */
+export function buildIncrementalArchiveSource(
+  previous: ArchiveSnapshot,
+  thread: ThreadRoot,
+  options?: BuildArchiveSourceOptions,
+): string {
+  const blocks: string[] = [
+    `# 上一版开发日志（底座）\n标题：${previous.title}\n\n${previous.content.trim()}`,
+  ];
+
+  const later = messagesAfterArchive(thread, previous);
+  if (later.length) {
+    blocks.push(
+      `# 归档之后的新对话（仅增量）\n${formatMessageBlocks(later).join("\n\n")}`,
+    );
+  }
+
+  const newClarifications: string[] = [];
+  for (const msg of coveredMessages(thread, previous)) {
+    if (msg.role !== "assistant") continue;
+    collectNewClarificationsAfter(
+      msg.children,
+      previous.createdAt,
+      newClarifications,
+    );
+  }
+  if (newClarifications.length) {
+    blocks.push(
+      `# 归档覆盖范围内的新澄清 / 采纳\n${newClarifications.join("\n")}`,
+    );
+  }
+
+  const freshEvents = (options?.feedbackLog ?? []).filter(
+    (e) => e.at > previous.createdAt,
+  );
+  const feedback = formatFeedbackLogSummary(freshEvents);
+  if (feedback) {
+    blocks.push(`# 自上一版以来的反馈\n${feedback}`);
+  }
+
+  return blocks.join("\n\n");
+}
+
+export const INCREMENTAL_ARCHIVE_SYSTEM = `${ARCHIVE_SYSTEM}
+
+增量归档补充规则：
+- 材料含「上一版开发日志（底座）」与「新交互」。请在保留底座中仍正确结论的前提下更新日志。
+- 重点融入新对话、新澄清、新反馈；不要无故重写无关历史，不要丢掉仍有效的实践要点。
+- 若新交互与底座冲突，以新交互为准，并简要标明变更。`;
+
+export function incrementalArchiveSystemPrompt(
+  locale: Locale = getLocale(),
+): string {
+  return withReplyLanguage(INCREMENTAL_ARCHIVE_SYSTEM, locale);
+}
+
+export function incrementalArchiveUserPrompt(
+  source: string,
+  locale: Locale = getLocale(),
+): string {
+  if (locale === "zh") {
+    return `请在上一版开发日志底座上做增量更新，整理成新一版开发日志草稿：\n\n${source}`;
+  }
+  return `Please produce an updated development-log draft by incrementally revising the previous log using the new material:\n\n${source}`;
+}

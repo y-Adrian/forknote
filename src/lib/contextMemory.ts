@@ -48,9 +48,35 @@ const CHUNK_MAX = 420;
 /** Keep memory injection lean — extra chunks dilute the user's latest goal. */
 const CHUNK_TOP_K = 3;
 
-export function resolveMemoryDir(settings: ApiSettings): string {
+export function resolveMemoryDir(
+  settings: ApiSettings,
+  session?: ChatSession | null,
+): string {
   const dir = (settings.memoryDir ?? "").trim() || DEFAULT_MEMORY_DIR;
-  return dir.replace(/^\/+|\/+$/g, "") || DEFAULT_MEMORY_DIR;
+  const base = dir.replace(/^\/+|\/+$/g, "") || DEFAULT_MEMORY_DIR;
+  if (!isSessionShareMemoryEnabled(session) && session?.id) {
+    const id =
+      String(session.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "note";
+    return `${base}/sessions/${id}`;
+  }
+  return base;
+}
+
+/** Default true — unset means share the project memory pack with other sessions. */
+export function isSessionShareMemoryEnabled(
+  session?: ChatSession | null,
+): boolean {
+  return session?.shareMemory !== false;
+}
+
+/** True when a bound project uses the shared (non-session) memory folder. */
+export function shouldUseSharedProjectMemory(
+  session?: ChatSession | null,
+  projectRoot?: string | null,
+): boolean {
+  return (
+    Boolean(projectRoot?.trim()) && isSessionShareMemoryEnabled(session)
+  );
 }
 
 export function isContextMemoryInjectEnabled(settings: ApiSettings): boolean {
@@ -166,7 +192,7 @@ export async function loadContextMemoryPack(options: {
   signal?: AbortSignal;
 }): Promise<ContextMemoryPack | null> {
   const { settings, session, projectRoot, sidecarUrl, signal } = options;
-  const dir = resolveMemoryDir(settings);
+  const dir = resolveMemoryDir(settings, session);
 
   if (projectRoot) {
     try {
@@ -229,12 +255,13 @@ export async function loadContextMemoryPack(options: {
 export async function saveContextMemoryPack(options: {
   pack: ContextMemoryPack;
   settings: ApiSettings;
+  session?: ChatSession | null;
   projectRoot?: string | null;
   sidecarUrl: string;
   signal?: AbortSignal;
 }): Promise<ContextMemoryPack> {
-  const { settings, projectRoot, sidecarUrl, signal } = options;
-  const dir = resolveMemoryDir(settings);
+  const { settings, session, projectRoot, sidecarUrl, signal } = options;
+  const dir = resolveMemoryDir(settings, session);
   const pack: ContextMemoryPack = {
     ...options.pack,
     updatedAt: Date.now(),
@@ -470,7 +497,7 @@ export async function appendCodingMemoryNote(options: {
   if (!note) {
     throw new Error("note is required");
   }
-  const dir = resolveMemoryDir(options.settings);
+  const dir = resolveMemoryDir(options.settings, options.session);
   const path = memoryPath(dir, CODING_MEMORY_FILE);
   const existing =
     (await loadContextMemoryPack(options)) ??
@@ -490,6 +517,7 @@ export async function appendCodingMemoryNote(options: {
   const saved = await saveContextMemoryPack({
     pack: { ...existing, coding },
     settings: options.settings,
+    session: options.session,
     projectRoot: options.projectRoot,
     sidecarUrl: options.sidecarUrl,
     signal: options.signal,

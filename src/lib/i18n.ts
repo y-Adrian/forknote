@@ -203,6 +203,11 @@ const en = {
   "memory.projectTitle": "Project memory pack",
   "memory.projectLeadBound": "Editing files under {dir}/ on the bound project (also mirrored on this note).",
   "memory.projectLeadLocal": "No project bound — editing the draft pack stored on this note.",
+  "memory.projectLeadIsolated":
+    "This session keeps memory private — files live under {dir}/ (not the shared pack).",
+  "memory.shareToggle": "Share memory with other sessions",
+  "memory.shareToggleHint":
+    "When off, this note uses its own memory folder under the project and does not read or write the shared pack.",
   "memory.projectSave": "Save pack",
   "memory.saveFailed": "Could not save memory pack.",
   "memory.sessionTitle": "Session memory",
@@ -363,6 +368,8 @@ const en = {
   "sidebar.rename": "Rename",
   "sidebar.pin": "Pin to top",
   "sidebar.unpin": "Unpin",
+  "sidebar.shareMemory": "Share memory with other sessions",
+  "sidebar.isolateMemory": "Keep memory private to this session",
   "sidebar.share": "Share",
   "sidebar.shareCopied": "Copied session to clipboard",
   "sidebar.shareFailed": "Could not copy to clipboard",
@@ -417,7 +424,7 @@ const en = {
   "main.untitled": "Untitled",
   "main.notesKicker": "",
   "main.forks": "{count} forks",
-  "main.forksTitle": "Open fork nodes from the graph on the right",
+  "main.forksTitle": "Open the fork history map",
   "main.thinking": "Thinking",
   "chat.copy": "Copy",
   "chat.copied": "Copied",
@@ -448,13 +455,16 @@ const en = {
   "main.archiveContext": "Archive log",
   "main.archiveContextTitle":
     "Show the archive document; follow-up chat uses it as the base",
+  "main.liveConversation": "Full conversation",
+  "main.liveConversationTitle":
+    "Leave archive mode and show the original full thread",
   "main.fullThread": "Evolution",
   "main.fullThreadTitle":
     "Show the clarification history; sends still use the archive log",
   "main.archiveBaseKicker": "Archive base",
   "main.archivesCount": "{count} archives",
-  "main.archivesViewTitle":
-    "Open archive panel to view or switch archives",
+  "main.archiveHistory": "Archive history",
+  "main.archivesViewTitle": "Switch among past archives",
   "main.archive": "Archive",
   "main.archiving": "Archiving…",
   "main.archiveTitle":
@@ -520,6 +530,15 @@ const en = {
     "Summarizing the main thread and point verdicts…",
   "archive.hintIdle":
     "Use an archive to continue, or switch back to the full thread",
+  "archive.hintUpToDate":
+    "Already archived — no new changes since this log. You can review it below.",
+  "archive.hintUpToDateShort": "up to date",
+  "archive.copyPath": "Copy path",
+  "archive.copyPathTitle": "Copy the archive file path",
+  "archive.pathNeedProject":
+    "Bind a local project to save this archive under .forknote/archives/",
+  "archive.pathPending":
+    "Will save under .forknote/archives/ on the next archive while a project is bound",
   "archive.past": "Past archives",
   "archive.activeContext": " · Active context",
   "archive.generatingAria": "Generating archive",
@@ -556,6 +575,12 @@ const en = {
   "fork.layer": "Layer {n}",
   "fork.closeAllAria": "Close all fork panels",
   "fork.railAria": "Fork structure",
+  "fork.mapTitle": "Fork history map",
+  "fork.mapLead":
+    "Main answers are the trunk; forks branch off to the side. Click a node to open it.",
+  "fork.mapAria": "Conversation fork history map",
+  "fork.mapEmpty": "No main answers to map yet.",
+  "fork.mapMainStep": "Answer {n}",
   "fork.followUpPlaceholder": "Follow-up stays in this window…",
   "fork.followUpAria": "Follow-up",
   "fork.followUpHint": "Same window · Enter to send · Shift+Enter for a new line",
@@ -834,6 +859,11 @@ const zh: Record<MessageKey, string> = {
   "memory.projectTitle": "项目记忆包",
   "memory.projectLeadBound": "编辑已绑定项目下 {dir}/ 中的文件（同时镜像到本笔记）。",
   "memory.projectLeadLocal": "未绑定项目——编辑保存在本笔记的草稿记忆包。",
+  "memory.projectLeadIsolated":
+    "本会话记忆已隔离——文件写在 {dir}/，不会读写共享记忆包。",
+  "memory.shareToggle": "与其他会话共享记忆",
+  "memory.shareToggleHint":
+    "关闭后，本笔记使用项目下独立的记忆目录，不与其他会话互通。",
   "memory.projectSave": "保存记忆包",
   "memory.saveFailed": "无法保存记忆包。",
   "memory.sessionTitle": "会话记忆",
@@ -990,6 +1020,8 @@ const zh: Record<MessageKey, string> = {
   "sidebar.rename": "重命名",
   "sidebar.pin": "置顶",
   "sidebar.unpin": "取消置顶",
+  "sidebar.shareMemory": "与其他会话共享记忆",
+  "sidebar.isolateMemory": "仅本会话使用记忆",
   "sidebar.share": "分享",
   "sidebar.shareCopied": "已复制到剪贴板",
   "sidebar.shareFailed": "无法复制到剪贴板",
@@ -1043,7 +1075,7 @@ const zh: Record<MessageKey, string> = {
   "main.untitled": "未命名",
   "main.notesKicker": "",
   "main.forks": "{count} 个分支",
-  "main.forksTitle": "从右侧图谱打开分支节点",
+  "main.forksTitle": "打开分支历史路线图",
   "main.thinking": "思考中",
   "chat.copy": "复制",
   "chat.copied": "已复制",
@@ -1072,11 +1104,14 @@ const zh: Record<MessageKey, string> = {
   "main.switchContextAria": "切换先前会话的显示方式",
   "main.archiveContext": "归档内容",
   "main.archiveContextTitle": "显示归档正文，后续对话以它为底座",
+  "main.liveConversation": "原始对话",
+  "main.liveConversationTitle": "退出归档模式，回到完整原始对话",
   "main.fullThread": "演进记录",
   "main.fullThreadTitle": "显示澄清演进；发送仍以归档日志为底座",
   "main.archiveBaseKicker": "归档底座",
   "main.archivesCount": "{count} 篇归档",
-  "main.archivesViewTitle": "打开归档面板以查看或切换归档",
+  "main.archiveHistory": "归档历史",
+  "main.archivesViewTitle": "切换历史归档",
   "main.archive": "归档",
   "main.archiving": "归档中…",
   "main.archiveTitle":
@@ -1139,6 +1174,14 @@ const zh: Record<MessageKey, string> = {
   "archive.title": "开发日志归档",
   "archive.hintLoading": "正在归纳主线与分点裁决…",
   "archive.hintIdle": "可用归档继续，或切回完整线程",
+  "archive.hintUpToDate": "已归档，且自上一版以来没有新变化。可在下方查看当前归档。",
+  "archive.hintUpToDateShort": "已是最新",
+  "archive.copyPath": "复制路径",
+  "archive.copyPathTitle": "复制归档文件路径",
+  "archive.pathNeedProject":
+    "绑定本地项目后，归档会写入 .forknote/archives/",
+  "archive.pathPending":
+    "已绑定项目时，下次归档会写入 .forknote/archives/",
   "archive.past": "历史归档",
   "archive.activeContext": " · 当前上下文",
   "archive.generatingAria": "正在生成归档",
@@ -1173,6 +1216,12 @@ const zh: Record<MessageKey, string> = {
   "fork.layer": "第{n}层",
   "fork.closeAllAria": "关闭全部分支浮层",
   "fork.railAria": "分支结构",
+  "fork.mapTitle": "分支历史路线图",
+  "fork.mapLead":
+    "主线回答是干线，澄清分支向旁侧延伸。点击节点即可查看对应内容。",
+  "fork.mapAria": "会话分支历史路线图",
+  "fork.mapEmpty": "还没有可绘制的主线回答。",
+  "fork.mapMainStep": "回答 {n}",
   "fork.followUpPlaceholder": "在此窗口继续追问…",
   "fork.followUpAria": "追问",
   "fork.followUpHint": "同窗口 · Enter 发送 · Shift+Enter 换行",

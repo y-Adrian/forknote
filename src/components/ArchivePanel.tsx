@@ -14,6 +14,7 @@ export function ArchivePanel() {
       s.loadingArchiveSessionId === s.activeSessionId,
   );
   const archiveDraft = useAppStore((s) => s.archiveDraft);
+  const archiveAlreadyCurrent = useAppStore((s) => s.archiveAlreadyCurrent);
   const viewingArchiveId = useAppStore((s) => s.viewingArchiveId);
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
@@ -68,7 +69,11 @@ export function ArchivePanel() {
           <div>
             <h2 id="archive-panel-title">{t("archive.title")}</h2>
             <p className="fn-archive-modal-hint">
-              {loadingArchive ? t("archive.hintLoading") : t("archive.hintIdle")}
+              {loadingArchive
+                ? t("archive.hintLoading")
+                : archiveAlreadyCurrent
+                  ? t("archive.hintUpToDate")
+                  : t("archive.hintIdle")}
             </p>
           </div>
           <button

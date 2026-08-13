@@ -1,5 +1,6 @@
 import { getLocale, t, type Locale } from "./i18n";
 import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
+import type { ChatSession } from "../types";
 import {
   applyPatch,
   deleteFile,
@@ -3584,7 +3585,11 @@ export async function executeToolCall(
   signal?: AbortSignal,
   projectRoot?: string | null,
   locale: Locale = getLocale(),
-  options?: { allowTerminal?: boolean; allowOutsideProject?: boolean },
+  options?: {
+    allowTerminal?: boolean;
+    allowOutsideProject?: boolean;
+    session?: ChatSession | null;
+  },
 ): Promise<{
   ok: boolean;
   resultText: string;
@@ -3593,6 +3598,7 @@ export async function executeToolCall(
 }> {
   const allowTerminal = options?.allowTerminal !== false;
   const allowOutsideProject = Boolean(options?.allowOutsideProject);
+  const toolSession = options?.session ?? null;
   try {
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
@@ -4131,6 +4137,7 @@ export async function executeToolCall(
           const { path, coding } = await appendCodingMemoryNote({
             note,
             settings,
+            session: toolSession,
             projectRoot,
             sidecarUrl,
             signal,
@@ -4147,12 +4154,13 @@ export async function executeToolCall(
         }
         const pack = await loadContextMemoryPack({
           settings,
+          session: toolSession,
           projectRoot,
           sidecarUrl,
           signal,
         });
         const body = pack?.coding?.trim() || "(empty CODING.md)";
-        const dir = resolveMemoryDir(settings);
+        const dir = resolveMemoryDir(settings, toolSession);
         return {
           ok: true,
           resultText: `${dir}/${CODING_MEMORY_FILE}\n\n${body}`,

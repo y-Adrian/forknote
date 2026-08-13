@@ -558,6 +558,7 @@ export async function runAgentTurn(
           executeToolCall(shellCall, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
+            session,
           }),
           signal,
         );
@@ -600,6 +601,7 @@ export async function runAgentTurn(
           executeToolCall(listCall, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
+            session,
           }),
           signal,
         );
@@ -634,6 +636,7 @@ export async function runAgentTurn(
             executeToolCall(step, sidecarUrl, signal, projectRoot, locale, {
               allowTerminal,
               allowOutsideProject,
+              session,
             }),
             signal,
           );
@@ -1219,6 +1222,7 @@ export async function runAgentTurn(
           executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
+            session,
           }),
           signal,
         );
@@ -1367,6 +1371,7 @@ export async function runAgentTurn(
         executeToolCall(synth, sidecarUrl, signal, projectRoot, locale, {
           allowTerminal,
           allowOutsideProject,
+          session,
         }),
         signal,
       );

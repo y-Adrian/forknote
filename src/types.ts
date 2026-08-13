@@ -136,8 +136,9 @@ export interface ChatSession {
   /** 用户手动重命名后为 true，后续消息不再自动覆盖标题 */
   titleLocked?: boolean;
   /**
-   * When set, session is pinned and sorts above unpinned notes.
+   * When set, session is pinned and appears in the Pinned group above date groups.
    * Timestamp of when it was pinned (ms); clear / omit to unpin.
+   * Order within the sidebar is still by createdAt (not by click / updatedAt).
    */
   pinnedAt?: number | null;
   thread: ThreadRoot | null;
@@ -165,6 +166,13 @@ export interface ChatSession {
    * write target is available. Project-bound packs live on disk under memoryDir.
    */
   contextMemory?: ContextMemoryPack | null;
+  /**
+   * When true (default), this session reads/writes the shared project memory
+   * pack (`.forknote/memory`). When false, Compress / inject / CODING notes
+   * use a private folder under `.forknote/memory/sessions/<id>/` instead
+   * (or the note-local draft when no project is bound).
+   */
+  shareMemory?: boolean;
   /**
    * Per-note session memory layer (short summary / working notes).
    * Separately injectable from the project pack and user preferences.
@@ -223,6 +231,10 @@ export interface ArchiveSnapshot {
   content: string;
   /** 归档所覆盖到的最后一条主线消息 id */
   throughMessageId: NodeId;
+  /** Project-relative markdown path when written under a bound project */
+  filePath?: string | null;
+  /** Where the markdown copy lives (session always keeps the snapshot itself) */
+  storage?: "project" | "local";
 }
 
 export type ContextMode = "live" | "archive";
