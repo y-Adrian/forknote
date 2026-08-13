@@ -186,13 +186,20 @@ function testWhenToSearchPromptRules() {
   assert.match(en, /no separate classifier/i);
   assert.match(en, /Reflect/);
 
+  assert.match(zh, /!\[描述\]\(url\)/);
+  assert.match(zh, /无法显示图片/);
+  assert.match(en, /!\[description\]\(url\)/);
+  assert.match(en, /cannot show images/i);
+
   const toolsZh = buildNetworkToolsSystem("zh");
   assert.match(toolsZh, /是否搜索/);
   assert.match(toolsZh, /搜几次/);
   assert.match(toolsZh, /例：/);
+  assert.match(toolsZh, /!\[描述\]\(url\)/);
   const toolsEn = buildNetworkToolsSystem("en");
   assert.match(toolsEn, /Whether to search/i);
   assert.match(toolsEn, /How many/i);
+  assert.match(toolsEn, /!\[description\]\(url\)/);
   console.log("ok when-to-search prompt rules");
 }
 

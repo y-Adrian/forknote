@@ -1645,10 +1645,12 @@ body {
   flex-shrink: 0;
 }
 
-.answer-body .fn-md-image {
+.answer-body .fn-md-image,
+.fn-markdown-mount .fn-md-image,
+.markdown-body .fn-md-image {
   display: flex;
   flex-direction: column;
-  max-width: 100%;
+  max-width: min(100%, 720px);
   margin: 16px 0;
   border-radius: var(--ds-radius);
   background: var(--ds-code-bg);
@@ -1657,19 +1659,25 @@ body {
   overflow: hidden;
 }
 
-.answer-body .fn-md-image-frame {
+.answer-body .fn-md-image-frame,
+.fn-markdown-mount .fn-md-image-frame,
+.markdown-body .fn-md-image-frame {
   padding: 12px 14px 16px;
   overflow: auto;
 }
 
-.answer-body .fn-md-image-frame img {
+.answer-body .fn-md-image-frame img,
+.fn-markdown-mount .fn-md-image-frame img,
+.markdown-body .fn-md-image-frame img {
   max-width: 100%;
   height: auto;
   display: block;
   border-radius: calc(var(--ds-radius) - 2px);
 }
 
-.answer-body .fn-md-image-failed {
+.answer-body .fn-md-image-failed,
+.fn-markdown-mount .fn-md-image-failed,
+.markdown-body .fn-md-image-failed {
   margin: 0;
   padding: 12px 14px 16px;
   color: var(--ds-muted);

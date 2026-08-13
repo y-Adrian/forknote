@@ -786,6 +786,7 @@ export function buildNetworkToolsSystem(locale: Locale): string {
       "【联网工具】可用 web_search（检索）与 web_fetch（抓取公开 URL）。本地私有地址不可访问；禁止编造未返回的网页内容。",
       "是否搜索：由你按任务判断（无独立分类器）。需要时效/公开事实、版本说明、文档原文、新闻，或用户给出 URL → 调用工具；纯概念/推理/写作/闲聊/绘图或本地已够用 → 直接作答。",
       "搜几次：随复杂度调整。简单事实通常一次检索即可作答；对比、多源或结果不够时，经 Reflect 换查询/角度再搜或 web_fetch，不要固定「只搜一次」。",
+      "作答时：若结果含可直接打开的图片 URL，用 `![描述](url)` 内联显示（聊天支持 Markdown 图片）；不要只贴裸链接，也不要声称无法显示图片。",
       "例：「相对论是什么」→ 不搜。「Rust 1.xx 发布了什么」→ web_search。「上一轮 hits 太泛」→ 换更具体 query 再搜。",
     ].join("\n");
   }
@@ -793,6 +794,7 @@ export function buildNetworkToolsSystem(locale: Locale): string {
     "[Network tools] web_search and web_fetch for public URLs. Private/local hosts are blocked; do not invent page contents.",
     "Whether to search: you decide from the task (no separate classifier). Live/public facts, release notes, docs, news, or a pasted URL → use tools; pure concepts/reasoning/writing/chat/diagrams or local knowledge suffices → answer directly.",
     "How many: scale with complexity. One solid search often enough for simple facts; for compare/multi-source or thin hits, Reflect and search again with a different query/angle or web_fetch — not a fixed one-and-done.",
+    "When answering: if results include a direct image URL, embed with `![description](url)` (chat renders Markdown images). Do not paste only a bare link or claim images cannot display.",
     'Ex: "What is relativity?" → no search. "What shipped in Rust 1.xx?" → web_search. "Hits too vague" → new, more specific query.',
   ].join("\n");
 }
@@ -1626,6 +1628,7 @@ export function buildCodingToolsSystem(
 - 提交 → git_commit（必须 message + paths，禁止 add -A / push）
 ${terminalBlock}
 只把内容写在 Markdown 里不会写入磁盘。
+若回答里需要展示远程图片，用 \`![描述](https://…)\`（聊天会内联渲染）；不要声称无法显示图片。
 路径一律用相对项目根的相对路径，不要用 /Users/... 这类绝对路径（run_terminal 的 command 内除外）。
 write_file 的 content 必须是完整文件内容；search_replace 的 old_string 必须与文件中原文完全一致。
 
