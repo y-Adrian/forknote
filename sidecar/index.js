@@ -23,6 +23,11 @@ import {
   chunkSource,
   MAX_CHUNKS,
 } from "../shared/codeSearch.mjs";
+import {
+  handleNetFetch,
+  handleNetSearch,
+  handleNetStatus,
+} from "./network.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -2016,6 +2021,17 @@ async function handler(req, res) {
       const result = await handleRun(body, res);
       if (res.writableEnded || res.destroyed) return;
       return sendJson(res, 200, result);
+    }
+    if (req.method === "GET" && pathname === "/net/status") {
+      return sendJson(res, 200, await handleNetStatus());
+    }
+    if (req.method === "POST" && pathname === "/net/fetch") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleNetFetch(body));
+    }
+    if (req.method === "POST" && pathname === "/net/search") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleNetSearch(body));
     }
     if (req.method === "GET" && pathname === "/health") {
       return sendJson(res, 200, { ok: true, root: projectRoot });

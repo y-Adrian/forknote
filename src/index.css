@@ -4052,6 +4052,63 @@ mark.branch-highlight:hover {
   flex: 1;
 }
 
+.fn-network-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 8px;
+  margin: 0;
+  border: var(--ds-line) solid var(--ds-border);
+  border-radius: 8px;
+  background: var(--ds-surface);
+  color: var(--ds-muted);
+  font: inherit;
+  font-size: var(--fn-text-ui-xs);
+  cursor: pointer;
+  box-shadow: var(--fn-press-shadow);
+  transition:
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.fn-network-toggle:hover:not(:disabled) {
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text);
+  background: var(--ds-surface-hover);
+  transform: translate(-1px, -1px);
+}
+
+.fn-network-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fn-network-toggle.is-on {
+  color: var(--ds-text);
+  border-color: var(--ds-border-strong);
+  background: color-mix(in srgb, var(--ds-accent, #5b8def) 14%, var(--ds-surface));
+}
+
+.fn-network-toggle.is-on.is-offline {
+  color: var(--ds-warning, #c9872a);
+  border-color: color-mix(in srgb, var(--ds-warning, #c9872a) 45%, var(--ds-border));
+  background: color-mix(in srgb, var(--ds-warning, #c9872a) 10%, var(--ds-surface));
+}
+
+.fn-network-toggle-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.fn-network-toggle-label {
+  white-space: nowrap;
+}
+
 .fn-session-api-btn {
   display: inline-flex;
   align-items: center;

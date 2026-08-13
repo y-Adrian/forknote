@@ -30,6 +30,7 @@ import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
 import { SessionApiSettings } from "./SessionApiSettings";
+import { NetworkAccessToggle } from "./NetworkAccessToggle";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
@@ -689,7 +690,12 @@ export function MainPanel({
             placeholder={
               projectRoot ? t("main.placeholderProject") : undefined
             }
-            leading={<SessionApiSettings disabled={composerBusy} />}
+            leading={
+              <>
+                <NetworkAccessToggle disabled={composerBusy} />
+                <SessionApiSettings disabled={composerBusy} />
+              </>
+            }
             projectRoot={projectRoot}
             sidecarUrl={sidecarUrl}
             includedFiles={pendingFileIncludes}
@@ -1179,7 +1185,12 @@ export function MainPanel({
               onStop={handleStop}
               loading={composerBusy}
               compact
-              leading={<SessionApiSettings disabled={composerBusy} />}
+              leading={
+              <>
+                <NetworkAccessToggle disabled={composerBusy} />
+                <SessionApiSettings disabled={composerBusy} />
+              </>
+            }
               projectRoot={projectRoot}
               sidecarUrl={sidecarUrl}
               includedFiles={pendingFileIncludes}

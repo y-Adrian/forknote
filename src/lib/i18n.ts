@@ -509,6 +509,17 @@ const en = {
   "composer.modelTitle": "Model for this note (overrides Settings default)",
   "composer.modelAria": "Model for this note",
 
+  "network.toggleOff": "Network",
+  "network.toggleOn": "Network",
+  "network.toggleOffline": "Offline",
+  "network.toggleAria": "Toggle network access for web tools",
+  "network.toggleTitleOff":
+    "Network off — agent will not search or fetch the web",
+  "network.toggleTitleOn":
+    "Network on — agent may use web_search / web_fetch when online",
+  "network.toggleTitleOffline":
+    "Network enabled but this device is offline",
+
   "sessionApi.button": "API",
   "sessionApi.buttonAria": "API settings for this note",
   "sessionApi.buttonTitleDefault":
@@ -1159,6 +1170,14 @@ const zh: Record<MessageKey, string> = {
   "composer.modelPlaceholder": "模型 ID",
   "composer.modelTitle": "本笔记使用的模型（覆盖设置中的默认）",
   "composer.modelAria": "本笔记模型",
+
+  "network.toggleOff": "联网",
+  "network.toggleOn": "联网",
+  "network.toggleOffline": "离线",
+  "network.toggleAria": "开关联网工具（网页搜索/抓取）",
+  "network.toggleTitleOff": "联网关闭 — Agent 不会搜索或抓取网页",
+  "network.toggleTitleOn": "联网已开 — 在线时可使用 web_search / web_fetch",
+  "network.toggleTitleOffline": "已开联网但当前设备离线",
 
   "sessionApi.button": "API",
   "sessionApi.buttonAria": "本笔记的 API 设置",
