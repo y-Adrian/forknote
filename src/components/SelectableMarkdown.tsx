@@ -42,7 +42,13 @@ interface Props {
   content: string;
   branches?: BranchNode[];
   onAsk: (anchor: Anchor, question: string) => Promise<void | string>;
+  /** Disables selection toolbar / ask while a turn is in flight. */
   loading?: boolean;
+  /**
+   * Content is actively streaming into this body. Defaults to `loading` for
+   * float panels that only pass loading for the active reply.
+   */
+  streaming?: boolean;
   disabled?: boolean;
   /** 在悬浮窗内使用 fixed 定位工具栏 */
   fixedToolbar?: boolean;
@@ -72,6 +78,7 @@ export function SelectableMarkdown({
   branches = [],
   onAsk,
   loading = false,
+  streaming,
   disabled = false,
   fixedToolbar: _fixedToolbar = false,
   overlayZBase,
@@ -84,6 +91,7 @@ export function SelectableMarkdown({
   pointDoubts,
   pointAttributions,
 }: Props) {
+  const contentStreaming = streaming ?? loading;
   const setPointVerdict = useAppStore((s) => s.setPointVerdict);
   const setPointDoubt = useAppStore((s) => s.setPointDoubt);
   const setPointAttribution = useAppStore((s) => s.setPointAttribution);
@@ -106,13 +114,15 @@ export function SelectableMarkdown({
     () => countRecentRejectStreak(feedbackLog),
     [feedbackLog],
   );
-  /** Remount when list↔prose structure flips so react-markdown doesn't reconcile mutated trees. */
+  /** Remount when list↔prose structure flips so react-markdown doesn't reconcile mutated trees.
+   * While streaming, keep a stable key so flat→points mid-reply does not collapse layout / yank scroll. */
   const pointStructureKey = useMemo(() => {
+    if (contentStreaming) return "stream";
     const parsed = parseAnswerPoints(content);
     return parsed.points.length < 2
       ? "flat"
       : `pts-${parsed.points.length}-${parsed.points.map((p) => p.index).join(".")}`;
-  }, [content]);
+  }, [content, contentStreaming]);
   const stackTopZ = useAppStore((s) =>
     s.branchFloatStack.length > 0
       ? Math.max(...s.branchFloatStack.map((e) => e.zIndex))
@@ -327,10 +337,10 @@ export function SelectableMarkdown({
             onClarifyPoint={(idx) => openPointClarify(idx)}
             onIntegrateProgress={() => void archiveCurrent()}
             integrating={integrating}
-            streaming={loading}
+            streaming={contentStreaming}
           />
         ) : (
-          <MarkdownBody content={content} streaming={loading} />
+          <MarkdownBody content={content} streaming={contentStreaming} />
         )}
       </div>
 

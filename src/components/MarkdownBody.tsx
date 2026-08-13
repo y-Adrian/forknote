@@ -155,9 +155,9 @@ function MarkdownImage({
 }
 
 /**
- * Prefer remounting the whole markdown tree when content changes during an
- * agent turn — except while `streaming`, where remounting every token breaks
- * Mermaid (and similar) stateful fences.
+ * Markdown updates in place. While `streaming`, diagram fences defer render
+ * (see DiagramFence) so we must not remount on every token — and we also avoid
+ * remounting when streaming ends, which used to collapse layout and yank chat scroll.
  */
 export function MarkdownBody({
   content,
@@ -231,7 +231,7 @@ export function MarkdownBody({
   };
 
   return (
-    <div className="fn-markdown-mount" key={streaming ? "streaming" : markdown}>
+    <div className="fn-markdown-mount">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {markdown}
       </ReactMarkdown>

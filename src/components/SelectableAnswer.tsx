@@ -22,7 +22,13 @@ interface Props {
     anchor: Anchor,
     question: string,
   ) => Promise<NodeId | void>;
+  /** Disables selection / ask while a turn is in flight. */
   branchLoading: boolean;
+  /**
+   * True only for the message whose content is actively streaming.
+   * Must not follow unrelated branch loads — that remounted every answer.
+   */
+  contentStreaming?: boolean;
   activeBranchId?: NodeId | null;
   onToggleBranch?: (branchId: NodeId | null) => void;
   compact?: boolean;
@@ -38,6 +44,7 @@ export function SelectableAnswer({
   branches = [],
   onAskBranch,
   branchLoading,
+  contentStreaming = false,
   activeBranchId: _activeBranchId = null,
   onToggleBranch = () => {},
   compact = false,
@@ -73,6 +80,7 @@ export function SelectableAnswer({
         content={content}
         branches={branches}
         loading={branchLoading}
+        streaming={contentStreaming}
         compact={compact}
         verdictTargetId={parentId}
         pointVerdicts={pointVerdicts}
