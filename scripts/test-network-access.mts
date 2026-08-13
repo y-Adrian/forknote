@@ -13,6 +13,8 @@ import {
   resolveAgentAllowNetwork,
   estimateWebTaskComplexity,
   resolveWebToolRoundBudget,
+  WEB_TOOL_ROUND_BUDGET_SIMPLE,
+  WEB_TOOL_ROUND_BUDGET_MULTI,
 } from "../src/lib/networkAccess.ts";
 import {
   NETWORK_OPENAI_TOOLS,
@@ -199,9 +201,14 @@ function testWebComplexityBudget() {
     estimateWebTaskComplexity("对比 React 与 Vue 2024 生态并列出多方来源"),
     "multi",
   );
-  assert.equal(resolveWebToolRoundBudget("simple", 12), 3);
-  assert.equal(resolveWebToolRoundBudget("multi", 12), 6);
+  assert.equal(WEB_TOOL_ROUND_BUDGET_SIMPLE, 8);
+  assert.equal(WEB_TOOL_ROUND_BUDGET_MULTI, 16);
+  assert.equal(resolveWebToolRoundBudget("simple", 50), WEB_TOOL_ROUND_BUDGET_SIMPLE);
+  assert.equal(resolveWebToolRoundBudget("multi", 50), WEB_TOOL_ROUND_BUDGET_MULTI);
+  assert.equal(resolveWebToolRoundBudget("simple", 12), WEB_TOOL_ROUND_BUDGET_SIMPLE);
+  assert.equal(resolveWebToolRoundBudget("multi", 12), 12);
   assert.equal(resolveWebToolRoundBudget("multi", 2), 2);
+  assert.equal(resolveWebToolRoundBudget("simple", 4), 4);
   console.log("ok web complexity budget");
 }
 

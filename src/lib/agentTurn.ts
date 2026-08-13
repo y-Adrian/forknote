@@ -1528,7 +1528,13 @@ export async function runAgentTurn(
           visibleContent = (visibleContent || cleanedRound) + failNote;
           patchAssistantContent(visibleContent.trim());
         } else {
-          const note = `\n\n(Reached the tool-round limit (${agentMaxRounds}). Continue from the results so far, or send another message.)`;
+          const note =
+            "\n\n" +
+            t(
+              "agent.toolRoundLimit",
+              { rounds: String(agentMaxRounds) },
+              locale,
+            );
           visibleContent = (visibleContent || cleanedRound) + note;
           patchAssistantContent(visibleContent.trim());
         }

@@ -124,12 +124,23 @@ export function estimateWebTaskComplexity(userText: string): WebTaskComplexity {
   return t.length >= 120 ? "multi" : "simple";
 }
 
+/**
+ * Soft ceilings for network-only turns (web_search / web_fetch loops).
+ * Always min'd with Settings → Project `agentMaxRounds` (never raises above it).
+ * 3 was too tight for search → fetch → Reflect → answer; keep a usable floor.
+ */
+export const WEB_TOOL_ROUND_BUDGET_SIMPLE = 8;
+export const WEB_TOOL_ROUND_BUDGET_MULTI = 16;
+
 /** Soft cap for web tool batches; never raises above agentMaxRounds. */
 export function resolveWebToolRoundBudget(
   complexity: WebTaskComplexity,
   agentMaxRounds: number,
 ): number {
-  const soft = complexity === "simple" ? 3 : 6;
+  const soft =
+    complexity === "simple"
+      ? WEB_TOOL_ROUND_BUDGET_SIMPLE
+      : WEB_TOOL_ROUND_BUDGET_MULTI;
   return Math.max(1, Math.min(agentMaxRounds, soft));
 }
 
