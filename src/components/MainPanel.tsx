@@ -420,7 +420,9 @@ export function MainPanel({
           />
         ) : null}
         <div className="fn-chat-header-main">
-          <span className="fn-chat-kicker">{t("main.notesKicker")}</span>
+          {t("main.notesKicker") ? (
+            <span className="fn-chat-kicker">{t("main.notesKicker")}</span>
+          ) : null}
           <h1 className="fn-chat-title" title={title}>
             {title}
           </h1>
