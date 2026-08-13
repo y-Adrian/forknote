@@ -10,6 +10,31 @@ const MAX_FETCH_BYTES = 400 * 1024;
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_SEARCH_RESULTS = 8;
 
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  throw Object.assign(new Error("Request aborted"), {
+    name: "AbortError",
+    code: "ABORT_ERR",
+  });
+}
+
+function createTimedController(signal, timeoutMs) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    cleanup() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
 /**
  * @param {string} hostname
  */
@@ -150,19 +175,20 @@ export function htmlToText(html) {
 /**
  * @param {unknown} body
  */
-export async function handleNetFetch(body) {
+export async function handleNetFetch(body, signal) {
+  throwIfAborted(signal);
   const urlRaw =
     body && typeof body === "object" && "url" in body
       ? String(/** @type {{ url?: unknown }} */ (body).url ?? "")
       : "";
   const parsed = await assertPublicHttpUrl(urlRaw);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  throwIfAborted(signal);
+  const operation = createTimedController(signal, FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(parsed.toString(), {
       method: "GET",
       redirect: "follow",
-      signal: controller.signal,
+      signal: operation.signal,
       headers: {
         "User-Agent": "ForkNote-sidecar/1.0 (+local agent; web_fetch)",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
@@ -171,9 +197,11 @@ export async function handleNetFetch(body) {
     // Re-check final URL after redirects
     const finalUrl = res.url || parsed.toString();
     await assertPublicHttpUrl(finalUrl);
+    throwIfAborted(signal);
 
     const contentType = res.headers.get("content-type") || "";
     const buf = Buffer.from(await res.arrayBuffer());
+    throwIfAborted(signal);
     const truncated = buf.length > MAX_FETCH_BYTES;
     const slice = truncated ? buf.subarray(0, MAX_FETCH_BYTES) : buf;
     let text;
@@ -193,7 +221,7 @@ export async function handleNetFetch(body) {
       text: text.slice(0, MAX_FETCH_BYTES),
     };
   } finally {
-    clearTimeout(timer);
+    operation.cleanup();
   }
 }
 
@@ -201,7 +229,8 @@ export async function handleNetFetch(body) {
  * Lightweight search via DuckDuckGo HTML (no API key).
  * @param {unknown} body
  */
-export async function handleNetSearch(body) {
+export async function handleNetSearch(body, signal) {
+  throwIfAborted(signal);
   const query =
     body && typeof body === "object" && "query" in body
       ? String(/** @type {{ query?: unknown }} */ (body).query ?? "").trim()
@@ -211,13 +240,13 @@ export async function handleNetSearch(body) {
 
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   await assertPublicHttpUrl(searchUrl);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  throwIfAborted(signal);
+  const operation = createTimedController(signal, FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(searchUrl, {
       method: "GET",
       redirect: "follow",
-      signal: controller.signal,
+      signal: operation.signal,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (compatible; ForkNote-sidecar/1.0; +local agent web_search)",
@@ -228,12 +257,14 @@ export async function handleNetSearch(body) {
       throw new Error(`Search upstream HTTP ${res.status}`);
     }
     const html = await res.text();
+    throwIfAborted(signal);
     /** @type {Array<{ title: string, url: string, snippet: string }>} */
     const results = [];
     const blockRe =
       /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|td|div)>)?/gi;
     let match;
     while ((match = blockRe.exec(html)) && results.length < MAX_SEARCH_RESULTS) {
+      throwIfAborted(signal);
       let href = match[1] || "";
       // DDG sometimes wraps as //duckduckgo.com/l/?uddg=<encoded>
       try {
@@ -262,6 +293,7 @@ export async function handleNetSearch(body) {
       const loose =
         /<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
       while ((match = loose.exec(html)) && results.length < MAX_SEARCH_RESULTS) {
+        throwIfAborted(signal);
         const href = match[1] || "";
         if (/duckduckgo\.com/i.test(href)) continue;
         const title = htmlToText(match[2] || "").slice(0, 200);
@@ -277,7 +309,7 @@ export async function handleNetSearch(body) {
 
     return { ok: true, query, results };
   } finally {
-    clearTimeout(timer);
+    operation.cleanup();
   }
 }
 
@@ -298,14 +330,14 @@ export const STATUS_PROBE_URLS = [
  * Cheap reachability probe. Soft-fail: never throws; DNS/SSRF quirks must not
  * hard-fail the Network toggle or spam chat.
  */
-export async function handleNetStatus() {
+export async function handleNetStatus(signal) {
   for (const url of STATUS_PROBE_URLS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3_000);
+    throwIfAborted(signal);
+    const operation = createTimedController(signal, 3_000);
     try {
       const res = await fetch(url, {
         method: "GET",
-        signal: controller.signal,
+        signal: operation.signal,
         redirect: "manual",
       });
       // Any HTTP response means the stack can reach the public net (or a proxy).
@@ -317,10 +349,11 @@ export async function handleNetStatus() {
           via: url,
         };
       }
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) throw error;
       // try next endpoint
     } finally {
-      clearTimeout(timer);
+      operation.cleanup();
     }
   }
   return { online: false, probed: true, status: 0 };
