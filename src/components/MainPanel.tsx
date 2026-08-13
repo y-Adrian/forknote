@@ -37,6 +37,7 @@ import { SelectableAnswer } from "./SelectableAnswer";
 import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { LinePuppyBubble } from "./LinePuppyBubble";
 
 function SourceBody({ content }: { content: string }) {
   return (
@@ -930,9 +931,9 @@ export function MainPanel({
                     data-msg-id={msg.id}
                     className="fn-msg fn-msg-user"
                   >
-                    <div className="ds-bubble ds-bubble-user">
+                    <LinePuppyBubble>
                       <p>{msg.content}</p>
-                    </div>
+                    </LinePuppyBubble>
                     <MessageActions
                       text={msg.content}
                       align="end"

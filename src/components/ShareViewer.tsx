@@ -6,6 +6,7 @@ import {
   type SharePayload,
 } from "../lib/sessionShare";
 import { MarkdownBody } from "./MarkdownBody";
+import { LinePuppyBubble } from "./LinePuppyBubble";
 interface Props {
   token: string;
   onExit: () => void;
@@ -101,9 +102,9 @@ export function ShareViewer({ token, onExit }: Props) {
                     : t("share.roleAssistant")}
                 </p>
                 {msg.role === "user" ? (
-                  <div className="ds-bubble ds-bubble-user">
+                  <LinePuppyBubble>
                     <p>{msg.content}</p>
-                  </div>
+                  </LinePuppyBubble>
                 ) : (
                   <div className="ds-bubble ds-bubble-assistant markdown-body">
                     <MarkdownBody content={msg.content} />
