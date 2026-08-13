@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   CHAT_SYSTEM,
   GOAL_FOCUS_RULE,
+  MARKDOWN_INLINE_IMAGE_RULE,
   POINT_ANSWER_FORMAT,
   PROJECT_CHAT_SYSTEM,
 } from "../src/lib/contextBuilder.ts";
@@ -26,6 +27,15 @@ assert.ok(CHAT_SYSTEM.includes(GOAL_FOCUS_RULE), "CHAT_SYSTEM includes goal focu
 assert.ok(
   PROJECT_CHAT_SYSTEM.includes(GOAL_FOCUS_RULE),
   "PROJECT_CHAT_SYSTEM includes goal focus",
+);
+assert.ok(
+  CHAT_SYSTEM.includes(MARKDOWN_INLINE_IMAGE_RULE) &&
+    PROJECT_CHAT_SYSTEM.includes(MARKDOWN_INLINE_IMAGE_RULE),
+  "chat systems teach Markdown inline images",
+);
+assert.ok(
+  MARKDOWN_INLINE_IMAGE_RULE.includes("无法在聊天里显示图片"),
+  "must correct the false cannot-show-images claim",
 );
 
 assert.ok(

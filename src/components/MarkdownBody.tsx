@@ -2,7 +2,10 @@ import type { Components, ExtraProps } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import { splitAdoptedSegments } from "../lib/adoptBranch";
 import { useLocale } from "../lib/i18n";
-import { MARKDOWN_REMARK_PLUGINS } from "../lib/markdownRemark";
+import {
+  forknoteUrlTransform,
+  MARKDOWN_REMARK_PLUGINS,
+} from "../lib/markdownRemark";
 import {
   createContext,
   memo,
@@ -103,7 +106,7 @@ function MarkdownImage({
   const { t } = useLocale();
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
-  const safeSrc = typeof src === "string" ? src.trim() : "";
+  const safeSrc = typeof src === "string" ? forknoteUrlTransform(src.trim()) : "";
   const safeAlt = typeof alt === "string" ? alt : "";
   const markdown = safeSrc
     ? `![${safeAlt}](${safeSrc}${title ? ` "${String(title)}"` : ""})`
@@ -148,14 +151,19 @@ function MarkdownImage({
         </div>
       </div>
       {failed ? (
-        <p className="fn-md-image-failed">{t("chat.image.failed")}</p>
+        <p className="fn-md-image-failed">
+          {t("chat.image.failed")}
+          {safeAlt ? ` — ${safeAlt}` : ""}
+        </p>
       ) : (
         <div className="fn-md-image-frame">
           <img
             src={safeSrc}
-            alt={safeAlt}
+            alt={safeAlt || t("chat.image.open")}
             title={title}
             loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
             onError={() => setFailed(true)}
           />
         </div>
@@ -253,6 +261,7 @@ export const MarkdownBody = memo(function MarkdownBody({
       <div className="fn-markdown-mount">
         <ReactMarkdown
           remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+          urlTransform={forknoteUrlTransform}
           components={MARKDOWN_COMPONENTS}
         >
           {markdown}

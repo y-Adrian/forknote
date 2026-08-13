@@ -119,6 +119,16 @@ export const GOAL_FOCUS_RULE = `目标与篇幅（重要）：
 - 不要发散：不顺带探索无关文件、不续做记忆/历史里的旧任务、不添加用户未要求的验证或「顺便」步骤。
 - 回答尽可能凝练：先给结论或结果，必要处再补少量要点；信息过多会降低效率，避免长篇复述与堆砌背景。`;
 
+/**
+ * Chat renders standard Markdown images. Models often wrongly claim they can
+ * only paste bare links — steer them to `![alt](url)` when a direct image URL
+ * is available (web_search / web_fetch / user paste).
+ */
+export const MARKDOWN_INLINE_IMAGE_RULE = `图片显示（重要）：
+- 本聊天用 Markdown 渲染：当有可直接访问的图片 URL（http/https，常见扩展名如 .png/.jpg/.jpeg/.gif/.webp/.svg）时，优先写成 \`![简短描述](url)\`，客户端会在对话里内联显示。
+- 禁止声称「只能返回网页链接、无法在聊天里显示图片」——那是错误的；裸 URL 往往只显示为可点击链接，不如 Markdown 图片语法。
+- 示意图/流程图仍优先 \`\`\`mermaid\`\`\`（或用户明确要求的 PlantUML）；远程照片/截图/图标用 \`![…](url)\`。`;
+
 /** Point / step format shared by main chat and Clarify floats. */
 export const POINT_ANSWER_FORMAT = `回答结构（重要 — 先判断问题类型，再决定是否用【N】分点）：
 
@@ -247,6 +257,8 @@ ${HISTORY_CONTEXT_RULE}
 
 ${GOAL_FOCUS_RULE}
 
+${MARKDOWN_INLINE_IMAGE_RULE}
+
 - 当前会话未绑定本地项目：不要调用或假装调用 list_dir / write_file / run_terminal 等工具；不要要求用户先打开项目才能回答普通问题。
 - 用户要示例代码时，直接在回答里用 Markdown 代码围栏给出完整可运行片段即可（可附简短说明）；不要只描述「可以写个文件」而不给代码。
 
@@ -258,6 +270,8 @@ export const PROJECT_CHAT_SYSTEM = `你是本地项目编程助手。请简短�
 ${HISTORY_CONTEXT_RULE}
 
 ${GOAL_FOCUS_RULE}
+
+${MARKDOWN_INLINE_IMAGE_RULE}
 - 不要用工具去「找回」聊天历史；工具只用于读写本地项目文件。磁盘上的文件不能代替本会话已给出的对话记录。
 
 硬性规则：

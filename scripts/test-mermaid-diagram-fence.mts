@@ -47,6 +47,11 @@ assert.ok(
   "markdown images must use stable MarkdownImage component ref",
 );
 assert.ok(
+  /urlTransform=\{forknoteUrlTransform\}/.test(mdSrc) &&
+    /referrerPolicy="no-referrer"/.test(mdSrc),
+  "markdown images must sanitize URLs and use no-referrer for remote https",
+);
+assert.ok(
   /MARKDOWN_COMPONENTS/.test(mdSrc) &&
     /MarkdownStreamingContext/.test(mdSrc) &&
     /memo\(function MarkdownBody/.test(mdSrc),
