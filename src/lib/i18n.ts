@@ -421,6 +421,10 @@ const en = {
   "main.thinking": "Thinking",
   "chat.copy": "Copy",
   "chat.copied": "Copied",
+  "chat.diagram.rendering": "Rendering diagram…",
+  "chat.diagram.renderFailed": "Could not render diagram — showing source. {detail}",
+  "chat.diagram.plantumlFallback":
+    "PlantUML is shown as source (no client-side PlantUML engine). Use Mermaid fences for live diagrams.",
   "chat.edit": "Edit",
   "chat.thinking": "Thinking…",
   "chat.thought": "Reasoning",
@@ -1035,6 +1039,10 @@ const zh: Record<MessageKey, string> = {
   "main.thinking": "思考中",
   "chat.copy": "复制",
   "chat.copied": "已复制",
+  "chat.diagram.rendering": "正在渲染图示…",
+  "chat.diagram.renderFailed": "图示渲染失败 — 显示源码。{detail}",
+  "chat.diagram.plantumlFallback":
+    "PlantUML 以源码展示（未内置客户端引擎）。需要实时图示请用 Mermaid 围栏。",
   "chat.edit": "编辑",
   "chat.thinking": "思考中…",
   "chat.thought": "推理",

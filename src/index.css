@@ -1477,6 +1477,39 @@ body {
   color: var(--ds-code-text);
 }
 
+.answer-body .fn-diagram-block {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  margin: 14px 0;
+  border-radius: 14px;
+  background: var(--ds-code-bg);
+  border: 1px solid var(--ds-border);
+  border-left: 3px solid var(--ds-accent);
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.answer-body .fn-diagram-hint {
+  margin: 0;
+  padding: 8px 12px 0;
+  font-family: var(--ds-font-sans, inherit);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ds-muted, color-mix(in srgb, var(--ds-code-text) 70%, transparent));
+}
+
+.answer-body .fn-diagram-svg {
+  padding: 12px 14px 16px;
+  overflow: auto;
+}
+
+.answer-body .fn-diagram-svg svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 .answer-body .fn-code-toolbar {
   display: flex;
   align-items: center;
