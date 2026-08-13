@@ -19,6 +19,7 @@ import {
 import { AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { LinePuppyBubble } from "./LinePuppyBubble";
 
 interface Props {
   branchId: NodeId;
@@ -70,9 +71,9 @@ function TurnBlock({
     >
       {questionText ? (
         <div className="fn-msg fn-msg-user float-branch-msg">
-          <div className="ds-bubble ds-bubble-user">
+          <LinePuppyBubble>
             <p>{questionText}</p>
-          </div>
+          </LinePuppyBubble>
         </div>
       ) : null}
       {showAssistant ? (
