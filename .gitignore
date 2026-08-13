@@ -6,3 +6,5 @@ dist
 .tmp-fontvenv
 release
 dist-electron
+.forknote/live-api.local.json
+.forknote/*.local.json
