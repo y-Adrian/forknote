@@ -2565,8 +2565,8 @@ export function looksLikeChatDiagramRequest(userText: string): boolean {
 export function looksLikeProjectGroundedAsk(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
-  // Require deixis / clear repo reference so bare「画一个项目的流程图」stays chat-only.
-  return /(?:本|此|该|当前|这个)项目(?:的|里|中)?|在项目(?:里|中)|项目(?:代码|结构|目录)|源代码|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)|看看代码|读(?:一下)?代码|代码(?:里|中)|报错|为什么.*错/i.test(
+  // Require deixis / clear repo reference so bare「项目结构怎么设计」stays chat-only.
+  return /(?:本|此|该|当前|这个)项目(?:的|里|中)?(?:代码|结构|目录|文件)?|在项目(?:里|中)|源代码|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)|看看代码|读(?:一下)?代码|代码(?:里|中)|报错|为什么.*错/i.test(
     t,
   );
 }
@@ -2631,11 +2631,12 @@ export function shouldPreferPlainChatTurn(
     return false;
   }
   if ((opts.multiStepPlanLength ?? 0) >= 2) return false;
-  // Advice / conceptual Q&A outranks soft work verbs; explicit disk/shell
-  // phrasing still wins via hasExplicitRepoActionSignal inside answer-only.
+  // Advice / conceptual Q&A outranks soft work verbs, but project-grounded
+  // asks (「这个项目怎么样」) still keep tools so the agent can actually look.
   if (
     looksLikeAnswerOnlyRequest(userText) &&
-    !hasExplicitRepoActionSignal(userText)
+    !hasExplicitRepoActionSignal(userText) &&
+    !looksLikeProjectGroundedAsk(userText)
   ) {
     return true;
   }
@@ -2674,9 +2675,16 @@ export function looksLikeAnswerOnlyRequest(userText: string): boolean {
 export function hasExplicitRepoActionSignal(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
+  // Negated "don't write to disk" must not count as a write intent.
+  const withoutNegatedWrite = t
+    .replace(
+      /不要(?:写到|写入|写进|保存到|保存为|落到)|别(?:写到|写入|写进|保存)|勿(?:写到|写入)|do\s+not\s+write\s+(?:it\s+)?to\s+disk|don't\s+write\s+(?:it\s+)?to\s+disk|without\s+writing\s+to\s+disk/gi,
+      " ",
+    )
+    .trim();
   if (
     /创建文件|写入|写进|写到|保存到|保存为|放到|在项目(?:里|中)|实现到|改一下|改下|修改|删除|覆盖|新建|mkdir|write_file|search_replace|apply_patch|write_docx|write_xlsx|delete_file|rename_file|patch_xlsx|git_commit|\brm\b|\bmv\b|\bcp\b|npm\s+i(?:nstall)?\b|pnpm\s+i(?:nstall)?\b|yarn\s+add\b|create\s+(?:a\s+)?(?:new\s+)?file|save\s+(?:it\s+)?to|write\s+(?:it\s+)?to|implement\s+in\b|edit\s+(?:the\s+)?file|delete\s+(?:the\s+)?file|remove\s+(?:the\s+)?file/i.test(
-      t,
+      withoutNegatedWrite,
     )
   ) {
     return true;
@@ -2684,16 +2692,16 @@ export function hasExplicitRepoActionSignal(userText: string): boolean {
   // Named file with create/write-into-project phrasing: 创建 hello.py / 写一个 foo.ts
   if (
     /(?:创建|新建|生成|写(?:一个|个)?|新增|添加|建立|保存)\s*(?:一个|个)?(?:文件|源文件|代码文件)?\s*[：:\s]*[`"'“”]?[\w./\\-]+\.\w{1,10}/i.test(
-      t,
+      withoutNegatedWrite,
     ) ||
     /(?:create|generate|write|add|make)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?[`"'“”]?[\w./\\-]+\.\w{1,10}/i.test(
-      t,
+      withoutNegatedWrite,
     )
   ) {
     return true;
   }
   // Explicit project-relative path (src/foo.ts) usually means repo work
-  if (/(?:^|[\s`'“”])(?:src|lib|app|pages|components|scripts|tests?|docs?)\/[\w./\\-]+\.\w{1,10}\b/i.test(t)) {
+  if (/(?:^|[\s`'“”])(?:src|lib|app|pages|components|scripts|tests?|docs?)\/[\w./\\-]+\.\w{1,10}\b/i.test(withoutNegatedWrite)) {
     return true;
   }
   return false;

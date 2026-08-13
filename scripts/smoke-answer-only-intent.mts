@@ -216,8 +216,6 @@ assert.ok(looksLikeAnswerOnlyRequest(bloggerAsk), "blogger ask is answer-only");
 
 // Relevance: inventory-shaped explore only — not bare「项目」/ advice.
 for (const q of [
-  "看看这个项目怎么样",
-  "当前项目适合做什么",
   "有哪些建议可以尝试",
   "帮我看看有什么想法",
   "解释一下项目结构怎么设计比较好",
@@ -227,6 +225,11 @@ for (const q of [
     shouldPreferPlainChatTurn(q, { exploreIntent: inferExploreIntent(q) }),
     `plain chat by relevance: ${q}`,
   );
+}
+
+// Evaluative but project-grounded — may use tools; must not force inventory explore.
+for (const q of ["看看这个项目怎么样", "当前项目适合做什么"]) {
+  assert.equal(inferExploreIntent(q), null, `not explore list: ${q}`);
 }
 
 assert.deepEqual(inferExploreIntent("列出当前目录"), {
@@ -255,6 +258,23 @@ assert.ok(
   hasAgentWorkSignal("帮我看看报错日志"),
   "帮我看 + error object is work",
 );
+assert.equal(
+  hasExplicitRepoActionSignal("随便写一段代码，不要写到磁盘"),
+  false,
+  "negated 不要写到磁盘 is not a write intent",
+);
+assert.ok(
+  shouldPreferPlainChatTurn("随便给我写一段 Python 打印 hello 的代码，不要写到磁盘。", {}),
+  "sample code + don't write to disk stays plain chat",
+);
+
+// Project-grounded evaluative asks keep tools (need to actually look).
+assert.equal(
+  shouldPreferPlainChatTurn("看看这个项目怎么样？给三点简短建议就行。", {}),
+  false,
+  "这个项目怎么样 keeps tools when grounded",
+);
+
 assert.ok(hasAgentWorkSignal("帮我改一下 README"));
 assert.ok(hasAgentWorkSignal("这个项目是做什么的"));
 assert.equal(
