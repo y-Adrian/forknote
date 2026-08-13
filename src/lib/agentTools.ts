@@ -801,7 +801,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 原则（必须遵守）：
 - 严格依据用户【最新一条】原话理解意图；忽略历史中未完成的旧计划/旧文件任务，除非用户明确要求继续。
-- 若最新消息是聊天内绘图（Mermaid/PlantUML/「画个图」等）且未要求基于本仓库：直接回答并输出图围栏，写明「无需工具」；禁止把记忆里的构建/验证当成本轮目标。
+- 若最新消息是聊天内绘图（「画个图」/流程图等）且未要求基于本仓库：直接回答并用 \`\`\`mermaid 围栏输出图（仅当用户明确要求 PlantUML 时才用 plantuml），写明「无需工具」；禁止把记忆里的构建/验证当成本轮目标。
 - 根据情景判断：示例/解释/「写一段代码」类问答优先直接回答（Markdown 围栏）并写明「无需工具」；仅当目标确需改仓库或跑命令时再起草精简计划。不要编造路径（如 hello.py）或用 run_terminal / echo 代替贴代码。
 - 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
 - 意图明确且需要改磁盘或跑可能改系统的 shell 时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
@@ -822,7 +822,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 Rules (must follow):
 - Ground everything in the user's LATEST message. Ignore unfinished older plans/file tasks in history unless the user explicitly asks to continue.
-- If the latest message is a chat diagram ask (Mermaid/PlantUML/draw a diagram) and not project-grounded: answer with a diagram fence and say no tools are required; do not treat memory build/verify work as this turn's goal.
+- If the latest message is a chat diagram ask (draw a diagram / flowchart) and not project-grounded: answer with a \`\`\`mermaid fence (plantuml only if the user explicitly asked for PlantUML) and say no tools are required; do not treat memory build/verify work as this turn's goal.
 - Judge by situation: for sample/how-to/explanation asks, prefer answering directly (Markdown fences OK) and say no tools are required; only draft a plan when the goal truly needs repo changes or commands. Do not invent paths (e.g. hello.py) or use run_terminal / echo instead of pasting code.
 - If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
 - If intent is clear and needs disk changes or potentially mutating shell: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
@@ -2610,7 +2610,7 @@ export function isAnswerOnlySampleCodeRequest(userText: string): boolean {
 }
 
 /**
- * Soft signal: user wants a diagram drawn in chat (Mermaid/PlantUML/「画图」),
+ * Soft signal: user wants a diagram drawn in chat (Mermaid / 「画图」; PlantUML only if named),
  * not repo exploration. Overridden by {@link hasExplicitRepoActionSignal}.
  * Project-grounded phrasing (「本项目架构图」) is excluded so tools can still run.
  */

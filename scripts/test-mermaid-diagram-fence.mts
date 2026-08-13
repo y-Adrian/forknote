@@ -46,5 +46,14 @@ assert.ok(
     /chat\.diagram\.viewSource/.test(i18nSrc),
   "i18n keys for diagram/image source actions",
 );
+assert.ok(
+  /chat\.diagram\.plantumlFallback/.test(i18nSrc) &&
+    /Use Mermaid fences for live diagrams/.test(i18nSrc),
+  "plantuml stays source-only with mermaid guidance",
+);
+assert.ok(
+  /kind === "mermaid"/.test(fenceSrc) && /kind === "plantuml"/.test(fenceSrc),
+  "DiagramFence still branches mermaid render vs plantuml source",
+);
 
 console.log("test-mermaid-diagram-fence: ok");
