@@ -826,141 +826,145 @@ export function MainPanel({
             )}
 
             <div className="fn-composer-toolbar">
-              <ProjectStatusBar onOpenProject={onOpenProject} />
+              <div className="fn-composer-toolbar-row">
+                <ProjectStatusBar onOpenProject={onOpenProject} part="row" />
 
-              {hasArchives && (
-                <span className="fn-composer-toolbar-sep" aria-hidden>
-                  ·
-                </span>
-              )}
+                {hasArchives && (
+                  <span className="fn-composer-toolbar-sep" aria-hidden>
+                    ·
+                  </span>
+                )}
 
-              {hasArchives && (
-                <div
-                  className="fn-context-mode"
-                  role="group"
-                  aria-label={t("main.contextModeAria")}
-                >
+                {hasArchives && (
                   <div
-                    className="fn-context-segment"
-                    aria-label={t("main.switchContextAria")}
+                    className="fn-context-mode"
+                    role="group"
+                    aria-label={t("main.contextModeAria")}
                   >
-                    <button
-                      type="button"
-                      className={`fn-context-seg${!inArchiveMode ? " is-active" : ""}`}
-                      aria-pressed={!inArchiveMode}
-                      disabled={composerBusy}
-                      title={t("main.liveConversationTitle")}
-                      onClick={switchToLiveConversation}
-                    >
-                      {t("main.liveConversation")}
-                    </button>
-                    <button
-                      type="button"
-                      className={`fn-context-seg${inArchiveMode && threadView === "archive" ? " is-active" : ""}`}
-                      aria-pressed={inArchiveMode && threadView === "archive"}
-                      disabled={composerBusy}
-                      title={t("main.archiveContextTitle")}
-                      onClick={() => switchToArchive()}
-                    >
-                      {t("main.archiveContext")}
-                    </button>
-                    <button
-                      type="button"
-                      className={`fn-context-seg${threadView === "evolution" ? " is-active" : ""}`}
-                      aria-pressed={threadView === "evolution"}
-                      disabled={composerBusy || !inArchiveMode}
-                      title={t("main.fullThreadTitle")}
-                      onClick={() => setThreadView("evolution")}
-                    >
-                      {t("main.fullThread")}
-                    </button>
-                  </div>
-
-                  {archives.length > 0 && (
                     <div
-                      className="fn-archive-history"
-                      ref={archiveHistoryRef}
+                      className="fn-context-segment"
+                      aria-label={t("main.switchContextAria")}
                     >
                       <button
                         type="button"
-                        className={`fn-archive-btn fn-archive-history-btn${archiveHistoryOpen ? " is-open" : ""}`}
+                        className={`fn-context-seg${!inArchiveMode ? " is-active" : ""}`}
+                        aria-pressed={!inArchiveMode}
                         disabled={composerBusy}
-                        aria-expanded={archiveHistoryOpen}
-                        aria-haspopup="listbox"
-                        title={t("main.archivesViewTitle")}
-                        onClick={() => setArchiveHistoryOpen((open) => !open)}
+                        title={t("main.liveConversationTitle")}
+                        onClick={switchToLiveConversation}
                       >
-                        {t("main.archiveHistory")}
-                        <span className="fn-archive-history-caret" aria-hidden>
-                          ▾
-                        </span>
+                        {t("main.liveConversation")}
                       </button>
-                      {archiveHistoryOpen ? (
-                        <div
-                          className="fn-context-menu fn-archive-history-menu"
-                          role="listbox"
-                          aria-label={t("main.archiveHistory")}
-                        >
-                          {[...archives].reverse().map((a) => {
-                            const active = a.id === activeArchive?.id;
-                            return (
-                              <button
-                                key={a.id}
-                                type="button"
-                                role="option"
-                                aria-selected={active}
-                                className={`fn-context-menu-item${active ? " is-active" : ""}`}
-                                onClick={() => {
-                                  switchToArchive(a.id);
-                                  setArchiveHistoryOpen(false);
-                                }}
-                              >
-                                <span className="fn-context-menu-title">
-                                  {a.title}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
+                      <button
+                        type="button"
+                        className={`fn-context-seg${inArchiveMode && threadView === "archive" ? " is-active" : ""}`}
+                        aria-pressed={inArchiveMode && threadView === "archive"}
+                        disabled={composerBusy}
+                        title={t("main.archiveContextTitle")}
+                        onClick={() => switchToArchive()}
+                      >
+                        {t("main.archiveContext")}
+                      </button>
+                      <button
+                        type="button"
+                        className={`fn-context-seg${threadView === "evolution" ? " is-active" : ""}`}
+                        aria-pressed={threadView === "evolution"}
+                        disabled={composerBusy || !inArchiveMode}
+                        title={t("main.fullThreadTitle")}
+                        onClick={() => setThreadView("evolution")}
+                      >
+                        {t("main.fullThread")}
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
 
-              {hasThreadContent && (
-                <div className="fn-composer-memory-actions">
-                  <button
-                    type="button"
-                    className="fn-archive-btn"
-                    disabled={composerBusy}
-                    title={t("main.memoryTitle")}
-                    onClick={() => setSettingsOpen(true, "memory")}
-                  >
-                    {t("main.memory")}
-                  </button>
-                  <button
-                    type="button"
-                    className="fn-archive-btn"
-                    disabled={composerBusy}
-                    title={t("main.compressTitle")}
-                    onClick={() => void compressContext()}
-                  >
-                    {loadingCompress
-                      ? t("main.compressing")
-                      : t("main.compress")}
-                  </button>
-                  <button
-                    type="button"
-                    className="fn-archive-btn"
-                    disabled={composerBusy}
-                    title={t("main.archiveTitle")}
-                    onClick={() => void archiveCurrent()}
-                  >
-                    {loadingArchive ? t("main.archiving") : t("main.archive")}
-                  </button>
-                </div>
-              )}
+                    {archives.length > 0 && (
+                      <div
+                        className="fn-archive-history"
+                        ref={archiveHistoryRef}
+                      >
+                        <button
+                          type="button"
+                          className={`fn-archive-btn fn-archive-history-btn${archiveHistoryOpen ? " is-open" : ""}`}
+                          disabled={composerBusy}
+                          aria-expanded={archiveHistoryOpen}
+                          aria-haspopup="listbox"
+                          title={t("main.archivesViewTitle")}
+                          onClick={() => setArchiveHistoryOpen((open) => !open)}
+                        >
+                          {t("main.archiveHistory")}
+                          <span className="fn-archive-history-caret" aria-hidden>
+                            ▾
+                          </span>
+                        </button>
+                        {archiveHistoryOpen ? (
+                          <div
+                            className="fn-context-menu fn-archive-history-menu"
+                            role="listbox"
+                            aria-label={t("main.archiveHistory")}
+                          >
+                            {[...archives].reverse().map((a) => {
+                              const active = a.id === activeArchive?.id;
+                              return (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={active}
+                                  className={`fn-context-menu-item${active ? " is-active" : ""}`}
+                                  onClick={() => {
+                                    switchToArchive(a.id);
+                                    setArchiveHistoryOpen(false);
+                                  }}
+                                >
+                                  <span className="fn-context-menu-title">
+                                    {a.title}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {hasThreadContent && (
+                  <div className="fn-composer-memory-actions">
+                    <button
+                      type="button"
+                      className="fn-archive-btn"
+                      disabled={composerBusy}
+                      title={t("main.memoryTitle")}
+                      onClick={() => setSettingsOpen(true, "memory")}
+                    >
+                      {t("main.memory")}
+                    </button>
+                    <button
+                      type="button"
+                      className="fn-archive-btn"
+                      disabled={composerBusy}
+                      title={t("main.compressTitle")}
+                      onClick={() => void compressContext()}
+                    >
+                      {loadingCompress
+                        ? t("main.compressing")
+                        : t("main.compress")}
+                    </button>
+                    <button
+                      type="button"
+                      className="fn-archive-btn"
+                      disabled={composerBusy}
+                      title={t("main.archiveTitle")}
+                      onClick={() => void archiveCurrent()}
+                    >
+                      {loadingArchive ? t("main.archiving") : t("main.archive")}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <ProjectStatusBar onOpenProject={onOpenProject} part="panels" />
             </div>
 
             <AgentPlanReview scope={{ kind: "main" }} />
