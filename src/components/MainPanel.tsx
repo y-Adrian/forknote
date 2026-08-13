@@ -355,25 +355,22 @@ export function MainPanel({
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [activeSessionId, showArchiveDoc]);
+  }, [activeSessionId]);
 
-  // Reset pin when switching session / archive view, then jump once.
+  // Reset pin when switching session, then jump once.
+  // Do not scroll on Live/Archive/Evolution view swaps — that jerks the viewport.
   useEffect(() => {
     stickToBottomRef.current = true;
     requestAnimationFrame(() => scrollChatToBottom());
-  }, [activeSessionId, showArchiveDoc, scrollChatToBottom]);
+  }, [activeSessionId, scrollChatToBottom]);
 
   // New messages / inline approval: force pin and jump (no smooth scrollIntoView —
   // it races remounts and feels like a flash back to older answers).
+  // Use thread length (not visibleMessages) so context-mode filters do not re-pin.
   useEffect(() => {
     stickToBottomRef.current = true;
     scrollChatToBottom();
-  }, [
-    thread?.messages.length,
-    visibleMessages.length,
-    pendingInline,
-    scrollChatToBottom,
-  ]);
+  }, [thread?.messages.length, pendingInline, scrollChatToBottom]);
 
   // Follow streaming / markdown height growth while pinned.
   useEffect(() => {
@@ -388,7 +385,32 @@ export function MainPanel({
     });
     ro.observe(messages);
     return () => ro.disconnect();
-  }, [activeSessionId, showArchiveDoc, Boolean(thread)]);
+  }, [activeSessionId, Boolean(thread)]);
+
+  // Context-mode switches remount / resize the message list. Keep the scroll
+  // frame from auto-jumping to the bottom while the layout settles — but only
+  // when the session itself did not change (session switch re-pins above).
+  const contextViewPinRef = useRef({
+    sessionId: activeSessionId,
+    showArchiveDoc,
+    threadView,
+  });
+  useEffect(() => {
+    const prev = contextViewPinRef.current;
+    contextViewPinRef.current = {
+      sessionId: activeSessionId,
+      showArchiveDoc,
+      threadView,
+    };
+    if (prev.sessionId !== activeSessionId) return;
+    if (
+      prev.showArchiveDoc === showArchiveDoc &&
+      prev.threadView === threadView
+    ) {
+      return;
+    }
+    stickToBottomRef.current = false;
+  }, [activeSessionId, showArchiveDoc, threadView]);
 
   useEffect(() => {
     if (!loadingBranchId && openBranchId) {
@@ -650,7 +672,7 @@ export function MainPanel({
             )}
           </div>
         </div>
-        {forkCount > 0 && (
+        {thread ? (
           <div className="fn-chat-header-meta">
             <button
               type="button"
@@ -663,7 +685,7 @@ export function MainPanel({
               {t("main.forks", { count: forkCount })}
             </button>
           </div>
-        )}
+        ) : null}
       </header>
 
       {thread ? (
@@ -912,11 +934,16 @@ export function MainPanel({
               </div>
             )}
 
-            {inArchiveMode && (
-              <p className="fn-context-composer-hint">
-                {threadView === "evolution"
-                  ? t("main.evolutionComposerHint")
-                  : t("main.archiveComposerHint")}
+            {hasArchives && (
+              <p
+                className={`fn-context-composer-hint${inArchiveMode ? "" : " is-placeholder"}`}
+                aria-hidden={!inArchiveMode}
+              >
+                {inArchiveMode
+                  ? threadView === "evolution"
+                    ? t("main.evolutionComposerHint")
+                    : t("main.archiveComposerHint")
+                  : "\u00a0"}
               </p>
             )}
 
@@ -962,8 +989,8 @@ export function MainPanel({
                       </button>
                       <button
                         type="button"
-                        className={`fn-context-seg${threadView === "evolution" ? " is-active" : ""}`}
-                        aria-pressed={threadView === "evolution"}
+                        className={`fn-context-seg${inArchiveMode && threadView === "evolution" ? " is-active" : ""}`}
+                        aria-pressed={inArchiveMode && threadView === "evolution"}
                         disabled={composerBusy || !inArchiveMode}
                         title={t("main.fullThreadTitle")}
                         onClick={() => setThreadView("evolution")}
@@ -1087,7 +1114,9 @@ export function MainPanel({
             />
           </footer>
         </div>
-        {showArchiveDoc ? null : (
+        {showArchiveDoc ? (
+          <div className="ds-branch-rail" aria-hidden />
+        ) : (
           <BranchRail thread={thread} scrollRef={scrollRef} />
         )}
       </div>
