@@ -31,6 +31,7 @@ import {
 } from "./InlineToolApproval";
 import { ChatComposer } from "./ChatComposer";
 import { MarkdownBody } from "./MarkdownBody";
+import { MangaCloudBubble } from "./MangaCloudBubble";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar, AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
@@ -930,9 +931,9 @@ export function MainPanel({
                     data-msg-id={msg.id}
                     className="fn-msg fn-msg-user"
                   >
-                    <div className="ds-bubble ds-bubble-user ds-bubble-user--manga">
+                    <MangaCloudBubble>
                       <p>{msg.content}</p>
-                    </div>
+                    </MangaCloudBubble>
                     <MessageActions
                       text={msg.content}
                       align="end"
