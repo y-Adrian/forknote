@@ -16,6 +16,45 @@ const STORE_KEY = "forknote-sessions-v1";
 const LEGACY_STORE_KEY = "branch-chat-sessions-v1";
 /** Pre-session-store single-thread blob (legacy storage key). */
 const LEGACY_THREAD_KEY = "branch-chat-thread";
+const STREAM_STORE_WRITE_DEBOUNCE_MS = 250;
+const STREAM_STORE_WRITE_MAX_WAIT_MS = 1000;
+
+let pendingSessionStore: SessionStore | null = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearSessionStoreTimers(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (maxWaitTimer) {
+    clearTimeout(maxWaitTimer);
+    maxWaitTimer = null;
+  }
+}
+
+function writeSessionStore(store: SessionStore): void {
+  localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  localStorage.removeItem(LEGACY_STORE_KEY);
+}
+
+function tryFlushScheduledSessionStoreSave(reason: string): void {
+  try {
+    flushScheduledSessionStoreSave();
+  } catch (e) {
+    console.warn(`[ForkNote] scheduled session flush failed (${reason})`, e);
+  }
+}
+
+function installScheduledSessionStoreFlush(): void {
+  if (typeof window === "undefined") return;
+  const flush = () => tryFlushScheduledSessionStoreSave("page lifecycle");
+  window.addEventListener("beforeunload", flush);
+  window.addEventListener("pagehide", flush);
+}
+
+installScheduledSessionStoreFlush();
 
 /**
  * English storage sentinel for empty / default session titles.
@@ -154,8 +193,34 @@ export function loadSessionStore(): SessionStore {
 }
 
 export function saveSessionStore(store: SessionStore): void {
-  localStorage.setItem(STORE_KEY, JSON.stringify(store));
-  localStorage.removeItem(LEGACY_STORE_KEY);
+  pendingSessionStore = null;
+  clearSessionStoreTimers();
+  writeSessionStore(store);
+}
+
+export function scheduleSessionStoreSave(store: SessionStore): void {
+  pendingSessionStore = store;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(
+    () => tryFlushScheduledSessionStoreSave("debounce"),
+    STREAM_STORE_WRITE_DEBOUNCE_MS,
+  );
+  maxWaitTimer ??= setTimeout(
+    () => tryFlushScheduledSessionStoreSave("max-wait"),
+    STREAM_STORE_WRITE_MAX_WAIT_MS,
+  );
+}
+
+export function flushScheduledSessionStoreSave(): boolean {
+  const store = pendingSessionStore;
+  if (!store) {
+    clearSessionStoreTimers();
+    return false;
+  }
+  pendingSessionStore = null;
+  clearSessionStoreTimers();
+  writeSessionStore(store);
+  return true;
 }
 
 /** Skip session-delete confirmation after user opts in. */
