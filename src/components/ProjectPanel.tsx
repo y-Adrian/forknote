@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useLocale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
-import { pickProjectFolder } from "../lib/sidecar";
+import { DEFAULT_SIDECAR_URL, pickProjectFolder } from "../lib/sidecar";
 import { useAppStore } from "../store/useAppStore";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+}
+
+function normalizeSidecarUrl(value: string): string {
+  return value.trim() || DEFAULT_SIDECAR_URL;
 }
 
 export function ProjectPanel({ open, onClose }: Props) {
@@ -20,6 +24,7 @@ export function ProjectPanel({ open, onClose }: Props) {
 
   const [pathDraft, setPathDraft] = useState("");
   const [urlDraft, setUrlDraft] = useState(sidecarUrl);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [browseBusy, setBrowseBusy] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
@@ -27,8 +32,13 @@ export function ProjectPanel({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) return;
     const prefs = loadProjectPrefs();
+    const nextUrl = normalizeSidecarUrl(
+      sidecarUrl || prefs.sidecarUrl || DEFAULT_SIDECAR_URL,
+    );
     setPathDraft(projectRoot || prefs.lastPath || "");
-    setUrlDraft(sidecarUrl || prefs.sidecarUrl || "/sidecar");
+    setUrlDraft(nextUrl);
+    // Non-default URLs stay visible so power users see what they set.
+    setAdvancedOpen(nextUrl !== DEFAULT_SIDECAR_URL);
     setBrowseError(null);
   }, [open, projectRoot, sidecarUrl]);
 
@@ -38,10 +48,11 @@ export function ProjectPanel({ open, onClose }: Props) {
     setBusy(true);
     setBrowseError(null);
     try {
-      setSidecarUrl(urlDraft.trim() || "/sidecar");
+      const url = normalizeSidecarUrl(urlDraft);
+      setSidecarUrl(url);
       saveProjectPrefs({
         lastPath: pathDraft.trim(),
-        sidecarUrl: urlDraft.trim() || "/sidecar",
+        sidecarUrl: url,
       });
       await openProject(pathDraft.trim());
       if (useAppStore.getState().projectRoot) onClose();
@@ -54,7 +65,7 @@ export function ProjectPanel({ open, onClose }: Props) {
     setBrowseBusy(true);
     setBrowseError(null);
     try {
-      const url = urlDraft.trim() || "/sidecar";
+      const url = normalizeSidecarUrl(urlDraft);
       setSidecarUrl(url);
       saveProjectPrefs({ sidecarUrl: url });
       const result = await pickProjectFolder(url);
@@ -79,16 +90,6 @@ export function ProjectPanel({ open, onClose }: Props) {
       >
         <h2 id="project-title">{t("projectPanel.title")}</h2>
         <p className="hint">{t("projectPanel.lead")}</p>
-
-        <label>
-          {t("projectPanel.sidecarUrl")}
-          <input
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            placeholder="/sidecar"
-            spellCheck={false}
-          />
-        </label>
 
         <label>
           {t("projectPanel.path")}
@@ -116,6 +117,44 @@ export function ProjectPanel({ open, onClose }: Props) {
             {t("projectPanel.connected")} <code>{projectRoot}</code>
           </p>
         )}
+
+        <div className={`fn-project-advanced${advancedOpen ? " is-open" : ""}`}>
+          <button
+            type="button"
+            className="fn-project-advanced-toggle"
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            <span>{t("projectPanel.advanced")}</span>
+            <span className="fn-project-advanced-chevron" aria-hidden>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M6 9l6 6 6-6"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+          </button>
+          {advancedOpen && (
+            <div className="fn-project-advanced-body">
+              <label>
+                {t("projectPanel.sidecarUrl")}
+                <input
+                  value={urlDraft}
+                  onChange={(e) => setUrlDraft(e.target.value)}
+                  placeholder={DEFAULT_SIDECAR_URL}
+                  spellCheck={false}
+                />
+              </label>
+              <p className="fn-project-advanced-hint">
+                {t("projectPanel.sidecarUrlHint")}
+              </p>
+            </div>
+          )}
+        </div>
 
         {(browseError || projectError) && (
           <p className="ds-error">{browseError || projectError}</p>
