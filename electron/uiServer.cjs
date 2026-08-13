@@ -133,20 +133,44 @@ function resolveOpenAiRoot(header) {
 }
 
 function serveStatic(distDir, req, res) {
-  const url = new URL(req.url || "/", "http://127.0.0.1");
-  let rel = decodeURIComponent(url.pathname);
-  if (rel === "/" || rel === "") rel = "/index.html";
-  const filePath = path.normalize(path.join(distDir, rel));
-  if (!filePath.startsWith(path.normalize(distDir))) {
+  const requestTarget = req.url || "/";
+  const queryStart = requestTarget.indexOf("?");
+  const rawPathname =
+    queryStart === -1 ? requestTarget : requestTarget.slice(0, queryStart);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(rawPathname);
+  } catch {
+    res.writeHead(400).end("Bad Request");
+    return;
+  }
+  if (pathname.includes("\0")) {
+    res.writeHead(400).end("Bad Request");
+    return;
+  }
+
+  // Treat both URL slash forms as separators so the containment check has the
+  // same result on POSIX and Windows.
+  pathname = pathname.replaceAll("\\", "/");
+  if (pathname === "/" || pathname === "") pathname = "/index.html";
+
+  const root = path.resolve(distDir);
+  const filePath = path.resolve(root, `.${pathname}`);
+  const relativePath = path.relative(root, filePath);
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
     res.writeHead(403).end("Forbidden");
     return;
   }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      if (rel !== "/index.html") {
+      if (pathname !== "/index.html") {
         // SPA fallback
-        fs.readFile(path.join(distDir, "index.html"), (err2, html) => {
+        fs.readFile(path.join(root, "index.html"), (err2, html) => {
           if (err2) {
             res.writeHead(404).end("Not found");
             return;
@@ -173,7 +197,7 @@ function serveStatic(distDir, req, res) {
  */
 function startUiServer(opts) {
   const host = opts.host || "127.0.0.1";
-  const preferredPort = opts.port || 8788;
+  const preferredPort = opts.port ?? 8788;
   const distDir = opts.distDir;
 
   return new Promise((resolve, reject) => {
