@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { BranchReply, NodeId } from "../types";
+import { isAgentTurnPlaceholder } from "../lib/agentStatus";
 import { handleComposerEnterKey } from "../lib/composerKeys";
 import { getHighlightRect } from "../lib/domHighlight";
 import { useLocale } from "../lib/i18n";
@@ -20,6 +21,7 @@ import { AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { LinePuppyBubble } from "./LinePuppyBubble";
+import { TurnBusyIndicator } from "./TurnBusyIndicator";
 
 interface Props {
   branchId: NodeId;
@@ -60,6 +62,7 @@ function TurnBlock({
   const hasReasoning = Boolean(reasoning?.trim());
   const isFollowUp = !showAnswerChrome;
   const showAssistant = hasReasoning || hasAnswer || isLoading;
+  const statusBusy = isLoading && hasAnswer && isAgentTurnPlaceholder(answer);
 
   return (
     <div
@@ -97,7 +100,15 @@ function TurnBlock({
               <p className="ds-muted">{t("chat.thinking")}</p>
             )
           ) : hasAnswer ? (
-            <div className="ds-bubble ds-bubble-assistant">{children}</div>
+            <div
+              className={`ds-bubble ds-bubble-assistant${statusBusy ? " is-agent-status" : ""}`}
+              aria-busy={statusBusy ? true : undefined}
+            >
+              {children}
+              {statusBusy ? (
+                <TurnBusyIndicator label={t("chat.generating")} />
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}
