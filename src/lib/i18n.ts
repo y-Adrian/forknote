@@ -564,7 +564,6 @@ const en = {
   "archive.continue": "Continue with archive",
 
   "projectBar.open": "Open project",
-  "projectBar.clearLog": "Clear log",
   "projectBar.activityAria": "Agent activity",
 
   "clarify.toolbar": "Clarify this",
@@ -1219,7 +1218,6 @@ const zh: Record<MessageKey, string> = {
   "archive.continue": "用归档继续",
 
   "projectBar.open": "打开项目",
-  "projectBar.clearLog": "清空日志",
   "projectBar.activityAria": "助手活动",
 
   "clarify.toolbar": "澄清此处",

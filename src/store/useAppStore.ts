@@ -171,7 +171,6 @@ interface AppState {
   setSidecarUrl: (url: string) => void;
   openProject: (absPath: string, quiet?: boolean) => Promise<void>;
   disconnectProject: () => void;
-  clearAgentLog: () => void;
   /** Approve pending agent plan and run tools. */
   approveAgentPlan: () => Promise<void>;
   /** Reject pending agent plan and roll back the turn. */
@@ -911,7 +910,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       agentChanges: [],
     });
   },
-  clearAgentLog: () => set({ agentActivity: [], agentChanges: [] }),
 
   approveAgentPlan: async () => {
     const plan = get().agentPendingPlan;
