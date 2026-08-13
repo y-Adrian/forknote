@@ -56,6 +56,10 @@ let sidecarChild = null;
 let weStartedSidecar = false;
 /** @type {import('node:http').Server | null} */
 let uiServer = null;
+/** @type {string | null} */
+let uiOrigin = null;
+/** @type {Promise<string> | null} */
+let uiServerStart = null;
 
 /** Project / packaged app root (`Resources/app` when packaged; asar is off). */
 function appRoot() {
@@ -64,6 +68,29 @@ function appRoot() {
 
 function distDir() {
   return path.join(appRoot(), "dist");
+}
+
+async function ensureUiServer() {
+  if (uiServer?.listening && uiOrigin) return uiOrigin;
+  if (uiServerStart) return uiServerStart;
+
+  const dist = distDir();
+  if (!fs.existsSync(path.join(dist, "index.html"))) {
+    console.error(
+      `[forknote-desktop] missing ${path.join(dist, "index.html")} — run npm run build first`,
+    );
+  }
+  uiServerStart = startUiServer({ distDir: dist })
+    .then(({ server, origin }) => {
+      uiServer = server;
+      uiOrigin = origin;
+      console.log(`[forknote-desktop] UI at ${origin}`);
+      return origin;
+    })
+    .finally(() => {
+      uiServerStart = null;
+    });
+  return uiServerStart;
 }
 
 function sidecarEntry() {
@@ -256,16 +283,7 @@ async function createWindow() {
   if (isDev) {
     loadUrl = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173";
   } else {
-    const dist = distDir();
-    if (!fs.existsSync(path.join(dist, "index.html"))) {
-      console.error(
-        `[forknote-desktop] missing ${path.join(dist, "index.html")} — run npm run build first`,
-      );
-    }
-    const { server, origin } = await startUiServer({ distDir: dist });
-    uiServer = server;
-    loadUrl = origin;
-    console.log(`[forknote-desktop] UI at ${origin}`);
+    loadUrl = await ensureUiServer();
   }
 
   const appIcon = resolveAppIconPath();
@@ -330,32 +348,49 @@ async function createWindow() {
   await win.loadURL(loadUrl);
 }
 
-app.whenReady().then(() => {
-  const appIcon = resolveAppIconPath();
-  if (appIcon && process.platform === "darwin" && app.dock) {
-    app.dock.setIcon(appIcon);
-  }
-  buildAppMenu();
-  void createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      void createWindow();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      return;
+    }
+    void createWindow();
+  });
+
+  app.whenReady().then(() => {
+    const appIcon = resolveAppIconPath();
+    if (appIcon && process.platform === "darwin" && app.dock) {
+      app.dock.setIcon(appIcon);
+    }
+    buildAppMenu();
+    void createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        void createWindow();
+      }
+    });
+  });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+
+  app.on("before-quit", () => {
+    stopSidecar();
+    if (uiServer) {
+      try {
+        uiServer.close();
+      } catch {
+        /* ignore */
+      }
+      uiServer = null;
+      uiOrigin = null;
     }
   });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
-
-app.on("before-quit", () => {
-  stopSidecar();
-  if (uiServer) {
-    try {
-      uiServer.close();
-    } catch {
-      /* ignore */
-    }
-    uiServer = null;
-  }
-});
+}
