@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -175,7 +176,7 @@ function DiagramToolbar({
   );
 }
 
-function MermaidDiagram({
+const MermaidDiagram = memo(function MermaidDiagram({
   source,
   streaming = false,
 }: {
@@ -363,13 +364,13 @@ function MermaidDiagram({
       />
     </div>
   );
-}
+});
 
 /**
  * Fenced ```mermaid / ```plantuml blocks: render Mermaid; PlantUML stays source
  * (no client PlantUML engine bundled) with copyable source.
  */
-export function DiagramFence({
+export const DiagramFence = memo(function DiagramFence({
   className,
   children,
   streaming = false,
@@ -392,7 +393,7 @@ export function DiagramFence({
   }
 
   return <SourceFence className={className}>{children}</SourceFence>;
-}
+});
 
 export function isDiagramFenceClass(className?: string): boolean {
   return diagramKindFromLanguage(languageFromClass(className)) != null;

@@ -4088,16 +4088,32 @@ mark.branch-highlight:hover {
   cursor: not-allowed;
 }
 
+/* Network ON: clear blue (not accent red / subtle mix). */
 .fn-network-toggle.is-on {
-  color: var(--ds-text);
-  border-color: var(--ds-border-strong);
-  background: color-mix(in srgb, var(--ds-accent, #5b8def) 14%, var(--ds-surface));
+  color: #fff;
+  border-color: var(--ds-link, #2563eb);
+  background: var(--ds-link, #2563eb);
+  box-shadow: var(--fn-press-shadow);
 }
 
+.fn-network-toggle.is-on:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--ds-link-hover, #1d4ed8);
+  background: var(--ds-link-hover, #1d4ed8);
+  transform: translate(-1px, -1px);
+}
+
+/* Wanted on but browser offline: muted blue + warning text. */
 .fn-network-toggle.is-on.is-offline {
   color: var(--ds-warning, #c9872a);
-  border-color: color-mix(in srgb, var(--ds-warning, #c9872a) 45%, var(--ds-border));
-  background: color-mix(in srgb, var(--ds-warning, #c9872a) 10%, var(--ds-surface));
+  border-color: color-mix(in srgb, var(--ds-link, #2563eb) 55%, var(--ds-warning, #c9872a));
+  background: color-mix(in srgb, var(--ds-link, #2563eb) 22%, var(--ds-surface));
+}
+
+.fn-network-toggle.is-on.is-offline:hover:not(:disabled) {
+  color: var(--ds-warning, #c9872a);
+  border-color: color-mix(in srgb, var(--ds-link, #2563eb) 65%, var(--ds-warning, #c9872a));
+  background: color-mix(in srgb, var(--ds-link, #2563eb) 28%, var(--ds-surface));
 }
 
 .fn-network-toggle-icon {
