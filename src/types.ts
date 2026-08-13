@@ -301,6 +301,11 @@ export interface ApiSettings {
    * read-only commands (ls/pwd/…) may skip approval.
    */
   agentAllowTerminal?: boolean;
+  /**
+   * After successful TS/JS file edits, auto-run `run_diagnostics` and feed
+   * the output back into the agent turn. Default true.
+   */
+  agentAutoDiagnostics?: boolean;
 }
 
 /** Agent plan awaiting user approval before tool execution. */

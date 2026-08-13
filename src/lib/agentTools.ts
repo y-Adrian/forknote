@@ -1477,7 +1477,7 @@ export function buildCodingToolsSystem(
 - 修改已有文本 → 优先 search_replace / apply_patch
 - 删除/重命名 → delete_file / rename_file
 - Word 新建 → write_docx；Excel 新建 → write_xlsx；改已有单元格 → patch_xlsx
-- TypeScript 改完可 run_diagnostics
+- TypeScript/JavaScript 改完后系统可能自动跑诊断并把错误喂回；仍可主动 run_diagnostics
 - 提交 → git_commit（必须 message + paths，禁止 add -A / push）
 ${terminalBlock}
 只把内容写在 Markdown 里不会写入磁盘。

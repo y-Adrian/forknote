@@ -281,6 +281,9 @@ const en = {
   "projectSettings.agentAllowTerminal": "Allow terminal tool (run_terminal)",
   "projectSettings.agentAllowTerminalHint":
     "Lets the agent run shell commands in the bound project via the sidecar. Default on. Commands start at the project root (not the sidecar process directory). Read-only in-project commands (ls/pwd/…) skip plan approval; mutating or outside-project commands require approval (权限).",
+  "projectSettings.agentAutoDiagnostics": "Auto typecheck after code edits",
+  "projectSettings.agentAutoDiagnosticsHint":
+    "After successful TypeScript/JavaScript edits, automatically run run_diagnostics and feed errors back into the agent loop. Default on.",
 
   "agentPlan.aria": "Agent plan review",
   "agentPlan.kicker": "Agent plan",
@@ -881,6 +884,9 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentAllowTerminal": "允许终端工具（run_terminal）",
   "projectSettings.agentAllowTerminalHint":
     "允许 Agent 通过 sidecar 在已绑定项目内执行 shell 命令。默认开启。命令从项目根启动（不是 sidecar 进程目录）。项目内只读命令（ls/pwd 等）可跳过计划批准；改动命令或访问项目外路径需先批准权限。",
+  "projectSettings.agentAutoDiagnostics": "改代码后自动类型检查",
+  "projectSettings.agentAutoDiagnosticsHint":
+    "成功改写 TypeScript/JavaScript 后自动跑 run_diagnostics，并把错误喂回 Agent 循环。默认开启。",
 
   "agentPlan.aria": "Agent 计划审核",
   "agentPlan.kicker": "执行计划",
