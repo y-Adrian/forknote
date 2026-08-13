@@ -2563,11 +2563,48 @@ export function looksLikeChatDiagramRequest(userText: string): boolean {
 export function looksLikeProjectGroundedAsk(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
-  // Require deixis for「项目」(本/此/该/当前/在…里) so bare「画一个项目的流程图」
-  // stays chat-only. Stronger repo words (仓库/代码库/this repo/…) still match.
-  return /(?:本|此|该|当前)项目(?:的|里|中)?|在项目(?:里|中)|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)/i.test(
+  // Require deixis / clear repo reference so bare「画一个项目的流程图」stays chat-only.
+  return /(?:本|此|该|当前|这个)项目(?:的|里|中)?|在项目(?:里|中)|项目(?:代码|结构|目录)|源代码|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)|看看代码|读(?:一下)?代码|代码(?:里|中)|报错|为什么.*错/i.test(
     t,
   );
+}
+
+/**
+ * Clear signal the user wants the agent to *do* project work (not only answer).
+ * Used to keep casual Q&A out of the tool loop.
+ */
+export function hasAgentWorkSignal(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (hasExplicitRepoActionSignal(t)) return true;
+  if (looksLikeMutationRequest(t)) return true;
+  if (looksLikeProjectGroundedAsk(t)) return true;
+  return /(?:请|麻烦)?帮我(?:把|将)?(?:做|改|修|实现|创建|写入|写进|写到|添加|删除|排查|检查|调试|重构|提交|看|查|读)|请你(?:做|改|修|实现|创建|看|查)|务必|立刻(?:执行|修改)|implement\b|fix\s+(?:the\s+)?(?:bug|issue|error)|create\s+(?:a\s+)?(?:new\s+)?file|write\s+(?:a\s+)?(?:blog\s+)?post\s+to\b|add\s+(?:a\s+)?file\b|investigate\b|debug\b/i.test(
+    t,
+  );
+}
+
+/**
+ * Prefer plain chat (no tools / no coding-tools system) when there is no clear
+ * agent-work intent. Call after create/office/shell/explore intents are known.
+ */
+export function shouldPreferPlainChatTurn(
+  userText: string,
+  opts: {
+    createPath?: string | null;
+    officeIntent?: unknown;
+    shellIntent?: unknown;
+    exploreIntent?: unknown;
+    multiStepPlanLength?: number;
+  },
+): boolean {
+  if (isChatOnlyDiagramAsk(userText)) return true;
+  if (opts.createPath || opts.officeIntent || opts.shellIntent || opts.exploreIntent) {
+    return false;
+  }
+  if ((opts.multiStepPlanLength ?? 0) >= 2) return false;
+  if (hasAgentWorkSignal(userText)) return false;
+  return true;
 }
 
 /**
@@ -2590,7 +2627,7 @@ export function looksLikeAnswerOnlyRequest(userText: string): boolean {
   if (hasExplicitRepoActionSignal(t)) return false;
   if (isAnswerOnlySampleCodeRequest(t)) return true;
   if (looksLikeChatDiagramRequest(t)) return true;
-  return /写一段|写段(?:代码)?|写个(?:示例|例子|demo)|写点(?:代码)?|随便(?:给我)?写|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例(?:代码)?|代码示例|举例|怎么(?:写|实现)|如何(?:写|实现)|什么是|解释一下|sample\s+code|an?\s+example|code\s+snippet|show\s+me\s+(?:some\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|\bhow\s+(?:do\s+i|to)\b|\bwhat\s+is\b|\bexplain\b/i.test(
+  return /写一段|写段(?:代码)?|写个(?:示例|例子|demo)|写点(?:代码)?|随便(?:给我)?写|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例(?:代码)?|代码示例|举例|怎么(?:写|实现)|如何(?:写|实现)|什么是|解释一下|可以做什么|有什么建议|建议|推荐|sample\s+code|an?\s+example|code\s+snippet|show\s+me\s+(?:some\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|\bhow\s+(?:do\s+i|to|can\s+i)\b|\bwhat\s+(?:is|can\s+i|should\s+i)\b|\bexplain\b|\badvice\b|\bideas?\b/i.test(
     t,
   );
 }

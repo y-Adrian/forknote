@@ -1,12 +1,13 @@
 /**
- * Soft heuristics: sample-code asks do not force write_file / shell / explore,
- * but also do not imply a hard zero-tools gate. Explicit create/save uses tools.
+ * Intent heuristics: casual Q&A / sample-code / diagrams prefer plain chat.
+ * Explicit create/save/project work keeps the tool path.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  hasAgentWorkSignal,
   hasExplicitRepoActionSignal,
   inferCreateFilePath,
   inferExploreIntent,
@@ -18,6 +19,7 @@ import {
   looksLikeMutationRequest,
   looksLikeProjectGroundedAsk,
   resolveShellIntent,
+  shouldPreferPlainChatTurn,
 } from "../src/lib/agentTools.ts";
 
 const agentTurnSrc = readFileSync(
@@ -31,27 +33,26 @@ assert.ok(
   "no hard isAnswerOnlySampleCodeRequest early-return in runAgentTurn",
 );
 assert.ok(
-  /isChatOnlyDiagramAsk\s*\(\s*trimmed\s*\)/.test(agentTurnSrc),
-  "runAgentTurn gates chat-only diagram asks",
+  /shouldPreferPlainChatTurn/.test(agentTurnSrc),
+  "runAgentTurn uses shouldPreferPlainChatTurn",
 );
 assert.ok(
-  /omitProjectPack:\s*chatOnlyDiagramAsk/.test(agentTurnSrc),
-  "chat-only diagram omits project memory pack",
+  /omitProjectPack:\s*preferPlainChat/.test(agentTurnSrc),
+  "plain-chat turns omit project memory pack",
 );
 assert.ok(
-  /codingToolsSystem\s*=\s*\n?\s*projectRoot\s*&&\s*!chatOnlyDiagramAsk/.test(
+  /preferPlainChat/.test(agentTurnSrc) &&
+    /streamPlainChatAnswer/.test(agentTurnSrc),
+  "plain-chat turns early-return via streamPlainChatAnswer",
+);
+assert.ok(
+  /codingToolsSystem\s*=\s*\n?\s*projectRoot\s*&&\s*!preferPlainChat/.test(
     agentTurnSrc,
   ) ||
-    /projectRoot\s*&&\s*!chatOnlyDiagramAsk\s*\n?\s*\?\s*buildCodingToolsSystem/.test(
+    /projectRoot\s*&&\s*!preferPlainChat\s*\n?\s*\?\s*buildCodingToolsSystem/.test(
       agentTurnSrc,
     ),
-  "chat-only diagram must not inject coding-tools system",
-);
-assert.ok(
-  /if\s*\(\s*chatOnlyDiagramAsk\s*\)\s*\{[\s\S]*?streamPlainChatAnswer/.test(
-    agentTurnSrc,
-  ),
-  "chat-only diagram must early-return via streamPlainChatAnswer",
+  "plain-chat turns must not inject coding-tools system",
 );
 assert.ok(
   !/useNativeTools\s*=\s*Boolean\(\s*projectRoot\s*\)\s*&&\s*!chatOnlyDiagramAsk/.test(
@@ -203,5 +204,29 @@ for (const q of [
   assert.equal(looksLikeProjectGroundedAsk(q), false, `not grounded: ${q}`);
   assert.ok(isChatOnlyDiagramAsk(q), `chat-only despite 项目: ${q}`);
 }
+
+// Casual advice must not enter the tool loop (#238).
+const bloggerAsk = "如果我想成为一个科技博主，我可以做什么事情？";
+assert.equal(hasAgentWorkSignal(bloggerAsk), false, "blogger ask is not agent work");
+assert.ok(
+  shouldPreferPlainChatTurn(bloggerAsk, {}),
+  "blogger ask prefers plain chat",
+);
+assert.ok(looksLikeAnswerOnlyRequest(bloggerAsk), "blogger ask is answer-only");
+
+assert.ok(hasAgentWorkSignal("帮我改一下 README"));
+assert.ok(hasAgentWorkSignal("这个项目是做什么的"));
+assert.equal(
+  shouldPreferPlainChatTurn("写一个 hello.py", {
+    createPath: "hello.py",
+  }),
+  false,
+  "create-file asks keep tools",
+);
+assert.equal(
+  shouldPreferPlainChatTurn("根据本项目画一个架构图", {}),
+  false,
+  "project-grounded asks keep tools",
+);
 
 console.log("smoke-answer-only-intent: ok");

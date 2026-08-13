@@ -27,6 +27,7 @@ import {
   isChatOnlyDiagramAsk,
   looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
+  shouldPreferPlainChatTurn,
   multiStepFollowUpHint,
   multiStepSystemHint,
   parseAgentPlan,
@@ -273,15 +274,54 @@ export async function runAgentTurn(
   const allowTerminal = resolveAgentAllowTerminal(settings);
   const autoDiagnostics = resolveAgentAutoDiagnostics(settings);
   const projectTools = getProjectOpenAITools({ allowTerminal });
-  /** Chat-only diagram asks must not see coding-tools system (avoids list_dir loops). */
-  const codingToolsSystem =
-    projectRoot && !chatOnlyDiagramAsk
-      ? buildCodingToolsSystem(projectRoot, { allowTerminal })
-      : null;
   const resolved = resolveConversationContext(session);
   if (resolved.repairedToLive) {
     onRepairContextToLive?.();
   }
+
+  const priorUserTexts = thread.messages
+    .filter((m) => m.role === "user" && m.content.trim())
+    .map((m) => m.content.trim())
+    .filter((c) => c !== trimmed);
+
+  /**
+   * Resolve intents before choosing coding-tools vs plain chat. Casual questions
+   * (advice / Q&A) must not enter executeTools with a project tool prompt.
+   */
+  const createPath = projectRoot ? inferCreateFilePath(trimmed) : null;
+  const officeIntent = projectRoot ? inferOfficeCreateIntent(trimmed) : null;
+  const multiStepPlan = projectRoot ? inferMultiStepPlan(trimmed) : [];
+  const shellIntent =
+    projectRoot && allowTerminal && !createPath && !officeIntent
+      ? resolveShellIntent(trimmed, {
+          projectRoot,
+          priorUserTexts,
+        })
+      : null;
+  const exploreIntent =
+    projectRoot &&
+    !createPath &&
+    !officeIntent &&
+    !shellIntent &&
+    !looksLikeMutationRequest(trimmed)
+      ? inferExploreIntent(trimmed)
+      : null;
+
+  const preferPlainChat =
+    !projectRoot ||
+    chatOnlyDiagramAsk ||
+    shouldPreferPlainChatTurn(trimmed, {
+      createPath,
+      officeIntent,
+      shellIntent,
+      exploreIntent,
+      multiStepPlanLength: multiStepPlan.length,
+    });
+
+  const codingToolsSystem =
+    projectRoot && !preferPlainChat
+      ? buildCodingToolsSystem(projectRoot, { allowTerminal })
+      : null;
 
   const memoryAddendum = await buildAgentMemoryAddendum({
     settings,
@@ -291,7 +331,7 @@ export async function runAgentTurn(
     sidecarUrl,
     signal,
     includeFiles: options.includeFiles,
-    omitProjectPack: chatOnlyDiagramAsk,
+    omitProjectPack: preferPlainChat,
   });
 
   if (signal.aborted || !isOwned()) {
@@ -299,7 +339,7 @@ export async function runAgentTurn(
   }
 
   const apiMessages: ApiChatMessage[] = buildConversationMessages(thread, {
-    projectRoot: chatOnlyDiagramAsk ? null : projectRoot,
+    projectRoot: preferPlainChat ? null : projectRoot,
     codingToolsSystem,
     contextMode: resolved.mode,
     activeArchive: resolved.archive,
@@ -323,18 +363,20 @@ export async function runAgentTurn(
   }
 
   /**
-   * Chat diagram / Mermaid / 「随便画个图」: plain Markdown answer only.
-   * Do not enter executeTools — even with tools disabled, PROJECT coding
-   * prompts + collectToolCalls still caused list_dir loops after a brief
-   * mermaid source flash.
+   * Plain chat: no coding-tools system, no executeTools.
+   * Covers Mermaid/draw asks and ordinary Q&A without a clear "do work" signal.
    */
-  if (chatOnlyDiagramAsk) {
+  if (preferPlainChat) {
     apiMessages.push({
       role: "system",
       content:
         locale === "zh"
-          ? "用户最新消息是聊天内绘图/示意图请求（如 Mermaid、PlantUML、「随便画个图」）。必须严格依据该条消息作答：直接用 Markdown 输出图（优先 ```mermaid 或 ```plantuml 围栏），可附一句极短说明。禁止调用或提及任何项目工具（list_dir/read_file/write_file/run_terminal 等），禁止探索仓库，禁止延续记忆/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的长「总结」。"
-          : "The latest user message is a chat diagram request (Mermaid, PlantUML, draw a diagram). Answer that message only: emit the diagram in Markdown (prefer ```mermaid or ```plantuml fences), optionally with one short sentence. Do not call or mention project tools (list_dir/read_file/write_file/run_terminal, etc.), do not explore the repo, do not continue old build/verify/CMake/git work from memory or history, and do not dump an unrelated summary.",
+          ? chatOnlyDiagramAsk
+            ? "用户最新消息是聊天内绘图/示意图请求（如 Mermaid、PlantUML、「随便画个图」）。必须严格依据该条消息作答：直接用 Markdown 输出图（优先 ```mermaid 或 ```plantuml 围栏），可附一句极短说明。禁止调用或提及任何项目工具（list_dir/read_file/write_file/run_terminal 等），禁止探索仓库，禁止延续记忆/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的长「总结」。"
+            : "用户最新消息是普通问答/建议/概念讨论，并未明确要求你改仓库、跑命令或创建文件。请直接用 Markdown 回答问题本身。禁止调用任何项目工具，禁止探索/读取/修改仓库，禁止擅自 write_file 或「落地」文档；不要把记忆里的旧项目任务当作本轮目标。"
+          : chatOnlyDiagramAsk
+            ? "The latest user message is a chat diagram request (Mermaid, PlantUML, draw a diagram). Answer that message only: emit the diagram in Markdown (prefer ```mermaid or ```plantuml fences), optionally with one short sentence. Do not call or mention project tools (list_dir/read_file/write_file/run_terminal, etc.), do not explore the repo, do not continue old build/verify/CMake/git work from memory or history, and do not dump an unrelated summary."
+            : "The latest user message is ordinary Q&A / advice / conceptual discussion, not an explicit request to change the repo, run commands, or create files. Answer the question directly in Markdown. Do not call project tools, do not explore/read/modify the repo, do not write_file or 'land' documents on disk, and do not treat older memory tasks as this turn's goal.",
     });
     return streamPlainChatAnswer({
       llm: summaryLlm,
@@ -347,46 +389,8 @@ export async function runAgentTurn(
   }
 
   /**
-   * No bound project → plain Q&A (Cursor chat without codebase tools).
-   * Skip tools schema, plan approval, explore/shell nudges, and need_project
-   * blocking so ordinary asks (incl. “write some code”) just get an answer.
-   */
-  if (!projectRoot) {
-    return streamPlainChatAnswer({
-      llm: summaryLlm,
-      apiMessages,
-      signal,
-      isOwned,
-      patchContent,
-      locale,
-    });
-  }
-
-  const createPath = inferCreateFilePath(trimmed);
-  const officeIntent = inferOfficeCreateIntent(trimmed);
-  const multiStepPlan = inferMultiStepPlan(trimmed);
-  const priorUserTexts = thread.messages
-    .filter((m) => m.role === "user" && m.content.trim())
-    .map((m) => m.content.trim())
-    .filter((c) => c !== trimmed);
-  const shellIntent =
-    allowTerminal && !createPath && !officeIntent
-      ? resolveShellIntent(trimmed, {
-          projectRoot,
-          priorUserTexts,
-        })
-      : null;
-  const exploreIntent =
-    !createPath &&
-    !officeIntent &&
-    !shellIntent &&
-    !looksLikeMutationRequest(trimmed)
-      ? inferExploreIntent(trimmed)
-      : null;
-  /**
-   * Soft judgment (not a hard zero-tools early-return): informational /
-   * sample-code phrasing prefers Markdown in chat, but tools stay available
-   * (tool_choice auto) if the model later needs them for the user's goal.
+   * Soft judgment for remaining tool-enabled turns: informational phrasing
+   * still prefers Markdown, but tools stay available when work is requested.
    */
   const softInformationalAsk =
     !createPath &&

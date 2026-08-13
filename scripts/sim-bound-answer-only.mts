@@ -1,7 +1,6 @@
 /**
- * Bound project +「随便给我写一段代码」→ soft judgment path:
- * tools schema still offered (tool_choice auto), no hard zero-tools early-return,
- * typically completes as chat without write_file / plan.
+ * Bound project +「随便给我写一段代码」→ plain chat (no tools overreach):
+ * no write_file / plan; answer stays in Markdown.
  * Explicit create phrasing still enters the write plan path.
  */
 import assert from "node:assert/strict";
@@ -31,8 +30,8 @@ assert.ok(
   "isAnswerOnlySampleCodeRequest must not hard early-return in runAgentTurn",
 );
 assert.ok(
-  /softInformationalAsk/.test(agentTurnSrc),
-  "soft informational path should exist",
+  /shouldPreferPlainChatTurn|preferPlainChat/.test(agentTurnSrc),
+  "plain-chat preference gate should exist",
 );
 console.log("sim-bound-answer-only hard-path-absent: ok");
 
@@ -152,14 +151,8 @@ try {
   assert.equal(activityCalls, 0, "no tool activity when model answers in chat");
   assert.equal(changeCalls, 0, "no write_file / file changes");
   assert.ok(
-    Array.isArray(lastBody?.tools) && (lastBody!.tools as unknown[]).length > 0,
-    "soft path must still offer tools schema (not hard zero-tools early-return)",
-  );
-  assert.ok(
-    lastBody?.tool_choice === "auto" ||
-      lastBody?.tool_choice === undefined ||
-      (typeof lastBody?.tool_choice === "object" && lastBody?.tool_choice !== null),
-    "tool_choice should stay auto / model-decided (not forced write)",
+    !Array.isArray(lastBody?.tools) || (lastBody!.tools as unknown[]).length === 0,
+    "plain-chat sample ask must not offer tools schema",
   );
   const sysJoined = (lastBody?.messages ?? [])
     .filter((m) => m.role === "system")
@@ -167,11 +160,7 @@ try {
     .join("\n");
   assert.match(
     sysJoined,
-    /根据实际情景|Judge by situation|优先用 Markdown|prefer answering/i,
-  );
-  assert.ok(
-    !/禁止调用任何工具|Do not call any tools/i.test(sysJoined),
-    "must not hard-forbid all tools",
+    /普通问答|ordinary Q&A|禁止调用任何项目工具|Do not call project tools/i,
   );
   assert.match(patchedContent, /```python/);
   console.log("sim-bound-answer-only soft-sample: ok");
