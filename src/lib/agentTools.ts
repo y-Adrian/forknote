@@ -2563,7 +2563,9 @@ export function looksLikeChatDiagramRequest(userText: string): boolean {
 export function looksLikeProjectGroundedAsk(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
-  return /(?:本|此|该|当前)?项目(?:的|里|中)?|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)/i.test(
+  // Require deixis for「项目」(本/此/该/当前/在…里) so bare「画一个项目的流程图」
+  // stays chat-only. Stronger repo words (仓库/代码库/this repo/…) still match.
+  return /(?:本|此|该|当前)项目(?:的|里|中)?|在项目(?:里|中)|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)/i.test(
     t,
   );
 }
