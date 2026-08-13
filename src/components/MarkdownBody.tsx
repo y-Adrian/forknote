@@ -1,8 +1,8 @@
 import type { Components, ExtraProps } from "react-markdown";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { splitAdoptedSegments } from "../lib/adoptBranch";
 import { useLocale } from "../lib/i18n";
+import { MARKDOWN_REMARK_PLUGINS } from "../lib/markdownRemark";
 import {
   createContext,
   memo,
@@ -252,7 +252,7 @@ export const MarkdownBody = memo(function MarkdownBody({
     <MarkdownStreamingContext.Provider value={streaming}>
       <div className="fn-markdown-mount">
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
           components={MARKDOWN_COMPONENTS}
         >
           {markdown}
