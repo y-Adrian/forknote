@@ -465,6 +465,10 @@ const en = {
   "chat.diagram.renderFailed": "Could not render diagram — showing source. {detail}",
   "chat.diagram.viewSource": "View source",
   "chat.diagram.viewDiagram": "View diagram",
+  "chat.diagram.copyImage": "Copy image",
+  "chat.diagram.imageCopied": "Image copied",
+  "chat.diagram.imageDownloaded": "Image downloaded",
+  "chat.diagram.copyImageFailed": "Could not copy image",
   "chat.diagram.plantumlFallback":
     "PlantUML is shown as source. Enable server or local rendering in Settings → General → PlantUML, or use Mermaid fences for live diagrams.",
   "chat.image.copyMarkdown": "Copy markdown",
@@ -1162,6 +1166,10 @@ const zh: Record<MessageKey, string> = {
   "chat.diagram.renderFailed": "图示渲染失败 — 显示源码。{detail}",
   "chat.diagram.viewSource": "查看源码",
   "chat.diagram.viewDiagram": "查看图示",
+  "chat.diagram.copyImage": "复制图片",
+  "chat.diagram.imageCopied": "图片已复制",
+  "chat.diagram.imageDownloaded": "图片已下载",
+  "chat.diagram.copyImageFailed": "无法复制图片",
   "chat.diagram.plantumlFallback":
     "PlantUML 以源码展示。可在「设置 → 通用 → PlantUML」启用服务端或本地渲染；需要实时图示也可优先用 Mermaid 围栏。",
   "chat.image.copyMarkdown": "复制 Markdown",
