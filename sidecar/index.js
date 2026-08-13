@@ -4,8 +4,10 @@
  */
 
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -33,10 +35,13 @@ import {
   handlePlantumlServerRender,
 } from "./plantuml.mjs";
 
+const require = createRequire(import.meta.url);
+const { loadOrCreateSidecarToken } = require("../shared/sidecarAuth.cjs");
 const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.SIDECAR_PORT || 8787);
 const HOST = process.env.SIDECAR_HOST || "127.0.0.1";
+const AUTH_TOKEN = loadOrCreateSidecarToken();
 const MAX_READ_BYTES = 200 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
 const MAX_RUN_OUTPUT_BYTES = 200 * 1024;
@@ -193,11 +198,35 @@ function sendJson(res, status, body) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(data),
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
   });
   res.end(data);
+}
+
+function isTrustedLoopbackOrigin(value) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "127.0.0.1" ||
+        url.hostname === "localhost" ||
+        url.hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function hasValidAuthToken(req) {
+  const raw = req.headers["x-forknote-sidecar-token"];
+  const supplied = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof supplied !== "string") return false;
+  const expected = Buffer.from(AUTH_TOKEN);
+  const actual = Buffer.from(supplied.trim());
+  return (
+    expected.length === actual.length &&
+    crypto.timingSafeEqual(expected, actual)
+  );
 }
 
 function sendError(res, status, message) {
@@ -1899,16 +1928,6 @@ function handleRun(body, res = null) {
  * @param {http.ServerResponse} res
  */
 async function handler(req, res) {
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    });
-    res.end();
-    return;
-  }
-
   const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
   const pathname = url.pathname.replace(/\/$/, "") || "/";
 
@@ -2057,6 +2076,29 @@ async function handler(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+  if (!isTrustedLoopbackOrigin(origin)) {
+    sendError(res, 403, "Origin not allowed");
+    return;
+  }
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "Content-Type, X-ForkNote-Sidecar-Token",
+      "Access-Control-Max-Age": "600",
+    });
+    res.end();
+    return;
+  }
+  if (!hasValidAuthToken(req)) {
+    sendError(res, 401, "Missing or invalid sidecar token");
+    return;
+  }
   void handler(req, res);
 });
 
@@ -2077,7 +2119,13 @@ function portOwnerHint() {
 function probeOwnHealth() {
   return new Promise((resolve) => {
     const req = http.get(
-      { host: HOST, port: PORT, path: "/health", timeout: 800 },
+      {
+        host: HOST,
+        port: PORT,
+        path: "/health",
+        timeout: 800,
+        headers: { "X-ForkNote-Sidecar-Token": AUTH_TOKEN },
+      },
       (res) => {
         let body = "";
         res.setEncoding("utf8");

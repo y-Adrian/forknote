@@ -56,7 +56,7 @@ function sendJson(res, status, body) {
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} rewritePath
- * @param {{ kind?: 'sidecar' | 'openai' }} [opts]
+ * @param {{ kind?: 'sidecar' | 'openai', headers?: Record<string, string> }} [opts]
  */
 function proxyTo(targetOrigin, req, res, rewritePath, opts = {}) {
   let dest;
@@ -71,6 +71,7 @@ function proxyTo(targetOrigin, req, res, rewritePath, opts = {}) {
   delete headers["x-forknote-target"];
   delete headers["x-branch-chat-target"];
   for (const name of HOP_BY_HOP) delete headers[name];
+  Object.assign(headers, opts.headers || {});
 
   const lib = dest.protocol === "https:" ? https : http;
   const proxyReq = lib.request(
@@ -167,7 +168,7 @@ function serveStatic(distDir, req, res) {
 }
 
 /**
- * @param {{ distDir: string, host?: string, port?: number }} opts
+ * @param {{ distDir: string, host?: string, port?: number, sidecarToken: string }} opts
  * @returns {Promise<{ server: import('node:http').Server, origin: string }>}
  */
 function startUiServer(opts) {
@@ -182,6 +183,9 @@ function startUiServer(opts) {
         const rest = url.replace(/^\/sidecar/, "") || "/";
         proxyTo(`http://${SIDECAR_HOST}:${SIDECAR_PORT}`, req, res, rest, {
           kind: "sidecar",
+          headers: {
+            "X-ForkNote-Sidecar-Token": opts.sidecarToken,
+          },
         });
         return;
       }

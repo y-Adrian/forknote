@@ -6,8 +6,11 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
+const { loadOrCreateSidecarToken } = require("../shared/sidecarAuth.cjs");
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
 
@@ -15,6 +18,8 @@ const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const VITE_PORT = Number(process.env.VITE_PORT || 5173);
 const VITE_HOST = process.env.VITE_HOST || "127.0.0.1";
+const SIDECAR_AUTH_TOKEN = loadOrCreateSidecarToken();
+process.env.SIDECAR_AUTH_TOKEN = SIDECAR_AUTH_TOKEN;
 
 /** @type {import("node:child_process").ChildProcess[]} */
 const children = [];
@@ -40,6 +45,9 @@ function sidecarHealth() {
         port: SIDECAR_PORT,
         path: "/health",
         timeout: 800,
+        headers: {
+          "X-ForkNote-Sidecar-Token": SIDECAR_AUTH_TOKEN,
+        },
       },
       (res) => {
         let body = "";
