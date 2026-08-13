@@ -39,10 +39,25 @@ assert.ok(
   "chat-only diagram omits project memory pack",
 );
 assert.ok(
-  /useNativeTools\s*=\s*Boolean\(\s*projectRoot\s*\)\s*&&\s*!chatOnlyDiagramAsk/.test(
+  /codingToolsSystem\s*=\s*\n?\s*projectRoot\s*&&\s*!chatOnlyDiagramAsk/.test(
+    agentTurnSrc,
+  ) ||
+    /projectRoot\s*&&\s*!chatOnlyDiagramAsk\s*\n?\s*\?\s*buildCodingToolsSystem/.test(
+      agentTurnSrc,
+    ),
+  "chat-only diagram must not inject coding-tools system",
+);
+assert.ok(
+  /if\s*\(\s*chatOnlyDiagramAsk\s*\)\s*\{[\s\S]*?streamPlainChatAnswer/.test(
     agentTurnSrc,
   ),
-  "chat-only diagram disables native tools",
+  "chat-only diagram must early-return via streamPlainChatAnswer",
+);
+assert.ok(
+  !/useNativeTools\s*=\s*Boolean\(\s*projectRoot\s*\)\s*&&\s*!chatOnlyDiagramAsk/.test(
+    agentTurnSrc,
+  ),
+  "chat-only diagram should not rely on soft useNativeTools alone",
 );
 
 function expectSampleCodeSoft(q: string) {
