@@ -9,11 +9,13 @@ import {
   buildExecutionPhaseSystem,
   buildMinimalCreatePlanHint,
   buildMinimalOfficePlanHint,
+  buildNetworkToolsSystem,
   buildNextPlanChunkPrompt,
   buildPlanningPhaseSystem,
   collectToolCalls,
   executeToolCall,
   extractTerminalCommandsFromPlan,
+  getNetworkOpenAITools,
   getProjectOpenAITools,
   inferCreateFilePath,
   inferExploreIntent,
@@ -84,6 +86,10 @@ import {
 import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { reflectWithOptionalLlm } from "./llmReflect";
 import { withAgentPhaseModel } from "./agentModelRouting";
+import {
+  formatNetworkStatusSystem,
+  resolveNetworkReachability,
+} from "./networkAccess";
 import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, FeedbackEvent, ThreadRoot } from "../types";
 
@@ -284,7 +290,17 @@ export async function runAgentTurn(
   const agentMaxRounds = resolveAgentMaxRounds(settings);
   const allowTerminal = resolveAgentAllowTerminal(settings);
   const autoDiagnostics = resolveAgentAutoDiagnostics(settings);
-  const projectTools = getProjectOpenAITools({ allowTerminal });
+  const networkReach = await resolveNetworkReachability({
+    settings,
+    sidecarUrl,
+    signal,
+  });
+  const allowNetworkTools = networkReach.toolsAllowed;
+  const projectTools = getProjectOpenAITools({
+    allowTerminal,
+    allowNetwork: allowNetworkTools,
+  });
+  const networkOnlyTools = getNetworkOpenAITools();
   const resolved = resolveConversationContext(session);
   if (resolved.repairedToLive) {
     onRepairContextToLive?.();
@@ -332,7 +348,9 @@ export async function runAgentTurn(
   const codingToolsSystem =
     projectRoot && !preferPlainChat
       ? buildCodingToolsSystem(projectRoot, { allowTerminal })
-      : null;
+      : preferPlainChat && allowNetworkTools
+        ? buildNetworkToolsSystem(locale === "zh" ? "zh" : "en")
+        : null;
 
   const memoryAddendum = await buildAgentMemoryAddendum({
     settings,
@@ -350,8 +368,13 @@ export async function runAgentTurn(
   }
 
   const apiMessages: ApiChatMessage[] = buildConversationMessages(thread, {
-    projectRoot: preferPlainChat ? null : projectRoot,
-    codingToolsSystem,
+    projectRoot: preferPlainChat && !allowNetworkTools ? null : projectRoot,
+    codingToolsSystem:
+      projectRoot && !preferPlainChat
+        ? codingToolsSystem
+        : allowNetworkTools
+          ? buildNetworkToolsSystem(locale === "zh" ? "zh" : "en")
+          : codingToolsSystem,
     contextMode: resolved.mode,
     activeArchive: resolved.archive,
     locale,
@@ -373,11 +396,21 @@ export async function runAgentTurn(
     });
   }
 
+  apiMessages.push({
+    role: "system",
+    content: formatNetworkStatusSystem(
+      networkReach,
+      locale === "zh" ? "zh" : "en",
+    ),
+  });
+
   /**
    * Plain chat: no coding-tools system, no executeTools.
    * Covers Mermaid/draw asks and ordinary Q&A without a clear "do work" signal.
+   * Exception: when Network is on and reachable, keep a light tool loop for
+   * web_search / web_fetch only.
    */
-  if (preferPlainChat) {
+  if (preferPlainChat && (!allowNetworkTools || chatOnlyDiagramAsk)) {
     apiMessages.push({
       role: "system",
       content:
@@ -396,6 +429,17 @@ export async function runAgentTurn(
       isOwned,
       patchContent,
       locale,
+    });
+  }
+
+  const networkOnlyTurn = preferPlainChat && allowNetworkTools && !chatOnlyDiagramAsk;
+  if (networkOnlyTurn) {
+    apiMessages.push({
+      role: "system",
+      content:
+        locale === "zh"
+          ? "本轮是普通问答，但用户已开启联网。优先直接作答；仅当需要最新公开信息时调用 web_search / web_fetch。禁止调用任何项目/仓库工具。"
+          : "This turn is ordinary Q&A, but Network is enabled. Prefer answering directly; call web_search / web_fetch only when live public info is needed. Do not call project/repo tools.",
     });
   }
 
@@ -432,20 +476,23 @@ export async function runAgentTurn(
     ? t("agent.status.terminal", { command: shellIntent.command }, locale)
     : null;
   const requireApproval =
-    Boolean(projectRoot) && resolveAgentRequireApproval(settings);
+    Boolean(projectRoot) &&
+    !networkOnlyTurn &&
+    resolveAgentRequireApproval(settings);
   /** Pure read/list/search, read-only shell, or soft informational — skip plan gate. */
   const shellLeavesProject =
     Boolean(shellIntent) &&
     Boolean(projectRoot) &&
     commandLeavesProject(shellIntent!.command, projectRoot);
   const skipPlanApproval =
-    Boolean(projectRoot) &&
-    !looksLikeMutationRequest(trimmed) &&
-    multiStepPlan.length < 2 &&
-    !shellLeavesProject &&
-    (Boolean(exploreIntent) ||
-      Boolean(shellIntent?.readOnly) ||
-      softInformationalAsk);
+    networkOnlyTurn ||
+    (Boolean(projectRoot) &&
+      !looksLikeMutationRequest(trimmed) &&
+      multiStepPlan.length < 2 &&
+      !shellLeavesProject &&
+      (Boolean(exploreIntent) ||
+        Boolean(shellIntent?.readOnly) ||
+        softInformationalAsk));
   /**
    * Clear shell intents skip messy free-form planning:
    * - Outside-project (ls /debris) always needs Terminal 权限 card.
@@ -496,7 +543,8 @@ export async function runAgentTurn(
 
   let visibleContent = "";
   let round = 0;
-  let useNativeTools = Boolean(projectRoot);
+  let useNativeTools = Boolean(projectRoot) || allowNetworkTools;
+  const activeTools = networkOnlyTurn ? networkOnlyTools : projectTools;
   let forcedWrite = Boolean(createPath && projectRoot);
   let forcedExploreTool =
     exploreIntent?.kind === "list"
@@ -577,6 +625,7 @@ export async function runAgentTurn(
           executeToolCall(shellCall, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
+            allowNetwork: allowNetworkTools,
             session,
           }),
           signal,
@@ -620,6 +669,7 @@ export async function runAgentTurn(
           executeToolCall(listCall, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
+            allowNetwork: allowNetworkTools,
             session,
           }),
           signal,
@@ -655,6 +705,7 @@ export async function runAgentTurn(
             executeToolCall(step, sidecarUrl, signal, projectRoot, locale, {
               allowTerminal,
               allowOutsideProject,
+              allowNetwork: allowNetworkTools,
               session,
             }),
             signal,
@@ -723,7 +774,7 @@ export async function runAgentTurn(
           {
             signal,
             temperature: projectRoot ? 0.2 : 0.6,
-            tools: useNativeTools ? projectTools : undefined,
+            tools: useNativeTools ? activeTools : undefined,
             toolChoice:
               useNativeTools && forcedWrite && round === 0
                 ? { type: "function", function: { name: "write_file" } }
@@ -858,13 +909,18 @@ export async function runAgentTurn(
 
       // Ollama / small models often paste tool JSON in content while also
       // emitting empty or unparseable native tool_calls — always fall back.
-      if (pending.length === 0 && projectRoot) {
+      if (pending.length === 0 && (projectRoot || networkOnlyTurn)) {
         for (const raw of collectToolCalls(
           roundText,
           trimmed,
           apiReasoning,
         )) {
           let agent = raw;
+          if (networkOnlyTurn) {
+            if (agent.tool !== "web_search" && agent.tool !== "web_fetch") {
+              continue;
+            }
+          }
           if (officeIntent && agent.tool === officeIntent.tool) {
             agent = alignOfficeToolCall(agent, officeIntent, trimmed);
           }
@@ -974,6 +1030,15 @@ export async function runAgentTurn(
           pending.push({ agent });
         }
         planFallbackUsed = true;
+      }
+
+      if (networkOnlyTurn) {
+        for (let i = pending.length - 1; i >= 0; i--) {
+          const tool = pending[i]!.agent.tool;
+          if (tool !== "web_search" && tool !== "web_fetch") {
+            pending.splice(i, 1);
+          }
+        }
       }
 
       const cleanedRound = stripToolCalls(roundText);
@@ -1253,6 +1318,7 @@ export async function runAgentTurn(
           executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
+            allowNetwork: allowNetworkTools,
             session,
           }),
           signal,
@@ -1465,6 +1531,7 @@ export async function runAgentTurn(
         executeToolCall(synth, sidecarUrl, signal, projectRoot, locale, {
           allowTerminal,
           allowOutsideProject,
+          allowNetwork: allowNetworkTools,
           session,
         }),
         signal,

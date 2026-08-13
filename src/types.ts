@@ -335,6 +335,12 @@ export interface ApiSettings {
    */
   agentAllowTerminal?: boolean;
   /**
+   * When true, expose `web_search` / `web_fetch` agent tools (via sidecar).
+   * Default false — user opts in from the composer Network toggle.
+   * Tools still require actual network reachability at call time.
+   */
+  agentAllowNetwork?: boolean;
+  /**
    * After successful TS/JS file edits, auto-run `run_diagnostics` and feed
    * the output back into the agent turn. Default true.
    */

@@ -43,6 +43,7 @@ import {
   MIN_AGENT_MAX_ROUNDS,
   loadSettings,
 } from "./settings";
+import { sidecarWebFetch, sidecarWebSearch } from "./networkAccess";
 
 export {
   DEFAULT_AGENT_MAX_ROUNDS,
@@ -79,7 +80,9 @@ export type AgentToolName =
   | "git_status"
   | "git_diff"
   | "git_commit"
-  | "run_terminal";
+  | "run_terminal"
+  | "web_search"
+  | "web_fetch";
 
 export type SpreadsheetCell = string | number | boolean | null;
 
@@ -119,6 +122,8 @@ export type AgentToolCall = {
   message?: string;
   paths?: string[];
   cells?: Array<{ row: number; col: number; value: SpreadsheetCell }>;
+  /** Absolute http(s) URL for web_fetch. */
+  url?: string;
 };
 
 export type AgentActivity = {
@@ -170,6 +175,8 @@ const TOOL_NAMES = new Set<string>([
   "git_diff",
   "git_commit",
   "run_terminal",
+  "web_search",
+  "web_fetch",
 ]);
 
 /** Native OpenAI-compatible tools — same mechanism Cursor uses with the model API. */
@@ -715,15 +722,69 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
   },
 ];
 
+/** Public-web tools (sidecar /net/*). Independent of a bound project. */
+export const NETWORK_OPENAI_TOOLS: OpenAITool[] = [
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description:
+        "Search the public web for up-to-date information. Use when the user enabled Network and you need live facts, docs, or news not in the local project. Returns titles, URLs, and snippets.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query (natural language or keywords).",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_fetch",
+      description:
+        "Fetch a public http(s) URL and return readable text. Use for known documentation or article URLs after web_search (or when the user pastes a link). Private/local hosts are blocked.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "Absolute http(s) URL to fetch.",
+          },
+        },
+        required: ["url"],
+      },
+    },
+  },
+];
+
 /** Filter project tools (e.g. hide run_terminal when disabled in settings). */
 export function getProjectOpenAITools(options?: {
   allowTerminal?: boolean;
+  allowNetwork?: boolean;
 }): OpenAITool[] {
   const allowTerminal = options?.allowTerminal !== false;
-  if (allowTerminal) return PROJECT_OPENAI_TOOLS;
-  return PROJECT_OPENAI_TOOLS.filter(
-    (t) => t.function.name !== "run_terminal",
-  );
+  const allowNetwork = options?.allowNetwork === true;
+  const project = allowTerminal
+    ? PROJECT_OPENAI_TOOLS
+    : PROJECT_OPENAI_TOOLS.filter((t) => t.function.name !== "run_terminal");
+  if (!allowNetwork) return project;
+  return [...project, ...NETWORK_OPENAI_TOOLS];
+}
+
+export function getNetworkOpenAITools(): OpenAITool[] {
+  return NETWORK_OPENAI_TOOLS;
+}
+
+export function buildNetworkToolsSystem(locale: Locale): string {
+  if (locale === "zh") {
+    return `【联网工具】可用 web_search（检索）与 web_fetch（抓取公开 URL）。仅在需要最新公开信息时使用；不要编造未返回的网页内容。本地私有地址不可访问。`;
+  }
+  return `[Network tools] You may use web_search and web_fetch for public URLs. Use only when live public info is needed; do not invent page contents. Private/local hosts are blocked.`;
 }
 
 /**
@@ -1745,6 +1806,7 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
             value: (c.value ?? null) as SpreadsheetCell,
           }))
       : undefined,
+    url: typeof args.url === "string" ? args.url.trim() : undefined,
   };
 }
 
@@ -3588,6 +3650,7 @@ export async function executeToolCall(
   options?: {
     allowTerminal?: boolean;
     allowOutsideProject?: boolean;
+    allowNetwork?: boolean;
     session?: ChatSession | null;
   },
 ): Promise<{
@@ -3598,6 +3661,7 @@ export async function executeToolCall(
 }> {
   const allowTerminal = options?.allowTerminal !== false;
   const allowOutsideProject = Boolean(options?.allowOutsideProject);
+  const allowNetwork = options?.allowNetwork === true;
   const toolSession = options?.session ?? null;
   try {
     if (signal?.aborted) {
@@ -4548,6 +4612,92 @@ export async function executeToolCall(
               { command: preview, code: result.exitCode },
               locale,
             ),
+          },
+        };
+      }
+      case "web_search": {
+        if (!allowNetwork) {
+          return {
+            ok: false,
+            resultText:
+              "Error: web_search is disabled (Network toggle off or offline)",
+            activity: {
+              kind: "error",
+              message:
+                locale === "zh"
+                  ? "联网未开启或离线，无法搜索"
+                  : "Network off or offline — cannot search",
+            },
+          };
+        }
+        const query = call.query?.trim();
+        if (!query) {
+          return {
+            ok: false,
+            resultText: "Error: query is required",
+            activity: {
+              kind: "error",
+              message:
+                locale === "zh" ? "缺少搜索词" : "Missing search query",
+            },
+          };
+        }
+        const search = await sidecarWebSearch(query, sidecarUrl, signal);
+        const lines = search.results.map(
+          (r, i) =>
+            `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`,
+        );
+        return {
+          ok: true,
+          resultText:
+            lines.join("\n\n") ||
+            `(no results for ${JSON.stringify(query)})`,
+          activity: {
+            kind: "search",
+            message:
+              locale === "zh"
+                ? `网页搜索：${query}`
+                : `Web search: ${query}`,
+          },
+        };
+      }
+      case "web_fetch": {
+        if (!allowNetwork) {
+          return {
+            ok: false,
+            resultText:
+              "Error: web_fetch is disabled (Network toggle off or offline)",
+            activity: {
+              kind: "error",
+              message:
+                locale === "zh"
+                  ? "联网未开启或离线，无法抓取"
+                  : "Network off or offline — cannot fetch",
+            },
+          };
+        }
+        const url = call.url?.trim() || call.path?.trim();
+        if (!url) {
+          return {
+            ok: false,
+            resultText: "Error: url is required",
+            activity: {
+              kind: "error",
+              message: locale === "zh" ? "缺少 URL" : "Missing URL",
+            },
+          };
+        }
+        const fetched = await sidecarWebFetch(url, sidecarUrl, signal);
+        const header = `URL: ${fetched.url}\nHTTP: ${fetched.status}\nType: ${fetched.contentType || "(unknown)"}\n\n`;
+        return {
+          ok: fetched.ok,
+          resultText: header + (fetched.text || "(empty body)"),
+          activity: {
+            kind: "read",
+            message:
+              locale === "zh"
+                ? `抓取网页：${fetched.url}`
+                : `Fetched: ${fetched.url}`,
           },
         };
       }

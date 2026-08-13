@@ -39,6 +39,7 @@ const APP_DEFAULTS: ApiSettings = {
   agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
   agentRequireApproval: true,
   agentAllowTerminal: true,
+  agentAllowNetwork: false,
   agentAutoDiagnostics: true,
   agentPlanModel: "",
   agentCodeModel: "",
@@ -51,6 +52,10 @@ export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
 
 export function resolveAgentAllowTerminal(settings: ApiSettings): boolean {
   return settings.agentAllowTerminal ?? true;
+}
+
+export function resolveAgentAllowNetwork(settings: ApiSettings): boolean {
+  return settings.agentAllowNetwork === true;
 }
 
 export function resolveAgentAutoDiagnostics(settings: ApiSettings): boolean {
