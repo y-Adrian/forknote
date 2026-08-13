@@ -1242,6 +1242,10 @@ body {
   overflow: visible;
 }
 
+.ds-messages.is-no-enter .fn-msg {
+  animation: none;
+}
+
 .fn-msg {
   display: flex;
   flex-direction: column;
@@ -6045,6 +6049,13 @@ mark.branch-highlight:hover {
   border-radius: 14px;
   background: var(--ds-accent-soft);
   box-sizing: border-box;
+}
+
+.fn-context-banner-footer.is-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+  animation: none;
 }
 
 .fn-context-banner-text {

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { messagesAfterArchive } from "../lib/archive";
-import { countBranchesInThread, maxBranchDepthInThread } from "../lib/branches";
+import { countBranchesInThread } from "../lib/branches";
 import {
   resolveConversationContext,
   resolveThreadView,
@@ -17,7 +17,7 @@ import { copyTextToClipboard } from "../lib/clipboard";
 import { useAppStore } from "../store/useAppStore";
 import type { ArchiveSnapshot, ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
-import { BranchRail, branchRailWidthPx } from "./BranchRail";
+import { BranchRail } from "./BranchRail";
 import { ForkHistoryMap } from "./ForkHistoryMap";
 import { AgentPlanReview } from "./AgentPlanReview";
 import {
@@ -196,6 +196,14 @@ export function MainPanel({
   const archiveHistoryRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipTitleBlurCommit = useRef(false);
+  /** Preserve viewport across Live/Archive/Evolution remounts. */
+  const scrollAnchorRef = useRef<
+    | { kind: "msg"; id: string; top: number }
+    | { kind: "scroll"; scrollTop: number }
+    | null
+  >(null);
+  const suppressEnterAnimRef = useRef(false);
+  const [suppressEnterAnim, setSuppressEnterAnim] = useState(false);
   /** When true, keep the chat pinned to the latest message as content grows. */
   const stickToBottomRef = useRef(true);
   const lastSentPromptRef = useRef("");
@@ -228,10 +236,6 @@ export function MainPanel({
     () => (thread ? countBranchesInThread(thread) : 0),
     [thread],
   );
-  const branchRailWidth = useMemo(
-    () => (thread ? branchRailWidthPx(maxBranchDepthInThread(thread)) : 0),
-    [thread],
-  );
 
   const hasThreadContent = useMemo(
     () => Boolean(thread?.messages.some((m) => m.content.trim())),
@@ -249,7 +253,7 @@ export function MainPanel({
   const lastThreadMessageId = thread?.messages[thread.messages.length - 1]?.id;
 
   const showCompressSuggest = useMemo(() => {
-    if (!thread || !activeSessionId || inArchiveMode) return false;
+    if (!thread || !activeSessionId) return false;
     if (compressSuggestDismissedFor === activeSessionId) return false;
     if (loadingCompress) return false;
     const nonEmpty = thread.messages.filter((m) => m.content.trim()).length;
@@ -261,11 +265,11 @@ export function MainPanel({
   }, [
     thread,
     activeSessionId,
-    inArchiveMode,
     compressSuggestDismissedFor,
     loadingCompress,
     activeSession?.contextMemory?.updatedAt,
   ]);
+  const showCompressSuggestBanner = showCompressSuggest && !inArchiveMode;
 
   const composerBusy =
     loadingMain ||
@@ -416,6 +420,65 @@ export function MainPanel({
     stickToBottomRef.current = false;
   }, [activeSessionId, showArchiveDoc, threadView]);
 
+  const captureScrollAnchor = useCallback(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const rootTop = root.getBoundingClientRect().top;
+    const nodes = root.querySelectorAll<HTMLElement>("[data-msg-id]");
+    for (const node of nodes) {
+      const rect = node.getBoundingClientRect();
+      if (rect.bottom > rootTop + 12) {
+        const id = node.dataset.msgId;
+        if (!id) continue;
+        scrollAnchorRef.current = {
+          kind: "msg",
+          id,
+          top: rect.top - rootTop,
+        };
+        suppressEnterAnimRef.current = true;
+        setSuppressEnterAnim(true);
+        return;
+      }
+    }
+    // Archive doc has no data-msg-id — keep absolute scrollTop.
+    scrollAnchorRef.current = {
+      kind: "scroll",
+      scrollTop: root.scrollTop,
+    };
+    suppressEnterAnimRef.current = true;
+    setSuppressEnterAnim(true);
+  }, []);
+
+  // After Archive ↔ Live/Evolution remounts, re-align the first shared message
+  // so inserting/removing content above does not shove the viewport.
+  useLayoutEffect(() => {
+    const root = scrollRef.current;
+    const anchor = scrollAnchorRef.current;
+    if (!root || !anchor) return;
+
+    if (anchor.kind === "msg") {
+      const node = root.querySelector<HTMLElement>(
+        `[data-msg-id="${CSS.escape(anchor.id)}"]`,
+      );
+      if (node) {
+        const rootTop = root.getBoundingClientRect().top;
+        const delta = node.getBoundingClientRect().top - rootTop - anchor.top;
+        if (delta !== 0) root.scrollTop += delta;
+      }
+    } else {
+      root.scrollTop = anchor.scrollTop;
+    }
+    scrollAnchorRef.current = null;
+
+    if (suppressEnterAnimRef.current) {
+      const t = window.setTimeout(() => {
+        suppressEnterAnimRef.current = false;
+        setSuppressEnterAnim(false);
+      }, 50);
+      return () => window.clearTimeout(t);
+    }
+  }, [showArchiveDoc, threadView, visibleMessages]);
+
   useEffect(() => {
     if (!loadingBranchId && openBranchId) {
       requestAnimationFrame(() => {
@@ -472,6 +535,7 @@ export function MainPanel({
       archives[archives.length - 1]?.id ??
       null;
     if (!targetId) return;
+    captureScrollAnchor();
     setContextMode("archive", targetId);
   };
 
@@ -489,12 +553,19 @@ export function MainPanel({
       activeSession?.activeArchiveId ??
       archives[archives.length - 1]?.id;
     if (!targetId) return;
+    captureScrollAnchor();
     setContextMode("archive", targetId);
   };
 
   const switchToLiveConversation = () => {
+    captureScrollAnchor();
     setContextMode("live");
     dismissModeNotice();
+  };
+
+  const switchToEvolution = () => {
+    captureScrollAnchor();
+    setThreadView("evolution");
   };
 
   const submit = () => {
@@ -704,7 +775,9 @@ export function MainPanel({
       <div className="ds-chat-body">
         <div className="ds-chat-column">
           <div className="ds-chat-scroll" ref={scrollRef}>
-            <div className="ds-messages">
+            <div
+              className={`ds-messages${suppressEnterAnim ? " is-no-enter" : ""}`}
+            >
               {showArchiveDraft ? (
                 <div className="fn-msg fn-msg-assistant">
                   <article className="fn-archive-base" aria-busy="true">
@@ -903,8 +976,9 @@ export function MainPanel({
 
             {showCompressSuggest && (
               <div
-                className="fn-context-banner fn-context-banner-footer"
+                className={`fn-context-banner fn-context-banner-footer${showCompressSuggestBanner ? "" : " is-placeholder"}`}
                 role="status"
+                aria-hidden={!showCompressSuggestBanner}
               >
                 <p className="fn-context-banner-text">
                   {t("main.compressSuggestText")}
@@ -913,7 +987,8 @@ export function MainPanel({
                   <button
                     type="button"
                     className="fn-context-banner-btn"
-                    disabled={composerBusy}
+                    disabled={composerBusy || !showCompressSuggestBanner}
+                    tabIndex={showCompressSuggestBanner ? undefined : -1}
                     onClick={() => {
                       if (activeSessionId) {
                         setCompressSuggestDismissedFor(activeSessionId);
@@ -926,6 +1001,8 @@ export function MainPanel({
                   <button
                     type="button"
                     className="fn-context-banner-btn is-quiet"
+                    disabled={!showCompressSuggestBanner}
+                    tabIndex={showCompressSuggestBanner ? undefined : -1}
                     onClick={() => {
                       if (activeSessionId) {
                         setCompressSuggestDismissedFor(activeSessionId);
@@ -997,7 +1074,7 @@ export function MainPanel({
                         aria-pressed={inArchiveMode && threadView === "evolution"}
                         disabled={composerBusy || !inArchiveMode}
                         title={t("main.fullThreadTitle")}
-                        onClick={() => setThreadView("evolution")}
+                        onClick={switchToEvolution}
                       >
                         {t("main.fullThread")}
                       </button>
@@ -1118,15 +1195,7 @@ export function MainPanel({
             />
           </footer>
         </div>
-        {showArchiveDoc ? (
-          <div
-            className="ds-branch-rail"
-            style={{ width: branchRailWidth }}
-            aria-hidden
-          />
-        ) : (
-          <BranchRail thread={thread} scrollRef={scrollRef} />
-        )}
+        <BranchRail thread={thread} scrollRef={scrollRef} />
       </div>
 
       {error && <p className="ds-error ds-error-bar">{error}</p>}
