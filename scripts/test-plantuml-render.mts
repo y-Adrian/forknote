@@ -14,7 +14,12 @@ import {
   spawnPlantumlPipe,
   buildPlantumlEnv,
   handlePlantumlLocalRender,
+  mergePlantumlJavaToolOptions,
+  PLANTUML_HEADLESS_JAVA_FLAGS,
 } from "../sidecar/plantuml.mjs";
+import {
+  STATUS_PROBE_URLS,
+} from "../sidecar/network.mjs";
 import {
   assertPlantumlServerUrlClient,
   encodePlantumlTextClient,
@@ -402,6 +407,44 @@ async function testLocalSpawnPipeAndStderr() {
   console.log("ok local spawn pipe + stderr surfaced");
 }
 
+function testHeadlessJavaFlags() {
+  assert.ok(
+    PLANTUML_HEADLESS_JAVA_FLAGS.includes("-Djava.awt.headless=true"),
+    "jar spawn must force AWT headless",
+  );
+  assert.ok(
+    PLANTUML_HEADLESS_JAVA_FLAGS.includes("-Dapple.awt.UIElement=true"),
+    "macOS Dock hide for residual AWT",
+  );
+  const merged = mergePlantumlJavaToolOptions("");
+  assert.match(merged, /-Djava\.awt\.headless=true/);
+  assert.match(merged, /-Dapple\.awt\.UIElement=true/);
+  const keep = mergePlantumlJavaToolOptions("-Djava.awt.headless=true -Xmx512m");
+  assert.equal(
+    (keep.match(/-Djava\.awt\.headless=true/g) || []).length,
+    1,
+    "do not duplicate headless flag",
+  );
+  assert.match(keep, /-Xmx512m/);
+  assert.match(keep, /-Dapple\.awt\.UIElement=true/);
+  console.log("ok plantuml headless JVM flags + JAVA_TOOL_OPTIONS merge");
+}
+
+function testNetworkProbesAvoidBrowserHelpers() {
+  assert.ok(STATUS_PROBE_URLS.length >= 2);
+  for (const url of STATUS_PROBE_URLS) {
+    assert.doesNotMatch(
+      url,
+      /google\.com|gstatic\.com/i,
+      `probe must not use Google endpoints that some VPN helpers open in Chrome: ${url}`,
+    );
+  }
+  assert.ok(
+    STATUS_PROBE_URLS.some((u) => /cloudflare|1\.1\.1\.1|example\.com/i.test(u)),
+  );
+  console.log("ok /net/status probes avoid Google browser helpers");
+}
+
 async function main() {
   testNormalizeDefaults();
   testNormalizeModes();
@@ -410,6 +453,8 @@ async function main() {
   testWiringStatic();
   await testClientEncodeMatchesSidecar();
   testSidecarUnreachableDetection();
+  testHeadlessJavaFlags();
+  testNetworkProbesAvoidBrowserHelpers();
   await testServerDirectFallbackWithoutSidecar();
   await testLocalModeRequiresSidecarMessage();
   await testLocalModeSoftFallsBackToServer();
