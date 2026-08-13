@@ -42,10 +42,11 @@ export const CODING_MEMORY_FILE = "CODING.md";
 /** Project-relative folder holding SUMMARY.md / TASKS.md / DECISIONS.md / CODING.md */
 export const DEFAULT_MEMORY_DIR = ".forknote/memory";
 
-const FILE_MAX_INJECT = 1800;
-const SECTION_MAX = 700;
+const FILE_MAX_INJECT = 1400;
+const SECTION_MAX = 560;
 const CHUNK_MAX = 420;
-const CHUNK_TOP_K = 5;
+/** Keep memory injection lean — extra chunks dilute the user's latest goal. */
+const CHUNK_TOP_K = 3;
 
 export function resolveMemoryDir(settings: ApiSettings): string {
   const dir = (settings.memoryDir ?? "").trim() || DEFAULT_MEMORY_DIR;
@@ -449,6 +450,7 @@ export function formatLocalMemoryAddendum(
     `【项目记忆包 · 本地】（来自 ${where} 的 CODING / SUMMARY / TASKS / DECISIONS）`,
     "- 下列为压缩后的跨轮上下文；与当前会话消息冲突时以当前会话为准。",
     "- CODING.md 存放编码约定与失败教训，优先遵守。",
+    "- 仅作背景参考：必须对准用户最新目标作答；勿因记忆包展开旧任务、冗长背景或无关「顺便」工作。",
     "- 不要声称你「天生」记得这些；它们是注入的。",
     "",
     excerpts,

@@ -745,7 +745,8 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 - 意图明确且需要改磁盘或跑可能改系统的 shell 时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
 - 用户明确要求 shell/终端/执行命令/run … 时：计划里用 run_terminal（写出确切 command），不要改成 list_dir。
 - 每轮计划最多 ${MAX_PLAN_APPROVAL_STEPS} 个编号步骤。若任务更长，只写本轮要做的前 ${MAX_PLAN_APPROVAL_STEPS} 步，并一句说明其余稍后规划；不要一次列出长清单。
-- 意图明确但无需工具时：直接回答，并写明「无需工具」。
+- 意图明确但无需工具时：直接凝练回答，并写明「无需工具」。
+- 计划与说明都要短：对准用户最新目标，不要展开无关背景。
 
 当需要计划时，使用以下结构：
 ## 计划
@@ -765,7 +766,8 @@ Rules (must follow):
 - If intent is clear and needs disk changes or potentially mutating shell: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
 - If the user explicitly asked for shell/terminal/run …: plan run_terminal with the exact command — do not substitute list_dir.
 - At most ${MAX_PLAN_APPROVAL_STEPS} numbered steps per plan. If the task is longer, list only the next ${MAX_PLAN_APPROVAL_STEPS} steps for this approval round and note that the rest will be planned later — do not dump a long checklist.
-- If intent is clear but no tools are needed: answer directly and say no tools are required.
+- If intent is clear but no tools are needed: answer directly and concisely and say no tools are required.
+- Keep plans and replies short and on the latest user goal; do not dump unrelated background.
 
 When a plan is needed, use:
 ## Plan
@@ -1557,9 +1559,9 @@ write_file 的 content 必须是完整文件内容；search_replace 的 old_stri
 
 多轮工作流（一次用户消息内可循环多轮）：
 1. 依据用户【最新一条】明确意图决定是否需要工具；只要示例/「写一段代码」/解释 → 直接 Markdown 回答，不要 write_file；意图不清则先回答/澄清，不要擅自改文件或列目录；不要继续执行历史里未完成的旧任务，除非用户明确要求
-2. 仅当用户明确要求改仓库或跑命令时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行；若要跑命令则立刻 tool_calls run_terminal）
+2. 仅当用户明确要求改仓库或跑命令时 → 只调用完成该意图所必需的工具（不要先写长计划代替执行；若要跑命令则立刻 tool_calls run_terminal）；不要发散到未要求的文件或验证
 3. 阅读 tool / 工具结果；若用户任务尚未完成 → 再调下一批必要工具
-4. 全部做完 → 最后一轮用中文总结，不要再调工具
+4. 全部做完 → 最后一轮用中文凝练收束（对准用户目标，勿长篇总结报告），不要再调工具
 5. 禁止自行添加用户未要求的验证步骤（如写完再 list_dir、无必要的反复 read）`;
 }
 
@@ -2572,6 +2574,10 @@ export function looksLikeProjectGroundedAsk(userText: string): boolean {
 /**
  * Clear signal the user wants the agent to *do* project work (not only answer).
  * Used to keep casual Q&A out of the tool loop.
+ *
+ * Relevance (high → low): explicit repo action / mutation → project-grounded
+ * deixis → help-verbs with a concrete work object. Soft「帮我看/查」without a
+ * repo/file/error object is *not* work — that is ordinary chat.
  */
 export function hasAgentWorkSignal(userText: string): boolean {
   const t = userText.trim();
@@ -2579,14 +2585,36 @@ export function hasAgentWorkSignal(userText: string): boolean {
   if (hasExplicitRepoActionSignal(t)) return true;
   if (looksLikeMutationRequest(t)) return true;
   if (looksLikeProjectGroundedAsk(t)) return true;
-  return /(?:请|麻烦)?帮我(?:把|将)?(?:做|改|修|实现|创建|写入|写进|写到|添加|删除|排查|检查|调试|重构|提交|看|查|读)|请你(?:做|改|修|实现|创建|看|查)|务必|立刻(?:执行|修改)|implement\b|fix\s+(?:the\s+)?(?:bug|issue|error)|create\s+(?:a\s+)?(?:new\s+)?file|write\s+(?:a\s+)?(?:blog\s+)?post\s+to\b|add\s+(?:a\s+)?file\b|investigate\b|debug\b/i.test(
-    t,
-  );
+  // Concrete help-to-edit / implement / debug (no bare 看/查/读 — too chatty).
+  if (
+    /(?:请|麻烦)?帮我(?:把|将)?(?:做|改|修|实现|创建|写入|写进|写到|添加|删除|排查|检查|调试|重构|提交)|请你(?:做|改|修|实现|创建|排查|调试|重构)|务必|立刻(?:执行|修改)|implement\b|fix\s+(?:the\s+)?(?:bug|issue|error)|create\s+(?:a\s+)?(?:new\s+)?file|write\s+(?:a\s+)?(?:blog\s+)?post\s+to\b|add\s+(?:a\s+)?file\b|investigate\b|debug\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // 「帮我看/查/读」only counts when aimed at code/repo/files/errors.
+  if (
+    /(?:请|麻烦)?帮我(?:看|查|读)(?:一?下)?|(?:请你)(?:看|查|读)(?:一?下)?/i.test(t) &&
+    /(?:代码|仓库|项目|文件|目录|结构|报错|日志|错误|bug|issue|diff|pr\b|codebase|repo)|[\w./\\-]+\.\w{1,10}/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
  * Prefer plain chat (no tools / no coding-tools system) when there is no clear
  * agent-work intent. Call after create/office/shell/explore intents are known.
+ *
+ * Relevance order (first match wins):
+ * 1. Hard chat-only artifacts (diagrams)
+ * 2. Hard work intents (create / office / shell / explore / multi-step)
+ * 3. Soft Q&A / advice phrasing → plain chat (beats vague「帮我看」)
+ * 4. Remaining agent-work signals → tools
+ * 5. Default → plain chat
  */
 export function shouldPreferPlainChatTurn(
   userText: string,
@@ -2603,6 +2631,14 @@ export function shouldPreferPlainChatTurn(
     return false;
   }
   if ((opts.multiStepPlanLength ?? 0) >= 2) return false;
+  // Advice / conceptual Q&A outranks soft work verbs; explicit disk/shell
+  // phrasing still wins via hasExplicitRepoActionSignal inside answer-only.
+  if (
+    looksLikeAnswerOnlyRequest(userText) &&
+    !hasExplicitRepoActionSignal(userText)
+  ) {
+    return true;
+  }
   if (hasAgentWorkSignal(userText)) return false;
   return true;
 }
@@ -2627,7 +2663,7 @@ export function looksLikeAnswerOnlyRequest(userText: string): boolean {
   if (hasExplicitRepoActionSignal(t)) return false;
   if (isAnswerOnlySampleCodeRequest(t)) return true;
   if (looksLikeChatDiagramRequest(t)) return true;
-  return /写一段|写段(?:代码)?|写个(?:示例|例子|demo)|写点(?:代码)?|随便(?:给我)?写|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例(?:代码)?|代码示例|举例|怎么(?:写|实现)|如何(?:写|实现)|什么是|解释一下|可以做什么|有什么建议|建议|推荐|sample\s+code|an?\s+example|code\s+snippet|show\s+me\s+(?:some\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|\bhow\s+(?:do\s+i|to|can\s+i)\b|\bwhat\s+(?:is|can\s+i|should\s+i)\b|\bexplain\b|\badvice\b|\bideas?\b/i.test(
+  return /写一段|写段(?:代码)?|写个(?:示例|例子|demo)|写点(?:代码)?|随便(?:给我)?写|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例(?:代码)?|代码示例|举例|怎么(?:写|实现)|如何(?:写|实现)|什么是|解释一下|可以做什么|有什么建议|建议|推荐|怎么样|适不适合|适合做什么|有什么想法|你觉得|好不好|行不行|sample\s+code|an?\s+example|code\s+snippet|show\s+me\s+(?:some\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|\bhow\s+(?:do\s+i|to|can\s+i)\b|\bwhat\s+(?:is|can\s+i|should\s+i)\b|\bexplain\b|\badvice\b|\bideas?\b|\bwhat\s+do\s+you\s+think\b/i.test(
     t,
   );
 }
@@ -2757,6 +2793,9 @@ export function alignOfficeToolCall(
 /**
  * Detect "看看当前目录有什么 / 读一下某文件" explore intents.
  * Never steals explicit shell / absolute-path listing — those belong to run_terminal.
+ *
+ * List relevance must be inventory-shaped (files/dirs/tree). Bare「当前项目」/
+ * 「看看这个项目」/「有哪些建议」are chat or project-Q&A — not list_dir.
  */
 export function inferExploreIntent(
   userText: string,
@@ -2768,6 +2807,20 @@ export function inferExploreIntent(
   const t = userText.trim();
   if (!t) return null;
   if (isAnswerOnlySampleCodeRequest(t)) return null;
+  // Conceptual Q&A / advice must not force list/read/search. Named-file reads
+  // and explicit inventory/search phrasing still match below when answer-only
+  // did not fire (e.g. "读一下 README.md" is not answer-only).
+  if (
+    looksLikeAnswerOnlyRequest(t) &&
+    !/(?:读取|打开|读一下|\bcat\b|\bread\b|\bopen\b)\s*[：:\s]*[`"'“”]?[\w./\\-]+\.\w{1,10}/i.test(
+      t,
+    ) &&
+    !/(?:列出|罗列|list\s+(?:files|dir|directory)|全文搜索|(?<![\w])search\s+for(?![\w_])|搜索|查找)/i.test(
+      t,
+    )
+  ) {
+    return null;
+  }
 
   // Shell / terminal wording or absolute-path ls → not list_dir of project root.
   if (
@@ -2787,9 +2840,13 @@ export function inferExploreIntent(
   }
 
   const wantsList =
-    /列出|罗列|有哪些|有什么文件|目录|文件夹|项目结构|树形|list\s+(files|dir|directory)|what('s| is) in|show\s+(me\s+)?(the\s+)?(files|dir|directory|folder|tree)|当前(目录|文件夹|项目)/i.test(
+    /列出|罗列|有哪些文件|有什么文件|目录结构|文件夹结构|项目结构|项目目录|文件树|树形|list\s+(files|dir|directory)|what('s| is) in|show\s+(me\s+)?(the\s+)?(files|dir|directory|folder|tree)|当前(?:目录|文件夹)(?:里|下|中)?(?:有什么|有哪些)?|当前项目(?:的)?(?:目录|结构|文件|树)/i.test(
       t,
-    ) || /看看.*(目录|文件夹|项目|文件)/i.test(t);
+    ) ||
+    /看看.*(?:目录|文件夹|文件列表|有哪些文件|有什么文件|项目结构|项目目录|项目里有什么|项目下有什么)/i.test(
+      t,
+    ) ||
+    /(?:目录|文件夹)(?:里|下|中)?(?:有什么|有哪些)/i.test(t);
 
   // Multi-step: 先列出…再读… — list first even if a filename appears later
   if (wantsList && /先.*(列出|list|ls\b|目录|文件夹)/i.test(t)) {
@@ -3311,7 +3368,7 @@ export function multiStepSystemHint(steps: AgentToolCall[]): string {
     if (s.tool === "read_file") return `${i + 1}. read_file(${s.path})`;
     return `${i + 1}. ${s.tool}`;
   });
-  return `用户多步任务（必须逐步调用工具，禁止凭猜测跳过步骤）：\n${labels.join("\n")}\n全部完成后再中文总结。`;
+  return `用户多步任务（必须逐步调用工具，禁止凭猜测跳过步骤）：\n${labels.join("\n")}\n全部完成后用中文凝练收束（对准用户目标，勿自行加步骤）。`;
 }
 
 /** After planned reads fail, tell the model to create files instead of stopping. */
@@ -4533,7 +4590,7 @@ export function toolResultMessage(
   const truncated = truncateToolResultText(resultText, TOOL_RESULT_MAX_CHARS);
   const status = ok ? "成功" : "失败";
   const followUp = ok
-    ? "若任务未完成请继续调用工具；若已完成请给出最终中文总结（不要再输出 tool_call）。禁止声称未成功写入的文件已创建。"
+    ? "若任务未完成请继续调用完成用户目标所必需的工具；若已完成请给出凝练最终回复（不要再输出 tool_call，勿长篇总结）。禁止声称未成功写入的文件已创建。"
     : "工具失败，文件可能未写入磁盘。禁止向用户声称创建成功；可修正参数后重试，或如实说明失败原因。";
   return {
     role: "user",

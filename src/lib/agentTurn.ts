@@ -373,10 +373,10 @@ export async function runAgentTurn(
         locale === "zh"
           ? chatOnlyDiagramAsk
             ? "用户最新消息是聊天内绘图/示意图请求（如 Mermaid、PlantUML、「随便画个图」）。必须严格依据该条消息作答：直接用 Markdown 输出图（优先 ```mermaid 或 ```plantuml 围栏），可附一句极短说明。禁止调用或提及任何项目工具（list_dir/read_file/write_file/run_terminal 等），禁止探索仓库，禁止延续记忆/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的长「总结」。"
-            : "用户最新消息是普通问答/建议/概念讨论，并未明确要求你改仓库、跑命令或创建文件。请直接用 Markdown 回答问题本身。禁止调用任何项目工具，禁止探索/读取/修改仓库，禁止擅自 write_file 或「落地」文档；不要把记忆里的旧项目任务当作本轮目标。"
+            : "用户最新消息是普通问答/建议/概念讨论，并未明确要求你改仓库、跑命令或创建文件。请直接用 Markdown 对准其核心目标凝练作答（先结论/建议，少铺垫）；禁止调用任何项目工具，禁止探索/读取/修改仓库，禁止擅自 write_file 或「落地」文档；不要把记忆里的旧项目任务当作本轮目标，不要写成冗长报告。"
           : chatOnlyDiagramAsk
             ? "The latest user message is a chat diagram request (Mermaid, PlantUML, draw a diagram). Answer that message only: emit the diagram in Markdown (prefer ```mermaid or ```plantuml fences), optionally with one short sentence. Do not call or mention project tools (list_dir/read_file/write_file/run_terminal, etc.), do not explore the repo, do not continue old build/verify/CMake/git work from memory or history, and do not dump an unrelated summary."
-            : "The latest user message is ordinary Q&A / advice / conceptual discussion, not an explicit request to change the repo, run commands, or create files. Answer the question directly in Markdown. Do not call project tools, do not explore/read/modify the repo, do not write_file or 'land' documents on disk, and do not treat older memory tasks as this turn's goal.",
+            : "The latest user message is ordinary Q&A / advice / conceptual discussion, not an explicit request to change the repo, run commands, or create files. Answer the core goal directly and concisely in Markdown (lead with the answer; minimal preamble). Do not call project tools, do not explore/read/modify the repo, do not write_file or 'land' documents on disk, do not treat older memory tasks as this turn's goal, and do not write a long report.",
     });
     return streamPlainChatAnswer({
       llm: summaryLlm,
@@ -405,8 +405,8 @@ export async function runAgentTurn(
       role: "system",
       content:
         locale === "zh"
-          ? "根据实际情景判断：若用户只要示例/解释/概念问答，优先用 Markdown 直接回答（代码用围栏）；仅当为实现其目标确有必要（明确要求保存/创建到项目、改文件、跑命令，或上下文显然需要读仓库）时再调用工具。不要编造路径（如 hello.py）或擅自 write_file；也不要仅为「写一段代码」起草批准计划。严格依据最新一条用户消息；勿把记忆中的旧任务当作本轮目标。"
-          : "Judge by situation and necessity: if the ask is informational/sample, prefer answering in Markdown (fenced code). Use write/edit/terminal only when needed for the user's goal (explicit save/create/path/run, or context clearly requires project access). Do not invent paths (e.g. hello.py) or write_file unprompted; do not invent an approval plan just for a sample snippet. Ground in the latest user message; do not treat older memory tasks as this turn's goal.",
+          ? "根据实际情景判断：若用户只要示例/解释/概念问答，优先用 Markdown 直接、凝练回答（代码用围栏）；仅当为实现其目标确有必要（明确要求保存/创建到项目、改文件、跑命令，或上下文显然需要读仓库）时再调用工具。不要编造路径（如 hello.py）或擅自 write_file；也不要仅为「写一段代码」起草批准计划。严格依据最新一条用户消息；勿把记忆中的旧任务当作本轮目标，勿发散探索或长篇总结。"
+          : "Judge by situation and necessity: if the ask is informational/sample, prefer answering in Markdown concisely (fenced code). Use write/edit/terminal only when needed for the user's goal (explicit save/create/path/run, or context clearly requires project access). Do not invent paths (e.g. hello.py) or write_file unprompted; do not invent an approval plan just for a sample snippet. Ground in the latest user message; do not treat older memory tasks as this turn's goal; do not digress or write a long report.",
     });
   }
   const explorePlaceholder =
@@ -576,7 +576,7 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content: pre.ok
-              ? `【工具结果：run_terminal command=${JSON.stringify(shellIntent.command)}】\n${pre.resultText}\n\n（以上为真实终端输出。）\n用户任务：${trimmed}\n请据此用中文简要总结；若任务已完成则不要再调工具。`
+              ? `【工具结果：run_terminal command=${JSON.stringify(shellIntent.command)}】\n${pre.resultText}\n\n（以上为真实终端输出。）\n用户任务：${trimmed}\n请据此用中文凝练回答用户目标；若任务已完成则不要再调工具，不要展开无关步骤。`
               : `【run_terminal 失败】${pre.resultText}\n\n请向用户说明 sidecar/终端权限问题，不要编造命令输出。`,
           });
           if (!pre.ok) {
@@ -618,7 +618,7 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content: pre.ok
-              ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此继续后续步骤（如 read_file package.json、修改 README）；未完成则继续调工具，完成后再中文总结。`
+              ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此凝练作答。仅当用户原话仍要求的后续步骤未完成时才继续调工具；不要自行扩展到 package.json、README 或其他未提及的文件/验证。若用户只是要看目录，列完后一两句说明即可，不要再调工具。`
               : `【list_dir 失败】${pre.resultText}\n\n请向用户说明 sidecar/项目绑定问题，不要编造目录内容。`,
           });
           if (!pre.ok) {
@@ -1051,7 +1051,7 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content:
-              "请立刻调用工具执行（list_dir / glob_files / read_file / write_file / search_replace / write_docx / git_status / run_terminal 等），根据工具返回结果继续；全部完成后再用中文总结。不要只描述计划或假装已完成。",
+              "请立刻调用工具执行（list_dir / glob_files / read_file / write_file / search_replace / write_docx / git_status / run_terminal 等），根据工具返回结果继续完成用户目标；全部完成后用凝练中文收束。不要只描述计划或假装已完成，不要自行添加未要求的步骤。",
           });
           visibleContent = cleanedRound;
           patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
@@ -1096,7 +1096,7 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content:
-              "工具已执行。请根据上述工具结果给出最终中文总结，不要再调用工具。",
+              "工具已执行。请根据上述工具结果给出凝练最终回复（对准用户原目标，勿长篇总结或展开无关内容），不要再调用工具。",
           });
           round += 1;
           continue;
@@ -1332,7 +1332,7 @@ export async function runAgentTurn(
         apiMessages.push({
           role: "user",
           content:
-            "请根据上述工具结果判断：若用户任务已完成，请给出最终中文总结且不要再调用工具；仅当原请求仍有未完成的必要步骤时才继续调工具。禁止添加用户未要求的验证操作（如多余的 list_dir）。",
+            "请根据上述工具结果判断：若用户任务已完成，请给出凝练最终回复（对准用户原目标）且不要再调用工具；仅当原请求仍有未完成的必要步骤时才继续调工具。禁止添加用户未要求的验证操作（如多余的 list_dir）或自行扩展到未提及文件。",
         });
       } else if (officeIntent && officeToolFailed && !officeTargetWritten) {
         visibleContent =

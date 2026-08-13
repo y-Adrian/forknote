@@ -49,7 +49,7 @@ export function formatAutoDiagnosticsFeedback(opts: {
     return [
       "【自动诊断】TypeScript 检查通过（run_diagnostics）。",
       truncated,
-      "若任务未完成请继续；已完成则给出最终中文总结。",
+      "若任务未完成请继续用户目标所需步骤；已完成则给出凝练最终回复，勿长篇总结。",
     ].join("\n");
   }
   return [
