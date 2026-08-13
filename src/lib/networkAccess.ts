@@ -72,24 +72,26 @@ export async function resolveNetworkReachability(args: {
     args.sidecarUrl ?? DEFAULT_SIDECAR_URL,
     args.signal,
   );
-  if (probedOnline === false) {
-    return {
-      wanted: true,
-      browserOnline: true,
-      probedOnline: false,
-      toolsAllowed: false,
-      reason: "offline",
-    };
-  }
   if (probedOnline === null) {
-    // Sidecar down — still allow tools; execute will fail clearly, or
-    // treat as unreachable for safer UX.
+    // Sidecar down / probe transport failed — cannot run web tools.
     return {
       wanted: true,
       browserOnline: true,
       probedOnline: null,
       toolsAllowed: false,
       reason: "sidecar_unreachable",
+    };
+  }
+  // Prefer navigator.onLine when the sidecar answered. A failed upstream probe
+  // (DNS sinkhole, captive portal, flaky endpoint) must not hard-block tools
+  // or surface as a chat-breaking "offline" error — tools fail softly per URL.
+  if (probedOnline === false) {
+    return {
+      wanted: true,
+      browserOnline: true,
+      probedOnline: false,
+      toolsAllowed: true,
+      reason: "ok",
     };
   }
   return {
