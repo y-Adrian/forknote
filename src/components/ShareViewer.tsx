@@ -6,8 +6,6 @@ import {
   type SharePayload,
 } from "../lib/sessionShare";
 import { MarkdownBody } from "./MarkdownBody";
-import { MangaCloudBubble } from "./MangaCloudBubble";
-
 interface Props {
   token: string;
   onExit: () => void;
@@ -103,9 +101,9 @@ export function ShareViewer({ token, onExit }: Props) {
                     : t("share.roleAssistant")}
                 </p>
                 {msg.role === "user" ? (
-                  <MangaCloudBubble>
+                  <div className="ds-bubble ds-bubble-user">
                     <p>{msg.content}</p>
-                  </MangaCloudBubble>
+                  </div>
                 ) : (
                   <div className="ds-bubble ds-bubble-assistant markdown-body">
                     <MarkdownBody content={msg.content} />
