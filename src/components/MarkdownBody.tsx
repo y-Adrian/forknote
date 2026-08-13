@@ -5,6 +5,7 @@ import { splitAdoptedSegments } from "../lib/adoptBranch";
 import { useLocale } from "../lib/i18n";
 import { useState, type HTMLAttributes, type ReactNode } from "react";
 import { AdoptedClarifyCard } from "./AdoptedClarifyCard";
+import { DiagramFence, isDiagramFenceClass } from "./DiagramFence";
 
 interface Props {
   content: string;
@@ -122,6 +123,9 @@ export function MarkdownBody({ content, skipAdoptedSplit = false }: Props) {
       const isFenced =
         Boolean(languageFromClass(className)) || text.includes("\n");
       if (isFenced) {
+        if (isDiagramFenceClass(className)) {
+          return <DiagramFence className={className}>{children}</DiagramFence>;
+        }
         return <FencedCodeBlock className={className}>{children}</FencedCodeBlock>;
       }
       return (
