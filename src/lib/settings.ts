@@ -40,6 +40,9 @@ const APP_DEFAULTS: ApiSettings = {
   agentRequireApproval: true,
   agentAllowTerminal: true,
   agentAutoDiagnostics: true,
+  agentPlanModel: "",
+  agentCodeModel: "",
+  agentSummaryModel: "",
 };
 
 export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
@@ -159,6 +162,18 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
       raw.agentAllowTerminal ?? APP_DEFAULTS.agentAllowTerminal,
     agentAutoDiagnostics:
       raw.agentAutoDiagnostics ?? APP_DEFAULTS.agentAutoDiagnostics,
+    agentPlanModel:
+      typeof raw.agentPlanModel === "string"
+        ? raw.agentPlanModel.trim()
+        : APP_DEFAULTS.agentPlanModel,
+    agentCodeModel:
+      typeof raw.agentCodeModel === "string"
+        ? raw.agentCodeModel.trim()
+        : APP_DEFAULTS.agentCodeModel,
+    agentSummaryModel:
+      typeof raw.agentSummaryModel === "string"
+        ? raw.agentSummaryModel.trim()
+        : APP_DEFAULTS.agentSummaryModel,
   };
 }
 

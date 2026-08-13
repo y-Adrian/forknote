@@ -311,6 +311,18 @@ export interface ApiSettings {
    * the output back into the agent turn. Default true.
    */
   agentAutoDiagnostics?: boolean;
+  /**
+   * Optional model id for the planning phase. Empty = use {@link model}.
+   */
+  agentPlanModel?: string;
+  /**
+   * Optional model id for tool/code execution rounds. Empty = use {@link model}.
+   */
+  agentCodeModel?: string;
+  /**
+   * Optional model id for final Chinese summary rounds. Empty = use {@link model}.
+   */
+  agentSummaryModel?: string;
 }
 
 /** Agent plan awaiting user approval before tool execution. */

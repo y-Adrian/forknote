@@ -73,6 +73,7 @@ import {
   batchNeedsAutoDiagnostics,
   formatAutoDiagnosticsFeedback,
 } from "./agentExecFeedback";
+import { withAgentPhaseModel } from "./agentModelRouting";
 import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, ThreadRoot } from "../types";
 
@@ -261,6 +262,10 @@ export async function runAgentTurn(
 
   const trimmed = userText.trim();
 
+  const planLlm = withAgentPhaseModel(llm, "plan");
+  const codeLlm = withAgentPhaseModel(llm, "code");
+  const summaryLlm = withAgentPhaseModel(llm, "summary");
+
   const agentMaxRounds = resolveAgentMaxRounds(settings);
   const allowTerminal = resolveAgentAllowTerminal(settings);
   const autoDiagnostics = resolveAgentAutoDiagnostics(settings);
@@ -308,7 +313,7 @@ export async function runAgentTurn(
    */
   if (!projectRoot) {
     return streamPlainChatAnswer({
-      llm,
+      llm: summaryLlm,
       apiMessages,
       signal,
       isOwned,
@@ -626,7 +631,7 @@ export async function runAgentTurn(
       let streamResult: Awaited<ReturnType<typeof streamChat>>;
       try {
         streamResult = await streamChat(
-          llm,
+          codeLlm,
           apiMessages,
           (delta) => {
             roundText += delta;
@@ -1437,7 +1442,7 @@ export async function runAgentTurn(
 
       let planRaw = "";
       await streamChat(
-        llm,
+        planLlm,
         apiMessages,
         (delta) => {
           planRaw += delta;
