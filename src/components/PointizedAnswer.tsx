@@ -289,6 +289,11 @@ export function PointizedAnswer({
                   onDoubt={onDoubt}
                 />
               )}
+              {verdict === "unsure" && onClarifyPoint ? (
+                <p className="point-unsure-clarify-hint">
+                  {t("verdict.unsureClarifyHint")}
+                </p>
+              ) : null}
               <div
                 className="point-verdict-group"
                 role="group"
@@ -297,7 +302,7 @@ export function PointizedAnswer({
                 {onClarifyPoint ? (
                   <button
                     type="button"
-                    className="point-verdict-btn v-clarify"
+                    className={`point-verdict-btn v-clarify${verdict === "unsure" ? " is-suggested" : ""}`}
                     title={t("clarify.point")}
                     aria-label={t("clarify.point")}
                     onMouseDown={(e) => e.preventDefault()}

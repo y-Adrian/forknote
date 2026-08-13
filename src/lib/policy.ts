@@ -48,7 +48,9 @@ function directionFor(event: FeedbackEvent): number {
 
 /**
  * score[strategy] += learning_rate * signal_weight * (adopted ? 1 : -1)
- * Unsure → confidence decay on that strategy/topic (not a strong ±).
+ * Unsure does NOT move weights/confidence — it is routed to a clarification
+ * queue (see decisionFeedback.listPendingUnsureEvents).
+ * Auto tool_selection observe events only update the log / User Model path.
  */
 export function applyFeedbackToPolicy(
   policy: SessionFeedbackPolicy | undefined,
@@ -61,6 +63,20 @@ export function applyFeedbackToPolicy(
     updatedAt: Date.now(),
   };
 
+  // Tool-selection observe events are reliability signals for User Model, not
+  // content-strategy bandit updates.
+  if (
+    event.source === "agent_decision" &&
+    event.decisionType === "tool_selection"
+  ) {
+    return next;
+  }
+
+  // Unsure → pending clarification queue only (no weight / confidence change).
+  if (event.signal === "unsure") {
+    return next;
+  }
+
   const weight =
     event.weight ??
     (event.source === "passive_copy"
@@ -72,14 +88,6 @@ export function applyFeedbackToPolicy(
     const prev = next.weights[strategyId] ?? DEFAULT_POLICY_WEIGHT;
     next.weights[strategyId] = clampPolicyWeight(
       prev + POLICY_LEARNING_RATE * weight * dir,
-    );
-  }
-
-  if (event.signal === "unsure") {
-    const prev = next.confidence[strategyId] ?? 0;
-    next.confidence[strategyId] = Math.max(
-      -1,
-      prev - 0.25 * Math.max(weight, 0.5),
     );
   }
 
@@ -158,7 +166,7 @@ export function formatPolicyForAgent(
   }
   if (conf.length) {
     lines.push(
-      `置信度衰减（存疑）：${conf
+      `需更多解释的主题（历史置信标记）：${conf
         .slice(0, 4)
         .map(
           ([id, v]) =>

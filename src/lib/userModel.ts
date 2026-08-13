@@ -46,6 +46,9 @@ function preferLabelFor(event: FeedbackEvent): string {
   if (event.decisionType === "plan_approval") {
     return event.signal === "accept" ? "allow_plan" : "reject_plan";
   }
+  if (event.decisionType === "tool_selection") {
+    return event.contextSnapshot?.slice(0, 80) || "unknown_tool";
+  }
   return event.contextSnapshot?.slice(0, 80) || event.strategyId || "unknown";
 }
 

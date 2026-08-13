@@ -28,6 +28,11 @@ import {
 import { formatPolicyForAgent } from "./policy";
 import { assembleMemoryLayers } from "./memoryBudget";
 import {
+  formatPendingUnsureAddendum,
+  formatToolPreferenceHint,
+  formatUnsureCautionAddendum,
+} from "./decisionFeedback";
+import {
   buildUserModelFromFeedbackLog,
   formatUserModelForAgent,
 } from "./userModel";
@@ -548,14 +553,31 @@ export async function buildAgentMemoryAddendum(options: {
     settings, query, session, projectRoot, sidecarUrl, signal, includeFiles = [],
     omitProjectPack = false,
   } = options;
-  const layers: Array<{ kind: "preferences" | "longTerm" | "session" | "files"; text: string }> = [];
+  const layers: Array<{ kind: "preferences" | "longTerm" | "session" | "files" | "working"; text: string }> = [];
+  const locale = getLocale() === "zh" ? "zh" : "en";
   if (isMemoryLayerPreferencesEnabled(settings)) {
     const prefs = formatPreferencesAddendum(loadUserPreferences());
     if (prefs) layers.push({ kind: "preferences", text: prefs });
-    const userModel = formatUserModelForAgent(
-      buildUserModelFromFeedbackLog(session?.feedbackLog),
-    );
-    if (userModel) layers.push({ kind: "preferences", text: userModel });
+    const userModel = buildUserModelFromFeedbackLog(session?.feedbackLog);
+    const userModelText = formatUserModelForAgent(userModel);
+    if (userModelText) layers.push({ kind: "preferences", text: userModelText });
+    const toolHint = formatToolPreferenceHint(userModel.preferences);
+    if (toolHint) layers.push({ kind: "preferences", text: toolHint });
+  }
+  // Unsure clarify routing — inject pending queue + caution when ratio is high.
+  {
+    const pending = formatPendingUnsureAddendum(session?.feedbackLog, locale);
+    if (pending) layers.push({ kind: "working", text: pending });
+    for (const kind of [
+      "point_verdict",
+      "tool_selection",
+      "plan_approval",
+    ] as const) {
+      const caution = formatUnsureCautionAddendum(session?.feedbackLog, kind, {
+        locale,
+      });
+      if (caution) layers.push({ kind: "working", text: caution });
+    }
   }
   if (isMemoryLayerProjectEnabled(settings) && !omitProjectPack) {
     const pack = await loadContextMemoryPack({

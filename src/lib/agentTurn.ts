@@ -81,9 +81,10 @@ import {
   buildReflectNudge,
   parseStructuredPlanHints,
 } from "./agentLoop";
+import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { withAgentPhaseModel } from "./agentModelRouting";
 import { runDiagnostics } from "./sidecar";
-import type { ApiSettings, ChatSession, ThreadRoot } from "../types";
+import type { ApiSettings, ChatSession, FeedbackEvent, ThreadRoot } from "../types";
 
 export type AgentContentPatch = {
   content?: string;
@@ -129,6 +130,11 @@ export type RunAgentTurnOptions = {
     totalStepCount?: number;
     continueExecution: () => Promise<void>;
   }) => void;
+  /**
+   * Decision-bound feedback from tool batches (tool_selection observe signals).
+   * Caller persists into session.feedbackLog / User Model.
+   */
+  onDecisionFeedback?: (events: FeedbackEvent[]) => void;
 };
 
 /** Reject when `signal` aborts so tool fetches can be interrupted promptly. */
@@ -263,6 +269,7 @@ export async function runAgentTurn(
     onAgentChange,
     onRepairContextToLive,
     onAwaitPlanApproval,
+    onDecisionFeedback,
   } = options;
 
   const trimmed = userText.trim();
@@ -1325,6 +1332,20 @@ export async function runAgentTurn(
           observed,
           expectedOutcome: expected,
         });
+
+        // Decision-bound tool_selection logging (observe outcome → feedback log).
+        if (onDecisionFeedback) {
+          const batchId = `batch_${Date.now().toString(36)}_${round}`;
+          const events = buildToolSelectionDecisionEvents({
+            targetId: session?.id ?? "turn",
+            turnId: session?.id,
+            phase: "observe",
+            batchId,
+            items: batchToolResults,
+          });
+          onDecisionFeedback(events);
+        }
+
         if (decision !== "continue") {
           apiMessages.push({
             role: "user",
