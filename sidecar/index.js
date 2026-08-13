@@ -10,6 +10,12 @@ import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { isDeniedTerminalCommand } from "../shared/terminalDenyList.mjs";
+import {
+  extractSymbols,
+  findIdentifierRefs,
+  isCodeFile,
+  shouldSkipDir,
+} from "../shared/codeIntel.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -982,6 +988,157 @@ async function handleGlob(body) {
   };
 }
 
+const MAX_SYMBOL_HITS = 80;
+const MAX_SYMBOL_FILES = 400;
+
+/**
+ * Walk code files under start (relative path or ".").
+ * @param {string} startRel
+ * @param {(rel: string, source: string) => void | Promise<void>} onFile
+ */
+async function walkCodeFiles(startRel, onFile) {
+  const { root, resolved: start } = resolveSafe(startRel || ".");
+  let filesSeen = 0;
+
+  async function walk(dir) {
+    if (filesSeen >= MAX_SYMBOL_FILES) return;
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      if (filesSeen >= MAX_SYMBOL_FILES) return;
+      if (ent.isDirectory()) {
+        if (shouldSkipDir(ent.name) || shouldSkipName(ent.name)) continue;
+        await walk(path.join(dir, ent.name));
+        continue;
+      }
+      if (!ent.isFile()) continue;
+      if (!isCodeFile(ent.name)) continue;
+      const full = path.join(dir, ent.name);
+      const rel = path.relative(root, full).split(path.sep).join("/");
+      let source;
+      try {
+        const st = await fs.stat(full);
+        if (st.size > 400 * 1024) continue;
+        source = await fs.readFile(full, "utf8");
+      } catch {
+        continue;
+      }
+      filesSeen++;
+      await onFile(rel, source);
+    }
+  }
+
+  const st = await fs.stat(start).catch(() => null);
+  if (st?.isFile()) {
+    const rel = path.relative(root, start).split(path.sep).join("/");
+    if (isCodeFile(rel)) {
+      const source = await fs.readFile(start, "utf8");
+      await onFile(rel, source);
+    }
+    return { root, filesSeen: 1 };
+  }
+  await walk(start);
+  return { root, filesSeen };
+}
+
+async function handleFindSymbol(body) {
+  const name = String(body?.name ?? body?.query ?? "").trim();
+  if (!name) {
+    throw Object.assign(new Error("name is required"), { status: 400 });
+  }
+  const startRel = String(body?.path ?? ".").trim() || ".";
+  /** @type {Array<{ path: string, name: string, kind: string, line: number, exported: boolean, snippet: string }>} */
+  const symbols = [];
+  let truncated = false;
+
+  await walkCodeFiles(startRel, (rel, source) => {
+    if (symbols.length >= MAX_SYMBOL_HITS) {
+      truncated = true;
+      return;
+    }
+    for (const sym of extractSymbols(source, name)) {
+      symbols.push({ path: rel, ...sym });
+      if (symbols.length >= MAX_SYMBOL_HITS) {
+        truncated = true;
+        break;
+      }
+    }
+  });
+
+  return { name, symbols, truncated, count: symbols.length };
+}
+
+async function handleGoToDefinition(body) {
+  const name = String(body?.name ?? body?.query ?? "").trim();
+  if (!name) {
+    throw Object.assign(new Error("name is required"), { status: 400 });
+  }
+  const hintPath = String(body?.path ?? "").trim();
+
+  /** Prefer definitions in the hinted file, then exported matches. */
+  /** @type {Array<{ path: string, name: string, kind: string, line: number, exported: boolean, snippet: string }>} */
+  const all = [];
+
+  if (hintPath) {
+    await walkCodeFiles(hintPath, (rel, source) => {
+      for (const sym of extractSymbols(source, name)) {
+        all.push({ path: rel, ...sym });
+      }
+    });
+  }
+
+  if (all.length === 0) {
+    await walkCodeFiles(".", (rel, source) => {
+      if (all.length >= MAX_SYMBOL_HITS) return;
+      for (const sym of extractSymbols(source, name)) {
+        all.push({ path: rel, ...sym });
+        if (all.length >= MAX_SYMBOL_HITS) break;
+      }
+    });
+  }
+
+  const exported = all.filter((s) => s.exported);
+  const pool = exported.length ? exported : all;
+  const definition = pool[0] ?? null;
+  return {
+    name,
+    definition,
+    candidates: pool.slice(0, 12),
+    found: Boolean(definition),
+  };
+}
+
+async function handleFindReferences(body) {
+  const name = String(body?.name ?? body?.query ?? "").trim();
+  if (!name) {
+    throw Object.assign(new Error("name is required"), { status: 400 });
+  }
+  const startRel = String(body?.path ?? ".").trim() || ".";
+  /** @type {Array<{ path: string, line: number, snippet: string }>} */
+  const references = [];
+  let truncated = false;
+
+  await walkCodeFiles(startRel, (rel, source) => {
+    if (references.length >= MAX_SYMBOL_HITS) {
+      truncated = true;
+      return;
+    }
+    for (const ref of findIdentifierRefs(source, name)) {
+      references.push({ path: rel, ...ref });
+      if (references.length >= MAX_SYMBOL_HITS) {
+        truncated = true;
+        break;
+      }
+    }
+  });
+
+  return { name, references, truncated, count: references.length };
+}
+
 async function handleDelete(body) {
   const filePath = String(body?.path ?? "").trim();
   if (!filePath || filePath === ".") {
@@ -1678,6 +1835,18 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/glob") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleGlob(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/find_symbol") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleFindSymbol(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/go_to_definition") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleGoToDefinition(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/find_references") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleFindReferences(body));
     }
     if (req.method === "POST" && pathname === "/fs/delete") {
       const body = await readBody(req);

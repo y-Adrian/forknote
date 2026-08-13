@@ -4,10 +4,13 @@ import {
   applyPatch,
   deleteFile,
   ensureProjectBound,
+  findReferences,
+  findSymbol,
   gitCommit,
   gitDiff,
   gitStatus,
   globFiles,
+  goToDefinition,
   listDir,
   mkdir as sidecarMkdir,
   patchXlsx,
@@ -54,6 +57,9 @@ export type AgentToolName =
   | "mkdir"
   | "search_files"
   | "glob_files"
+  | "find_symbol"
+  | "go_to_definition"
+  | "find_references"
   | "delete_file"
   | "rename_file"
   | "run_diagnostics"
@@ -75,6 +81,7 @@ export type AgentToolCall = {
   path?: string;
   content?: string;
   query?: string;
+  name?: string;
   title?: string;
   paragraphs?: string[];
   sheet_name?: string;
@@ -134,6 +141,9 @@ const TOOL_NAMES = new Set<string>([
   "mkdir",
   "search_files",
   "glob_files",
+  "find_symbol",
+  "go_to_definition",
+  "find_references",
   "delete_file",
   "rename_file",
   "run_diagnostics",
@@ -396,6 +406,63 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
           },
         },
         required: ["pattern"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_symbol",
+      description:
+        "Find TypeScript/JavaScript declarations (function/class/interface/type/enum/variable) by exact symbol name. Prefer over search_files when you know the identifier.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Exact symbol name" },
+          path: {
+            type: "string",
+            description: 'File or subdirectory to scan, default "."',
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "go_to_definition",
+      description:
+        "Resolve the best declaration site for a TS/JS symbol. Optional path hints the current file first.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Symbol name" },
+          path: {
+            type: "string",
+            description: "Current file or folder hint (optional)",
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_references",
+      description:
+        "List identifier occurrences of a TS/JS symbol across the project (comments/strings ignored).",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Symbol name" },
+          path: {
+            type: "string",
+            description: 'File or subdirectory to scan, default "."',
+          },
+        },
+        required: ["name"],
       },
     },
   },
@@ -704,7 +771,7 @@ export function buildExecutionPhaseSystem(locale: Locale): string {
 }
 
 const TOOL_MENTION_RE =
-  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
 
 /** Disk-mutating tools excluding run_terminal (terminal is classified by command). */
 const DISK_MUTATING_TOOL_RE =
@@ -1034,7 +1101,7 @@ export function isPrimarilyTerminalPlan(
 
   const mentioned = [
     ...blob.matchAll(
-      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
+      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
     ),
   ].map((m) => m[1]!.toLowerCase());
   const nonTerminal = mentioned.filter(
@@ -1044,6 +1111,9 @@ export function isPrimarilyTerminalPlan(
       n !== "read_file" &&
       n !== "search_files" &&
       n !== "glob_files" &&
+      n !== "find_symbol" &&
+      n !== "go_to_definition" &&
+      n !== "find_references" &&
       n !== "read_docx" &&
       n !== "read_xlsx" &&
       n !== "run_diagnostics" &&
@@ -1342,8 +1412,8 @@ export function buildCodingToolsSystem(
 ): string {
   const allowTerminal = options?.allowTerminal !== false;
   const toolNames = allowTerminal
-    ? "list_dir、read_file、glob_files、search_files、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
-    : "list_dir、read_file、glob_files、search_files、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
+    ? "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
+    : "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
   const terminalBlock = allowTerminal
     ? `
 终端：
@@ -1363,6 +1433,7 @@ export function buildCodingToolsSystem(
 
 查看项目（必须用工具，不要凭空猜目录内容）：
 - 按名找文件 → glob_files（如 pattern="**/*.ts"）
+- 按符号名导航 → find_symbol / go_to_definition / find_references（TS/JS）
 - 列出目录 → list_dir（项目根用 path="."）——仅当用户要看项目内目录且未要求 shell/run/绝对路径 ls 时
 - 用户要「执行 shell / 终端 / run 命令」或带绝对路径的 ls → run_terminal，不要用 list_dir 顶替
 - 全文搜索 → search_files（子串；正则设 regex=true；可用 glob 限文件）
@@ -1492,6 +1563,7 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
       typeof args.path === "string" ? normalizeRelPath(args.path) : undefined,
     content: typeof args.content === "string" ? args.content : undefined,
     query: typeof args.query === "string" ? args.query : undefined,
+    name: typeof args.name === "string" ? args.name : undefined,
     title: typeof args.title === "string" ? args.title : undefined,
     sheet_name:
       typeof args.sheet_name === "string" ? args.sheet_name : undefined,
@@ -2104,6 +2176,21 @@ function inferToolFromPartialObject(
   if (/run_terminal\b/i.test(assistantText) && command) return "run_terminal";
   if (/glob_files\b/i.test(assistantText) && (query || typeof obj.pattern === "string"))
     return "glob_files";
+  if (
+    /find_symbol\b/i.test(assistantText) &&
+    (typeof obj.name === "string" || query)
+  )
+    return "find_symbol";
+  if (
+    /go_to_definition\b/i.test(assistantText) &&
+    (typeof obj.name === "string" || query)
+  )
+    return "go_to_definition";
+  if (
+    /find_references\b/i.test(assistantText) &&
+    (typeof obj.name === "string" || query)
+  )
+    return "find_references";
   if (/delete_file\b/i.test(assistantText) && path) return "delete_file";
   if (/rename_file\b/i.test(assistantText) && path) return "rename_file";
   if (/read_docx\b/i.test(assistantText) && path) return "read_docx";
@@ -2160,6 +2247,14 @@ function agentCallFromPartialObject(
   const call: AgentToolCall = { tool };
   if (typeof obj.path === "string") call.path = normalizeRelPath(obj.path);
   if (typeof obj.query === "string") call.query = obj.query.trim();
+  if (
+    typeof obj.name === "string" &&
+    (tool === "find_symbol" ||
+      tool === "go_to_definition" ||
+      tool === "find_references")
+  ) {
+    call.name = obj.name.trim();
+  }
   if (typeof obj.title === "string") call.title = obj.title;
   if (typeof obj.content === "string") call.content = obj.content;
   if (typeof obj.old_string === "string") call.old_string = obj.old_string;
@@ -3081,7 +3176,7 @@ export function stripToolCalls(text: string): string {
       const obj = JSON.parse(inner);
       if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return "";
     } catch {
-      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
         return "";
       }
     }
@@ -3548,6 +3643,134 @@ export async function executeToolCall(
           },
         };
       }
+      case "find_symbol": {
+        const name = (call.name ?? call.query ?? "").trim();
+        if (!name) {
+          return {
+            ok: false,
+            resultText: "Error: name is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.symbolMissingName", undefined, locale),
+            },
+          };
+        }
+        const { symbols, truncated, count } = await findSymbol(
+          name,
+          normalizeRelPath(call.path?.trim() || ".", projectRoot),
+          sidecarUrl,
+          signal,
+        );
+        const lines = symbols.map(
+          (s) =>
+            `${s.path}:${s.line} ${s.kind}${s.exported ? " export" : ""} ${s.name} — ${s.snippet}`,
+        );
+        return {
+          ok: true,
+          resultText:
+            (lines.join("\n") || `(no symbols named ${name})`) +
+            (truncated ? "\n…(truncated)" : ""),
+          activity: {
+            kind: "search",
+            message: t(
+              "agent.activity.findSymbol",
+              { name, n: count },
+              locale,
+            ),
+          },
+        };
+      }
+      case "go_to_definition": {
+        const name = (call.name ?? call.query ?? "").trim();
+        if (!name) {
+          return {
+            ok: false,
+            resultText: "Error: name is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.symbolMissingName", undefined, locale),
+            },
+          };
+        }
+        const hint = call.path?.trim()
+          ? normalizeRelPath(call.path.trim(), projectRoot)
+          : undefined;
+        const { definition, candidates, found } = await goToDefinition(
+          name,
+          hint,
+          sidecarUrl,
+          signal,
+        );
+        if (!found || !definition) {
+          return {
+            ok: true,
+            resultText: `No definition found for ${name}`,
+            activity: {
+              kind: "search",
+              message: t(
+                "agent.activity.goToDefinition",
+                { name, n: 0 },
+                locale,
+              ),
+            },
+          };
+        }
+        const alt = candidates
+          .slice(0, 8)
+          .map(
+            (s) =>
+              `${s.path}:${s.line} ${s.kind}${s.exported ? " export" : ""} — ${s.snippet}`,
+          )
+          .join("\n");
+        return {
+          ok: true,
+          resultText: `Definition: ${definition.path}:${definition.line} (${definition.kind})\n${definition.snippet}\n\nCandidates:\n${alt}`,
+          activity: {
+            kind: "search",
+            message: t(
+              "agent.activity.goToDefinition",
+              { name, n: candidates.length },
+              locale,
+            ),
+          },
+        };
+      }
+      case "find_references": {
+        const name = (call.name ?? call.query ?? "").trim();
+        if (!name) {
+          return {
+            ok: false,
+            resultText: "Error: name is required",
+            activity: {
+              kind: "error",
+              message: t("agent.activity.symbolMissingName", undefined, locale),
+            },
+          };
+        }
+        const { references, truncated, count } = await findReferences(
+          name,
+          normalizeRelPath(call.path?.trim() || ".", projectRoot),
+          sidecarUrl,
+          signal,
+        );
+        const lines = references.map(
+          (r) => `${r.path}:${r.line} — ${r.snippet}`,
+        );
+        return {
+          ok: true,
+          resultText:
+            (lines.join("\n") || `(no references to ${name})`) +
+            (truncated ? "\n…(truncated)" : ""),
+          activity: {
+            kind: "search",
+            message: t(
+              "agent.activity.findReferences",
+              { name, n: count },
+              locale,
+            ),
+          },
+        };
+      }
       case "delete_file": {
         const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
         if (!path || path === ".") {
@@ -3964,6 +4187,10 @@ export function toolResultMessage(
       ? `search_files query=${JSON.stringify(call.query ?? "")}`
       : call.tool === "glob_files"
         ? `glob_files pattern=${JSON.stringify(call.pattern ?? call.query ?? "")}`
+        : call.tool === "find_symbol" ||
+            call.tool === "go_to_definition" ||
+            call.tool === "find_references"
+          ? `${call.tool} name=${JSON.stringify(call.name ?? call.query ?? "")}`
         : call.tool === "run_terminal"
           ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
           : call.tool === "git_commit"
