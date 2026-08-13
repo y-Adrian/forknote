@@ -18,6 +18,11 @@ import {
   resolveImportSpec,
   shouldSkipDir,
 } from "../shared/codeIntel.mjs";
+import {
+  bm25Search,
+  chunkSource,
+  MAX_CHUNKS,
+} from "../shared/codeSearch.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -1219,6 +1224,41 @@ async function handleDependencyGraph(body) {
   };
 }
 
+async function handleSemanticSearch(body) {
+  const query = String(body?.query ?? body?.q ?? "").trim();
+  if (!query) {
+    throw Object.assign(new Error("query is required"), { status: 400 });
+  }
+  const startRel = String(body?.path ?? ".").trim() || ".";
+  const limit = Math.min(20, Math.max(1, Number(body?.limit) || 8));
+
+  /** @type {ReturnType<typeof chunkSource>} */
+  const chunks = [];
+  await walkCodeFiles(startRel, (rel, source) => {
+    if (chunks.length >= MAX_CHUNKS) return;
+    for (const c of chunkSource(rel, source)) {
+      chunks.push(c);
+      if (chunks.length >= MAX_CHUNKS) break;
+    }
+  });
+
+  const hits = bm25Search(chunks, query, limit).map(({ chunk, score }) => ({
+    path: chunk.path,
+    startLine: chunk.startLine,
+    endLine: chunk.endLine,
+    title: chunk.title,
+    score: Math.round(score * 1000) / 1000,
+    preview: chunk.text.split("\n").slice(0, 6).join("\n").slice(0, 320),
+  }));
+
+  return {
+    query,
+    hits,
+    chunkCount: chunks.length,
+    truncated: chunks.length >= MAX_CHUNKS,
+  };
+}
+
 async function handleDelete(body) {
   const filePath = String(body?.path ?? "").trim();
   if (!filePath || filePath === ".") {
@@ -1931,6 +1971,10 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/dependency_graph") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleDependencyGraph(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/semantic_search") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleSemanticSearch(body));
     }
     if (req.method === "POST" && pathname === "/fs/delete") {
       const body = await readBody(req);
