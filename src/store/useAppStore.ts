@@ -79,11 +79,14 @@ import {
 } from "../lib/adoptBranch";
 import { parseAnswerPoints, parseBranchReplyVerdictTarget } from "../lib/points";
 import { createFeedbackEvent } from "../lib/feedback";
-import { commitFeedbackEvent, inferStrategyId } from "../lib/policy";
 import {
   persistFeedbackIntoUserModel,
   seedPersistedUserModelFromSessions,
 } from "../lib/userModelStore";
+import {
+  applySessionFeedbackOnce,
+  commitSessionFeedbackSnapshot,
+} from "../lib/sessionFeedbackCommit";
 import {
   nextFloatZIndex,
   popBranchFloat,
@@ -327,24 +330,17 @@ function applySessionFeedback(
   event: ReturnType<typeof createFeedbackEvent>,
   strategyContent?: string,
 ): ChatSession[] {
-  const strategyId = inferStrategyId(strategyContent ?? "");
-  // Cross-session User Model confidence — survives new notes / session delete.
-  persistFeedbackIntoUserModel(event);
-  return sessions.map((s) => {
-    if (s.id !== activeSessionId) return s;
-    const next = commitFeedbackEvent(
-      s.feedbackLog,
-      s.feedbackPolicy,
-      event,
-      strategyId,
-    );
-    return {
-      ...s,
-      feedbackLog: next.feedbackLog,
-      feedbackPolicy: next.feedbackPolicy,
-      updatedAt: Date.now(),
-    };
-  });
+  const next = applySessionFeedbackOnce(
+    sessions,
+    activeSessionId,
+    event,
+    strategyContent,
+  );
+  if (next.committed) {
+    // Cross-session User Model confidence survives new notes / session delete.
+    persistFeedbackIntoUserModel(event);
+  }
+  return next.sessions;
 }
 
 function commitDecisionFeedbackBatch(
@@ -934,9 +930,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         phase: "await_approval",
         contextSnapshot: plan.steps.slice(0, 3).join(" | ").slice(0, 160),
       });
-      set((state) => ({
-        sessions: applySessionFeedback(state.sessions, sessionId, event),
-      }));
+      const snapshot = get();
+      const committed = commitSessionFeedbackSnapshot(
+        {
+          sessions: snapshot.sessions,
+          activeSessionId: snapshot.activeSessionId,
+        },
+        sessionId,
+        event,
+        {
+          persistSessions,
+          persistUserModel: persistFeedbackIntoUserModel,
+        },
+      );
+      if (committed.committed) {
+        set({ sessions: committed.sessions });
+      }
     }
     clearPendingAgentPlan(set, sessionId);
     if (isBranch && branchId) {
@@ -992,9 +1001,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         phase: "await_approval",
         contextSnapshot: plan.steps.slice(0, 3).join(" | ").slice(0, 160),
       });
-      set((state) => ({
-        sessions: applySessionFeedback(state.sessions, sessionId, event),
-      }));
+      const snapshot = get();
+      const committed = commitSessionFeedbackSnapshot(
+        {
+          sessions: snapshot.sessions,
+          activeSessionId: snapshot.activeSessionId,
+        },
+        sessionId,
+        event,
+        {
+          persistSessions,
+          persistUserModel: persistFeedbackIntoUserModel,
+        },
+      );
+      if (committed.committed) {
+        set({ sessions: committed.sessions });
+      }
     }
     // Dismiss the approval bar only — keep the user's message (and the plan
     // reply) so Cancel never erases their question / fork.
