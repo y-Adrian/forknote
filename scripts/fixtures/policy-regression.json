@@ -1,0 +1,118 @@
+{
+  "description": "Offline Policy regression fixtures for ForkNote session feedback bandit.",
+  "cases": [
+    {
+      "id": "reject-lowers-weight",
+      "description": "Explicit reject lowers the strategy weight",
+      "events": [
+        {
+          "signal": "reject",
+          "source": "explicit",
+          "decisionType": "point_verdict",
+          "strategyId": "unfamiliar_approach"
+        }
+      ],
+      "expect": {
+        "weights": {
+          "unfamiliar_approach": { "op": "lt", "value": 0.5 }
+        }
+      }
+    },
+    {
+      "id": "accept-raises-weight",
+      "description": "Explicit accept raises the strategy weight",
+      "events": [
+        {
+          "signal": "accept",
+          "source": "explicit",
+          "decisionType": "point_verdict",
+          "strategyId": "goal_mismatch"
+        }
+      ],
+      "expect": {
+        "weights": {
+          "goal_mismatch": { "op": "gt", "value": 0.5 }
+        }
+      }
+    },
+    {
+      "id": "unsure-no-move",
+      "description": "Unsure must not change weights",
+      "seedPolicy": { "weights": { "style_dislike": 0.7 } },
+      "events": [
+        {
+          "signal": "unsure",
+          "source": "explicit",
+          "decisionType": "point_verdict",
+          "strategyId": "style_dislike"
+        }
+      ],
+      "expect": {
+        "weights": {
+          "style_dislike": { "op": "approx", "value": 0.7 }
+        },
+        "mustNotRegress": [{ "strategyId": "style_dislike", "minWeight": 0.7 }]
+      }
+    },
+    {
+      "id": "tool-observe-skips-bandit",
+      "description": "Auto tool_selection observe does not touch strategy bandit",
+      "seedPolicy": { "weights": { "user_expertise": 0.8 } },
+      "events": [
+        {
+          "signal": "reject",
+          "source": "agent_decision",
+          "decisionType": "tool_selection",
+          "contextSnapshot": "run_terminal",
+          "strategyId": "user_expertise"
+        }
+      ],
+      "expect": {
+        "weights": {
+          "user_expertise": { "op": "approx", "value": 0.8 }
+        },
+        "mustNotRegress": [{ "strategyId": "user_expertise", "minWeight": 0.78 }]
+      }
+    },
+    {
+      "id": "good-strategy-not-regressed",
+      "description": "Rejecting strategy A must not tank unrelated strategy B",
+      "seedPolicy": {
+        "weights": { "style_dislike": 0.82, "constraint_conflict": 0.55 }
+      },
+      "events": [
+        {
+          "signal": "reject",
+          "source": "explicit",
+          "decisionType": "point_verdict",
+          "strategyId": "constraint_conflict",
+          "attribution": "constraint_conflict"
+        }
+      ],
+      "expect": {
+        "weights": {
+          "constraint_conflict": { "op": "lt", "value": 0.55 }
+        },
+        "mustNotRegress": [{ "strategyId": "style_dislike", "minWeight": 0.8 }]
+      }
+    },
+    {
+      "id": "hypothesis-confirm-reject-nudge",
+      "description": "Confirmed reject attribution nudges that failure-mode key down",
+      "events": [
+        {
+          "signal": "reject",
+          "source": "hypothesis_confirm",
+          "decisionType": "point_verdict",
+          "strategyId": "unfamiliar_approach",
+          "attribution": "unfamiliar_approach"
+        }
+      ],
+      "expect": {
+        "weights": {
+          "unfamiliar_approach": { "op": "lt", "value": 0.5 }
+        }
+      }
+    }
+  ]
+}
