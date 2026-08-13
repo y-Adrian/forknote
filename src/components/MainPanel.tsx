@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { messagesAfterArchive } from "../lib/archive";
 import { countBranchesInThread } from "../lib/branches";
 import {
@@ -119,7 +119,8 @@ export function MainPanel({
     useState<NodeId | null>(null);
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  /** When true, keep the chat pinned to the latest message as content grows. */
+  const stickToBottomRef = useRef(true);
   const lastSentPromptRef = useRef("");
   /** Ignore composer onChange briefly after send so IME/composition can't reinsert text. */
   const suppressComposerChangeRef = useRef(false);
@@ -231,9 +232,57 @@ export function MainPanel({
     }, 200);
   };
 
+  const scrollChatToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // Track whether the user is reading older messages (unpin) vs staying at the end.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [thread?.messages.length, visibleMessages.length, showArchiveDoc, loadingMain, pendingInline]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const NEAR_BOTTOM_PX = 96;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distance <= NEAR_BOTTOM_PX;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [activeSessionId, showArchiveDoc]);
+
+  // Reset pin when switching session / archive view, then jump once.
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    requestAnimationFrame(() => scrollChatToBottom());
+  }, [activeSessionId, showArchiveDoc, scrollChatToBottom]);
+
+  // New messages / inline approval: force pin and jump (no smooth scrollIntoView —
+  // it races remounts and feels like a flash back to older answers).
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    scrollChatToBottom();
+  }, [
+    thread?.messages.length,
+    visibleMessages.length,
+    pendingInline,
+    scrollChatToBottom,
+  ]);
+
+  // Follow streaming / markdown height growth while pinned.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const messages = root.querySelector(".ds-messages");
+    if (!messages) return;
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current) {
+        root.scrollTop = root.scrollHeight;
+      }
+    });
+    ro.observe(messages);
+    return () => ro.disconnect();
+  }, [activeSessionId, showArchiveDoc, Boolean(thread)]);
 
   useEffect(() => {
     if (!loadingBranchId && openBranchId) {
@@ -506,6 +555,9 @@ export function MainPanel({
                               loadingBranchId !== null ||
                               (loadingMain && msg.id === lastThreadMessageId)
                             }
+                            contentStreaming={
+                              loadingMain && msg.id === lastThreadMessageId
+                            }
                             activeBranchId={openBranchId}
                             onToggleBranch={toggleBranch}
                             compact
@@ -546,7 +598,6 @@ export function MainPanel({
               !thread.messages.some((m) => m.id === pendingInlineAssistantId) ? (
                 <InlineToolApproval scope={{ kind: "main" }} />
               ) : null}
-              <div ref={bottomRef} />
             </div>
           </div>
 

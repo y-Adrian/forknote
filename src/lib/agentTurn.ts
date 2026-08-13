@@ -173,17 +173,14 @@ async function streamPlainChatAnswer(args: {
 }): Promise<AgentTurnOutcome> {
   const { llm, apiMessages, signal, isOwned, patchContent, locale } = args;
   let apiReasoning = "";
-  const patchAssistantContent = (content: string) => {
-    if (!isOwned() || signal.aborted) return;
-    patchContent({ content });
-  };
   const patchAssistantState = (patch: AgentContentPatch) => {
     if (!isOwned() || signal.aborted) return;
     patchContent(patch);
   };
 
-  patchAssistantContent(t("chat.thinking", undefined, locale));
-
+  // Keep content empty until real tokens arrive so the UI shows the typing
+  // indicator (and ThinkingBlock when reasoning streams) instead of a stuck
+  // "Thinking…" placeholder that looks frozen on simple asks.
   let roundText = "";
   const streamResult = await streamChat(
     llm,
@@ -1482,8 +1479,7 @@ export async function runAgentTurn(
     };
 
     const draftPlanFromModel = async (): Promise<DraftedPlan | null> => {
-      patchAssistantContent(t("chat.thinking", undefined, locale));
-
+      // Leave content empty until plan tokens arrive (typing indicator).
       let planRaw = "";
       await streamChat(
         planLlm,

@@ -10,15 +10,13 @@
   to { transform: rotate(360deg); }
 }
 
-/* Message bubble fade-up on first render */
+/* Message bubble fade-in on first render (opacity only — transform felt like a slide on send). */
 @keyframes msgIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -1172,6 +1170,8 @@ body {
   flex: 1;
   overflow: auto;
   padding: 32px 24px 48px;
+  /* We pin scroll in JS; browser overflow-anchor fights remounts and feels like a jump. */
+  overflow-anchor: none;
 }
 
 /* ── Branch Rail (mind-map style git graph) ───────────────── */
