@@ -1,31 +1,28 @@
 import { useId, type ReactNode } from "react";
 
 /**
- * Anime line-art (动漫线) speech bubble for user messages.
- * Soft ふきだし silhouette, thin ink stroke, pale fill — original SVG only.
+ * Comic thought-cloud bubble for user messages (original SVG).
+ * Multi-lobed cloud outline, hand-ink stroke, accent arcs, trailing dots.
  */
 
-/**
- * Soft rounded anime ふきだし with a slight hand-drawn wobble
- * and an integrated gentle tail at the bottom-right.
- */
-const BUBBLE_PATH =
-  "M38 24" +
-  "C46 12 74 8 120 8" +
-  "C168 8 200 14 212 30" +
-  "C222 44 222 78 214 100" +
-  "C208 114 176 124 148 126" +
-  "C156 132 168 140 174 148" +
-  "C175 150 173 151 171 149" +
-  "C162 140 150 130 138 126" +
-  "C108 126 68 124 46 112" +
-  "C30 102 24 78 26 54" +
-  "C28 38 32 28 38 24Z";
+/** Stretchable cloud body (lobes) — viewBox 0 0 240 150; room for dots below. */
+const CLOUD_PATH =
+  "M72 38" +
+  "C58 30 48 34 44 48" +
+  "C28 50 22 66 30 80" +
+  "C18 90 24 110 42 112" +
+  "C46 128 68 136 92 130" +
+  "C108 142 140 144 168 134" +
+  "C190 142 214 132 218 110" +
+  "C236 104 238 80 224 68" +
+  "C232 50 218 34 196 36" +
+  "C188 20 160 14 136 22" +
+  "C118 12 88 18 72 38Z";
 
 interface Props {
   children: ReactNode;
   className?: string;
-  /** Tiny anime line sparkles (default true). */
+  /** Outer accent arcs (default true). */
   accent?: boolean;
 }
 
@@ -35,10 +32,11 @@ export function AnimeLineBubble({
   accent = true,
 }: Props) {
   const uid = useId().replace(/:/g, "");
-  const fillId = `fn-anime-line-fill-${uid}`;
+  const fillId = `fn-thought-fill-${uid}`;
   const classes = [
     "ds-bubble",
     "ds-bubble-user",
+    "ds-bubble-user--thought-cloud",
     "ds-bubble-user--anime-line",
   ];
   if (className) classes.push(className);
@@ -46,87 +44,99 @@ export function AnimeLineBubble({
   return (
     <div className={classes.join(" ")}>
       <svg
-        className="ds-anime-line-chrome"
-        viewBox="0 0 240 160"
+        className="ds-anime-line-chrome ds-thought-cloud-chrome"
+        viewBox="0 0 260 180"
         preserveAspectRatio="none"
         aria-hidden="true"
         focusable="false"
       >
         <defs>
-          <linearGradient
-            id={fillId}
-            x1="16%"
-            y1="6%"
-            x2="84%"
-            y2="94%"
-          >
-            <stop offset="0%" stopColor="var(--ds-anime-line-hilite)" />
-            <stop offset="52%" stopColor="var(--ds-user-bubble)" />
-            <stop offset="100%" stopColor="var(--ds-anime-line-shade)" />
+          <linearGradient id={fillId} x1="12%" y1="8%" x2="88%" y2="92%">
+            <stop offset="0%" stopColor="var(--ds-thought-hilite)" />
+            <stop offset="55%" stopColor="var(--ds-user-bubble)" />
+            <stop offset="100%" stopColor="var(--ds-thought-shade)" />
           </linearGradient>
         </defs>
+
+        {/* Soft under-stroke for calligraphic weight variation */}
         <path
-          className="ds-anime-line-fill"
-          d={BUBBLE_PATH}
+          className="ds-thought-cloud-ink-soft"
+          d={CLOUD_PATH}
+          fill="none"
+          stroke="var(--ds-thought-border)"
+          strokeWidth="3.2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          opacity="0.22"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          className="ds-thought-cloud-fill"
+          d={CLOUD_PATH}
           fill={`url(#${fillId})`}
         />
         <path
-          className="ds-anime-line-stroke"
-          d={BUBBLE_PATH}
+          className="ds-thought-cloud-stroke"
+          d={CLOUD_PATH}
           fill="none"
-          stroke="var(--ds-anime-line-border)"
-          strokeWidth="1.25"
+          stroke="var(--ds-thought-border)"
+          strokeWidth="2.1"
           strokeLinejoin="round"
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
         />
-      </svg>
 
-      {accent ? (
-        <span className="ds-anime-line-accent" aria-hidden="true">
-          <svg
-            className="ds-anime-line-doodle"
-            viewBox="0 0 40 28"
-            width="30"
-            height="21"
+        {accent ? (
+          <g
+            className="ds-thought-cloud-arcs"
+            fill="none"
+            stroke="var(--ds-thought-border)"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
           >
-            {/* Soft キラキラ sparkles — line accents only, keep text primary */}
+            {/* Top-right accent arc */}
             <path
-              d="M10 8 L10 2 M7 5 L13 5"
-              fill="none"
-              stroke="var(--ds-anime-line-border)"
-              strokeWidth="1.15"
-              strokeLinecap="round"
+              d="M198 22 C212 18 228 28 230 42"
+              strokeWidth="1.35"
+              opacity="0.85"
             />
+            {/* Bottom-left accent arc */}
             <path
-              d="M24 6 L24 1.5 M21.2 3.8 L26.8 3.8"
-              fill="none"
-              stroke="var(--ds-anime-line-border)"
-              strokeWidth="1"
-              strokeLinecap="round"
-              opacity="0.72"
+              d="M28 98 C18 108 20 126 34 132"
+              strokeWidth="1.25"
+              opacity="0.75"
             />
-            <path
-              d="M32 14 C34 11 36 12 35 14 C36 16 34 17 32 14Z"
-              fill="none"
-              stroke="var(--ds-anime-line-border)"
-              strokeWidth="1.05"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity="0.8"
-            />
-            <path
-              d="M6 18 C8 16.5 9.5 17.2 8.5 18.8 C7.5 20 5.5 19.5 6 18Z"
-              fill="none"
-              stroke="var(--ds-anime-line-border)"
-              strokeWidth="0.95"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity="0.55"
-            />
-          </svg>
-        </span>
-      ) : null}
+          </g>
+        ) : null}
+
+        {/* Thought-tail: three decreasing circles, bottom-right */}
+        <g className="ds-thought-cloud-dots" fill="var(--ds-user-bubble)">
+          <circle
+            cx="204"
+            cy="138"
+            r="9"
+            stroke="var(--ds-thought-border)"
+            strokeWidth="1.9"
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            cx="224"
+            cy="154"
+            r="6"
+            stroke="var(--ds-thought-border)"
+            strokeWidth="1.7"
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            cx="240"
+            cy="166"
+            r="3.6"
+            stroke="var(--ds-thought-border)"
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      </svg>
 
       <div className="ds-anime-line-content">{children}</div>
     </div>

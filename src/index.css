@@ -92,18 +92,20 @@
   --ds-line:            1px;
   --ds-hard-shadow:     0 1px 2px rgba(22, 22, 22, 0.06), 0 4px 12px rgba(22, 22, 22, 0.06);
 
-  /* Anime line-art (动漫线) speech bubbles for user messages.
-     Soft white / pale pastel fill stays light so thin ink stays readable. */
-  --ds-user-bubble: #fbf8ff;
-  --ds-anime-line-hilite: #ffffff;
-  --ds-anime-line-shade: #f3eefc;
-  --ds-anime-line-border: color-mix(in srgb, #3a3538 68%, transparent);
-  --ds-anime-line-text: #2a2628;
+  /* Thought-cloud bubbles for user messages (comic cloud + trailing dots). */
+  --ds-user-bubble: #ffffff;
+  --ds-thought-hilite: #ffffff;
+  --ds-thought-shade: #f4f4f2;
+  --ds-thought-border: #1a1a1a;
+  --ds-anime-line-hilite: var(--ds-thought-hilite);
+  --ds-anime-line-shade: var(--ds-thought-shade);
+  --ds-anime-line-border: var(--ds-thought-border);
+  --ds-anime-line-text: #1c1c1c;
   --ds-anime-line-shadow:
-    0 1px 2px color-mix(in srgb, #3a3538 5%, transparent),
-    0 6px 16px color-mix(in srgb, #3a3538 7%, transparent);
-  --ds-anime-line-tail: 14px;
-  --ds-anime-line-bleed: 10px;
+    0 1px 2px color-mix(in srgb, #1a1a1a 6%, transparent),
+    0 8px 18px color-mix(in srgb, #1a1a1a 8%, transparent);
+  --ds-anime-line-tail: 22px;
+  --ds-anime-line-bleed: 12px;
   /* Empty-state brand underline (kept from manga accent set) */
   --ds-manga-accent: var(--ds-stamp);
 
@@ -298,7 +300,7 @@
   --ds-link:            #58a6ff;
   --ds-link-hover:      #79b8ff;
 
-  --ds-user-bubble:     #fbf8ff;
+  --ds-user-bubble:     #ffffff;
   --ds-comment-bg:      #161b22;
   --ds-composer-bg:     #0d1117;
   --ds-composer-shadow: var(--ds-hard-shadow);
@@ -326,10 +328,13 @@
   --ds-shell-wash:      none;
   --ds-ink:             #e6edf3;
   --ds-hard-shadow:     0 1px 2px rgba(1, 4, 9, 0.4), 0 8px 24px rgba(1, 4, 9, 0.35);
-  --ds-anime-line-hilite: #ffffff;
-  --ds-anime-line-shade: #ebe4f8;
-  --ds-anime-line-border: color-mix(in srgb, #2a2428 76%, #e6edf3);
-  --ds-anime-line-text: #2a2628;
+  --ds-thought-hilite: #ffffff;
+  --ds-thought-shade: #f0f0ee;
+  --ds-thought-border: #111111;
+  --ds-anime-line-hilite: var(--ds-thought-hilite);
+  --ds-anime-line-shade: var(--ds-thought-shade);
+  --ds-anime-line-border: var(--ds-thought-border);
+  --ds-anime-line-text: #1a1a1a;
   --ds-anime-line-shadow:
     0 1px 2px color-mix(in srgb, #010409 35%, transparent),
     0 8px 22px color-mix(in srgb, #010409 28%, transparent);
@@ -367,7 +372,7 @@
   --ds-link:            #0969da;
   --ds-link-hover:      #0550ae;
 
-  --ds-user-bubble:     #fbf8ff;
+  --ds-user-bubble:     #ffffff;
   --ds-comment-bg:      #f6f8fa;
   --ds-composer-bg:     #ffffff;
   --ds-composer-shadow: var(--ds-hard-shadow);
@@ -395,13 +400,16 @@
   --ds-shell-wash:      none;
   --ds-ink:             #1f2328;
   --ds-hard-shadow:     0 1px 2px rgba(31, 35, 40, 0.06), 0 4px 12px rgba(31, 35, 40, 0.06);
-  --ds-anime-line-hilite: #ffffff;
-  --ds-anime-line-shade: #f3eefc;
-  --ds-anime-line-border: color-mix(in srgb, #3a3538 64%, transparent);
-  --ds-anime-line-text: #2a2628;
+  --ds-thought-hilite: #ffffff;
+  --ds-thought-shade: #f4f4f2;
+  --ds-thought-border: #1a1a1a;
+  --ds-anime-line-hilite: var(--ds-thought-hilite);
+  --ds-anime-line-shade: var(--ds-thought-shade);
+  --ds-anime-line-border: var(--ds-thought-border);
+  --ds-anime-line-text: #1c1c1c;
   --ds-anime-line-shadow:
-    0 1px 2px color-mix(in srgb, #3a3538 5%, transparent),
-    0 6px 16px color-mix(in srgb, #3a3538 7%, transparent);
+    0 1px 2px color-mix(in srgb, #1a1a1a 6%, transparent),
+    0 8px 18px color-mix(in srgb, #1a1a1a 8%, transparent);
   --ds-manga-accent: #e23d3d;
 }
 
@@ -1262,9 +1270,9 @@ body {
   align-items: flex-end;
   max-width: min(72%, 560px);
   width: fit-content;
-  /* Room for anime-line speech-bubble tail + sparkle accents */
-  padding-bottom: calc(var(--ds-anime-line-tail) + 2px);
-  padding-top: 6px;
+  /* Room for thought-cloud trailing dots */
+  padding-bottom: calc(var(--ds-anime-line-tail) + 4px);
+  padding-top: 8px;
   overflow: visible;
 }
 
@@ -1282,15 +1290,16 @@ body {
   box-shadow: none;
 }
 
-/* Anime line-art speech bubble for user questions — assistant stays document-style. */
+/* Thought-cloud bubble for user questions — assistant stays document-style. */
 .ds-bubble-user,
-.ds-bubble-user.ds-bubble-user--anime-line {
+.ds-bubble-user.ds-bubble-user--anime-line,
+.ds-bubble-user.ds-bubble-user--thought-cloud {
   position: relative;
   isolation: isolate;
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 14px 20px 16px;
+  padding: 16px 22px 18px;
   box-shadow: none;
   filter: drop-shadow(var(--ds-anime-line-shadow));
   width: fit-content;
@@ -1300,11 +1309,12 @@ body {
   overflow: visible;
 }
 
-.ds-anime-line-chrome {
+.ds-anime-line-chrome,
+.ds-thought-cloud-chrome {
   position: absolute;
   inset: calc(-1 * var(--ds-anime-line-bleed))
-    calc(-1 * var(--ds-anime-line-bleed) - 2px)
-    calc(-1 * var(--ds-anime-line-tail) + 2px)
+    calc(-1 * var(--ds-anime-line-bleed) - 6px)
+    calc(-1 * var(--ds-anime-line-tail))
     calc(-1 * var(--ds-anime-line-bleed));
   width: auto;
   height: auto;
@@ -1318,19 +1328,8 @@ body {
   z-index: 1;
 }
 
-.ds-anime-line-accent {
-  position: absolute;
-  top: -8px;
-  left: -2px;
-  z-index: 2;
-  pointer-events: none;
-  line-height: 0;
-}
-
-.ds-anime-line-doodle {
-  display: block;
-  overflow: visible;
-  opacity: 0.78;
+.ds-thought-cloud-dots circle {
+  paint-order: stroke fill;
 }
 
 .ds-bubble-user p {
