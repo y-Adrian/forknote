@@ -33,10 +33,8 @@ import {
   formatUnsureCautionAddendum,
 } from "./decisionFeedback";
 import { formatSessionCorrectionAddendum } from "./sessionCorrection";
-import {
-  buildUserModelFromFeedbackLog,
-  formatUserModelForAgent,
-} from "./userModel";
+import { formatUserModelForAgent } from "./userModel";
+import { resolveUserModelForAgent } from "./userModelStore";
 import type {
   ApiSettings,
   ChatSession,
@@ -559,7 +557,7 @@ export async function buildAgentMemoryAddendum(options: {
   if (isMemoryLayerPreferencesEnabled(settings)) {
     const prefs = formatPreferencesAddendum(loadUserPreferences());
     if (prefs) layers.push({ kind: "preferences", text: prefs });
-    const userModel = buildUserModelFromFeedbackLog(session?.feedbackLog);
+    const userModel = resolveUserModelForAgent(session?.feedbackLog);
     const userModelText = formatUserModelForAgent(userModel);
     if (userModelText) layers.push({ kind: "preferences", text: userModelText });
     const toolHint = formatToolPreferenceHint(userModel.preferences);

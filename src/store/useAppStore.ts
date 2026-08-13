@@ -78,6 +78,10 @@ import { parseAnswerPoints, parseBranchReplyVerdictTarget } from "../lib/points"
 import { createFeedbackEvent } from "../lib/feedback";
 import { commitFeedbackEvent, inferStrategyId } from "../lib/policy";
 import {
+  persistFeedbackIntoUserModel,
+  seedPersistedUserModelFromSessions,
+} from "../lib/userModelStore";
+import {
   nextFloatZIndex,
   popBranchFloat,
   pushBranchFloat,
@@ -322,6 +326,8 @@ function applySessionFeedback(
   strategyContent?: string,
 ): ChatSession[] {
   const strategyId = inferStrategyId(strategyContent ?? "");
+  // Cross-session User Model confidence — survives new notes / session delete.
+  persistFeedbackIntoUserModel(event);
   return sessions.map((s) => {
     if (s.id !== activeSessionId) return s;
     const next = commitFeedbackEvent(
@@ -802,6 +808,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const thread = active?.thread ? normalizeThread(active.thread) : null;
     const prefs = loadProjectPrefs();
     const sessionProject = active?.projectRoot?.trim() || null;
+    // One-shot: fold historical feedback into cross-session User Model.
+    seedPersistedUserModelFromSessions(
+      store.sessions.map((s) => s.feedbackLog),
+    );
     set({
       sessions: store.sessions,
       activeSessionId: active?.id ?? null,

@@ -122,7 +122,7 @@ export function formatUserModelForAgent(
     lines.push(`- ${key}: prefer ${entry.prefer} (confidence ${entry.confidence.toFixed(2)})`);
   }
   if (lines.length === 0) return null;
-  return ["【User Model — stable preferences】", ...lines].join("\n");
+  return ["【User Model — stable preferences (cross-session)】", ...lines].join("\n");
 }
 
 /**

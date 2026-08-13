@@ -166,69 +166,101 @@ export class AgentLoopController {
   }
 
   /**
-   * Rule-based Reflect (structured decision, not prose).
-   * LLM-backed Reflect can wrap this later; the decision enum stays stable.
+   * Pure rule Reflect (no counter mutation). Used by LLM overlay to know the
+   * baseline and the allowed decision set before committing.
    */
-  reflect(input: ReflectInput): ReflectDecision {
-    this.enter("reflect");
-    const { observed, expectedOutcome, hasDeferredPlan } = input;
+  peekReflect(input: ReflectInput): ReflectDecision {
+    const { observed, expectedOutcome } = input;
     let decision: ReflectDecision = "continue";
 
     if (observed.errorCount === 0) {
       decision = "continue";
-      this.stepRetries = 0;
     } else {
       const et = observed.primaryErrorType ?? "unknown";
       if (et === "permission") {
         decision = "abort";
-      } else if (et === "timeout" || et === "invalid_input" || et === "not_found") {
-        if (this.stepRetries < this.maxStepRetries) {
-          this.stepRetries += 1;
-          decision = "retry";
-        } else if (this.replanCount < this.maxReplans) {
-          this.replanCount += 1;
-          this.stepRetries = 0;
-          decision = "replan";
-        } else {
-          decision = "abort";
-        }
+      } else if (
+        et === "timeout" ||
+        et === "invalid_input" ||
+        et === "not_found"
+      ) {
+        if (this.stepRetries < this.maxStepRetries) decision = "retry";
+        else if (this.replanCount < this.maxReplans) decision = "replan";
+        else decision = "abort";
       } else if (this.stepRetries < this.maxStepRetries) {
-        this.stepRetries += 1;
         decision = "retry";
       } else if (this.replanCount < this.maxReplans) {
-        this.replanCount += 1;
-        this.stepRetries = 0;
         decision = "replan";
       } else {
         decision = "abort";
       }
     }
 
-    // Soft check: if we have an expected outcome and all tools failed, prefer replan
-    // once retries are spent (already handled). If expected mentions success keywords
-    // and we only got partial success, still continue so the model can finish.
     if (
       decision === "continue" &&
       expectedOutcome &&
       observed.successCount === 0 &&
       observed.errorCount > 0
     ) {
-      decision = this.stepRetries < this.maxStepRetries ? "retry" : "replan";
-      if (decision === "retry") this.stepRetries += 1;
-      else if (this.replanCount < this.maxReplans) this.replanCount += 1;
+      if (this.stepRetries < this.maxStepRetries) decision = "retry";
+      else if (this.replanCount < this.maxReplans) decision = "replan";
       else decision = "abort";
     }
 
-    if (decision === "continue" && hasDeferredPlan) {
-      // Caller may still chunk-replan; do not force here.
-    }
-
-    this.lastDecision = decision;
-    this.pushMemory("reflect", `decision=${decision}`, decision, observed.primaryErrorType);
-    if (decision === "continue" || decision === "abort") {
-      // stay; caller enters done/act/plan
-    }
     return decision;
+  }
+
+  /** Decisions still within circuit-breaker budget (for LLM clamp). */
+  allowedReflectDecisions(observed: ObserveSignal): ReflectDecision[] {
+    if (observed.errorCount === 0) {
+      const ok: ReflectDecision[] = ["continue"];
+      // Semantic mismatch may still ask for a soft retry when budget remains.
+      if (this.stepRetries < this.maxStepRetries) ok.push("retry");
+      if (this.replanCount < this.maxReplans) ok.push("replan");
+      return ok;
+    }
+    const et = observed.primaryErrorType ?? "unknown";
+    if (et === "permission") return ["abort"];
+    const allowed: ReflectDecision[] = [];
+    if (observed.successCount > 0) allowed.push("continue");
+    if (this.stepRetries < this.maxStepRetries) allowed.push("retry");
+    if (this.replanCount < this.maxReplans) allowed.push("replan");
+    allowed.push("abort");
+    return allowed;
+  }
+
+  /** Apply counters + working-memory for a chosen Reflect decision. */
+  commitReflect(
+    decision: ReflectDecision,
+    observed: ObserveSignal,
+  ): ReflectDecision {
+    this.enter("reflect");
+    if (decision === "continue") {
+      this.stepRetries = 0;
+    } else if (decision === "retry") {
+      this.stepRetries += 1;
+    } else if (decision === "replan") {
+      this.replanCount += 1;
+      this.stepRetries = 0;
+    }
+    this.lastDecision = decision;
+    this.pushMemory(
+      "reflect",
+      `decision=${decision}`,
+      decision,
+      observed.primaryErrorType,
+    );
+    return decision;
+  }
+
+  /**
+   * Rule-based Reflect (structured decision, not prose).
+   * Prefer {@link peekReflect} + optional LLM + {@link commitReflect} for
+   * LLM-backed Reflect; this remains the default single-call path.
+   */
+  reflect(input: ReflectInput): ReflectDecision {
+    const decision = this.peekReflect(input);
+    return this.commitReflect(decision, input.observed);
   }
 
   canRetryStep(): boolean {

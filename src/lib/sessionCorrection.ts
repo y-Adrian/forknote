@@ -1,7 +1,8 @@
 /**
  * Session-scoped immediate corrections.
  * Within one conversation: a reject/flip applies on the next turn immediately
- * (do not wait for cross-session User Model confidence).
+ * (do not wait for cross-session User Model confidence — that lives in
+ * `userModelStore` and is merged on inject).
  */
 import type { FeedbackEvent } from "../types";
 import { strategyLabel, type StrategyId } from "./policy";
