@@ -7,7 +7,15 @@ import {
 } from "react";
 import { diagramKindFromLanguage } from "../lib/diagramFence";
 import { useLocale } from "../lib/i18n";
+import {
+  resolvePlantumlJavaPath,
+  resolvePlantumlLocalPath,
+  resolvePlantumlRenderMode,
+  resolvePlantumlServerUrl,
+} from "../lib/settings";
+import { renderPlantuml } from "../lib/sidecar";
 import { useTheme, type Theme } from "../lib/theme";
+import { useAppStore } from "../store/useAppStore";
 
 function languageFromClass(className?: string): string | null {
   if (!className) return null;
@@ -366,16 +374,201 @@ const MermaidDiagram = memo(function MermaidDiagram({
   );
 });
 
+type PlantumlVisual =
+  | { kind: "svg"; svg: string }
+  | { kind: "png"; src: string };
+
+const PlantumlDiagram = memo(function PlantumlDiagram({
+  source,
+  streaming = false,
+}: {
+  source: string;
+  streaming?: boolean;
+}) {
+  const { t } = useLocale();
+  const settings = useAppStore((s) => s.settings);
+  const sidecarUrl = useAppStore((s) => s.sidecarUrl);
+  const mode = resolvePlantumlRenderMode(settings);
+  const [visual, setVisual] = useState<PlantumlVisual | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showSource, setShowSource] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const renderGenRef = useRef(0);
+
+  const copySource = async () => {
+    try {
+      await navigator.clipboard.writeText(source.trimEnd());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (mode === "off") {
+      setVisual(null);
+      setError(null);
+      return;
+    }
+    if (streaming) {
+      setError(null);
+      return;
+    }
+
+    const gen = ++renderGenRef.current;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await renderPlantuml(
+            {
+              mode,
+              source,
+              serverUrl: resolvePlantumlServerUrl(settings),
+              localPath: resolvePlantumlLocalPath(settings),
+              javaPath: resolvePlantumlJavaPath(settings),
+              format: "svg",
+            },
+            sidecarUrl,
+          );
+          if (gen !== renderGenRef.current) return;
+          if (result.format === "svg" && result.svg) {
+            setVisual({ kind: "svg", svg: result.svg });
+          } else if (result.format === "png" && result.imageBase64) {
+            setVisual({
+              kind: "png",
+              src: `data:image/png;base64,${result.imageBase64}`,
+            });
+          } else {
+            setError("Empty PlantUML render result");
+            return;
+          }
+          setError(null);
+        } catch (e) {
+          if (gen !== renderGenRef.current) return;
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      })();
+    }, 220);
+
+    return () => {
+      renderGenRef.current += 1;
+      window.clearTimeout(timer);
+    };
+  }, [source, streaming, mode, settings, sidecarUrl]);
+
+  if (mode === "off") {
+    return (
+      <SourceFence
+        className="language-plantuml"
+        hint={t("chat.diagram.plantumlFallback")}
+      >
+        {source}
+      </SourceFence>
+    );
+  }
+
+  const sourceToggle = (
+    <button
+      type="button"
+      className="fn-code-copy"
+      onClick={() => setShowSource((v) => !v)}
+      aria-pressed={showSource}
+      title={
+        showSource
+          ? t("chat.diagram.viewDiagram")
+          : t("chat.diagram.viewSource")
+      }
+    >
+      {showSource
+        ? t("chat.diagram.viewDiagram")
+        : t("chat.diagram.viewSource")}
+    </button>
+  );
+
+  if (error && !streaming) {
+    return (
+      <SourceFence
+        className="language-plantuml"
+        hint={t("chat.diagram.renderFailed", { detail: error })}
+        toolbarExtra={visual ? sourceToggle : undefined}
+      >
+        {source}
+      </SourceFence>
+    );
+  }
+
+  if (showSource || streaming) {
+    return (
+      <SourceFence
+        className="language-plantuml"
+        hint={streaming ? t("chat.diagram.rendering") : undefined}
+        toolbarExtra={
+          !streaming && visual ? (
+            <button
+              type="button"
+              className="fn-code-copy"
+              onClick={() => setShowSource(false)}
+              title={t("chat.diagram.viewDiagram")}
+            >
+              {t("chat.diagram.viewDiagram")}
+            </button>
+          ) : undefined
+        }
+      >
+        {source}
+      </SourceFence>
+    );
+  }
+
+  if (!visual) {
+    return (
+      <div className="fn-diagram-block" aria-busy="true">
+        <DiagramToolbar
+          language="plantuml"
+          showSource={false}
+          onCopy={() => void copySource()}
+          copied={copied}
+          canToggle={false}
+        />
+        <p className="fn-diagram-hint muted">{t("chat.diagram.rendering")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fn-diagram-block">
+      <DiagramToolbar
+        language="plantuml"
+        showSource={false}
+        onToggleSource={() => setShowSource(true)}
+        onCopy={() => void copySource()}
+        copied={copied}
+        canToggle
+      />
+      {visual.kind === "svg" ? (
+        <div
+          className="fn-diagram-svg"
+          dangerouslySetInnerHTML={{ __html: visual.svg }}
+        />
+      ) : (
+        <div className="fn-diagram-svg">
+          <img src={visual.src} alt="PlantUML diagram" />
+        </div>
+      )}
+    </div>
+  );
+});
+
 /**
- * Fenced ```mermaid / ```plantuml blocks: render Mermaid; PlantUML stays source
- * (no client PlantUML engine bundled) with copyable source.
+ * Fenced ```mermaid / ```plantuml blocks: Mermaid always renders client-side;
+ * PlantUML renders when Settings → plantumlRenderMode is server/local.
  */
 export const DiagramFence = memo(function DiagramFence({
   className,
   children,
   streaming = false,
 }: FenceCodeProps) {
-  const { t } = useLocale();
   const language = languageFromClass(className);
   const kind = diagramKindFromLanguage(language);
   const text = String(children).replace(/\n$/, "");
@@ -385,11 +578,7 @@ export const DiagramFence = memo(function DiagramFence({
   }
 
   if (kind === "plantuml") {
-    return (
-      <SourceFence className={className} hint={t("chat.diagram.plantumlFallback")}>
-        {children}
-      </SourceFence>
-    );
+    return <PlantumlDiagram source={text} streaming={streaming} />;
   }
 
   return <SourceFence className={className}>{children}</SourceFence>;

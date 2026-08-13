@@ -138,6 +138,29 @@ const en = {
   "general.clarify": "Clarify as you read",
   "general.clarifyDesc":
     "Select text in answers to open a clarify prompt. Always on — no extra account.",
+  "general.plantuml.title": "PlantUML rendering",
+  "general.plantuml.lead":
+    "Mermaid fences still preview live by default. Enable PlantUML only when you want ```plantuml / @startuml blocks rendered too (via sidecar).",
+  "general.plantuml.mode": "PlantUML mode",
+  "general.plantuml.mode.off": "Off (source only)",
+  "general.plantuml.mode.server": "Server (Kroki / PlantUML)",
+  "general.plantuml.mode.local": "Local client",
+  "general.plantuml.mode.offHint":
+    "PlantUML fences stay as copyable source. Prefer Mermaid for live diagrams.",
+  "general.plantuml.mode.serverHint":
+    "Sidecar proxies to a Kroki-compatible base (default https://kroki.io) or plantuml.com. Self-hosted URLs are allowed.",
+  "general.plantuml.mode.localHint":
+    "Sidecar runs your plantuml binary or plantuml.jar (needs Java). Path must be absolute.",
+  "general.plantuml.serverUrl": "Server base URL",
+  "general.plantuml.serverUrlHint":
+    "Kroki: https://kroki.io (or your host). Official: https://www.plantuml.com/plantuml",
+  "general.plantuml.localPath": "Local PlantUML path",
+  "general.plantuml.localPathHint":
+    "Absolute path to the plantuml binary or plantuml.jar.",
+  "general.plantuml.javaPath": "Java path (for .jar)",
+  "general.plantuml.javaPathHint":
+    "Used only when the local path ends with .jar. Default: java",
+  "general.plantuml.save": "Save PlantUML settings",
   "general.noAccount": "No account",
   "general.noAccountBody":
     "ForkNote does not sign you in. Notes, API settings, and project prefs are stored in this browser's localStorage.",
@@ -437,7 +460,7 @@ const en = {
   "chat.diagram.viewSource": "View source",
   "chat.diagram.viewDiagram": "View diagram",
   "chat.diagram.plantumlFallback":
-    "PlantUML is shown as source (no client-side PlantUML engine). Use Mermaid fences for live diagrams.",
+    "PlantUML is shown as source. Enable server or local rendering in Settings → General → PlantUML, or use Mermaid fences for live diagrams.",
   "chat.image.copyMarkdown": "Copy markdown",
   "chat.image.open": "Open image",
   "chat.image.failed": "Could not load image",
@@ -811,6 +834,29 @@ const zh: Record<MessageKey, string> = {
   "general.clarify": "边读边澄清",
   "general.clarifyDesc":
     "在回答中选中文字即可打开澄清提问。始终开启 —— 无需额外账号。",
+  "general.plantuml.title": "PlantUML 渲染",
+  "general.plantuml.lead":
+    "Mermaid 围栏仍默认实时预览。仅在需要时启用 PlantUML，以便 ```plantuml / @startuml 也通过 sidecar 渲染。",
+  "general.plantuml.mode": "PlantUML 模式",
+  "general.plantuml.mode.off": "关闭（仅源码）",
+  "general.plantuml.mode.server": "服务端（Kroki / PlantUML）",
+  "general.plantuml.mode.local": "本地客户端",
+  "general.plantuml.mode.offHint":
+    "PlantUML 围栏保持可复制源码。需要实时图示请优先用 Mermaid。",
+  "general.plantuml.mode.serverHint":
+    "Sidecar 代理到 Kroki 兼容地址（默认 https://kroki.io）或 plantuml.com。允许自建地址。",
+  "general.plantuml.mode.localHint":
+    "Sidecar 调用本机 plantuml 可执行文件或 plantuml.jar（需 Java）。路径必须为绝对路径。",
+  "general.plantuml.serverUrl": "服务端 Base URL",
+  "general.plantuml.serverUrlHint":
+    "Kroki：https://kroki.io（或自建）。官方：https://www.plantuml.com/plantuml",
+  "general.plantuml.localPath": "本地 PlantUML 路径",
+  "general.plantuml.localPathHint":
+    "plantuml 可执行文件或 plantuml.jar 的绝对路径。",
+  "general.plantuml.javaPath": "Java 路径（用于 .jar）",
+  "general.plantuml.javaPathHint":
+    "仅当本地路径以 .jar 结尾时使用。默认：java",
+  "general.plantuml.save": "保存 PlantUML 设置",
   "general.noAccount": "无需账号",
   "general.noAccountBody":
     "ForkNote 不会让你登录。笔记、API 设置与项目偏好都保存在本浏览器的 localStorage 中。",
@@ -1103,7 +1149,7 @@ const zh: Record<MessageKey, string> = {
   "chat.diagram.viewSource": "查看源码",
   "chat.diagram.viewDiagram": "查看图示",
   "chat.diagram.plantumlFallback":
-    "PlantUML 以源码展示（未内置客户端引擎）。需要实时图示请用 Mermaid 围栏。",
+    "PlantUML 以源码展示。可在「设置 → 通用 → PlantUML」启用服务端或本地渲染；需要实时图示也可优先用 Mermaid 围栏。",
   "chat.image.copyMarkdown": "复制 Markdown",
   "chat.image.open": "打开图片",
   "chat.image.failed": "图片加载失败",

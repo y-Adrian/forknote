@@ -22,6 +22,10 @@ export const MAX_CONTEXT_WINDOW_TURNS = 256;
  */
 export const COMPRESS_SUGGEST_MESSAGE_THRESHOLD = 80;
 
+export type PlantumlRenderMode = "off" | "server" | "local";
+
+export const DEFAULT_PLANTUML_SERVER_URL = "https://kroki.io";
+
 /** First-run defaults when nothing is saved in localStorage. */
 const APP_DEFAULTS: ApiSettings = {
   baseUrl: "",
@@ -44,7 +48,33 @@ const APP_DEFAULTS: ApiSettings = {
   agentPlanModel: "",
   agentCodeModel: "",
   agentSummaryModel: "",
+  plantumlRenderMode: "off",
+  plantumlServerUrl: DEFAULT_PLANTUML_SERVER_URL,
+  plantumlLocalPath: "",
+  plantumlJavaPath: "java",
 };
+
+export function resolvePlantumlRenderMode(
+  settings: ApiSettings,
+): PlantumlRenderMode {
+  const mode = settings.plantumlRenderMode;
+  if (mode === "server" || mode === "local" || mode === "off") return mode;
+  return "off";
+}
+
+export function resolvePlantumlServerUrl(settings: ApiSettings): string {
+  const raw = (settings.plantumlServerUrl ?? DEFAULT_PLANTUML_SERVER_URL).trim();
+  return raw || DEFAULT_PLANTUML_SERVER_URL;
+}
+
+export function resolvePlantumlLocalPath(settings: ApiSettings): string {
+  return (settings.plantumlLocalPath ?? "").trim();
+}
+
+export function resolvePlantumlJavaPath(settings: ApiSettings): string {
+  const raw = (settings.plantumlJavaPath ?? "java").trim();
+  return raw || "java";
+}
 
 export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
   return settings.agentRequireApproval ?? true;
@@ -179,6 +209,21 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
       typeof raw.agentSummaryModel === "string"
         ? raw.agentSummaryModel.trim()
         : APP_DEFAULTS.agentSummaryModel,
+    plantumlRenderMode: resolvePlantumlRenderMode({
+      plantumlRenderMode:
+        raw.plantumlRenderMode ?? APP_DEFAULTS.plantumlRenderMode,
+    } as ApiSettings),
+    plantumlServerUrl: resolvePlantumlServerUrl({
+      plantumlServerUrl:
+        raw.plantumlServerUrl ?? APP_DEFAULTS.plantumlServerUrl,
+    } as ApiSettings),
+    plantumlLocalPath:
+      typeof raw.plantumlLocalPath === "string"
+        ? raw.plantumlLocalPath.trim()
+        : APP_DEFAULTS.plantumlLocalPath,
+    plantumlJavaPath: resolvePlantumlJavaPath({
+      plantumlJavaPath: raw.plantumlJavaPath ?? APP_DEFAULTS.plantumlJavaPath,
+    } as ApiSettings),
   };
 }
 
