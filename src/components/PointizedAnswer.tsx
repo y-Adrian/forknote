@@ -4,6 +4,7 @@ import {
   REJECT_STREAK_ASK_THRESHOLD,
   hypothesisText,
   pickHypothesisAttribution,
+  stripLeakedFeedbackMeta,
 } from "../lib/feedback";
 import { useLocale } from "../lib/i18n";
 import {
@@ -226,7 +227,13 @@ export function PointizedAnswer({
   const parsed = parseAnswerPoints(content);
 
   if (parsed.points.length < 2) {
-    return <MarkdownBody key="flat" content={content} streaming={streaming} />;
+    return (
+      <MarkdownBody
+        key="flat"
+        content={stripLeakedFeedbackMeta(content)}
+        streaming={streaming}
+      />
+    );
   }
 
   const cut = earliestRejectIndex(verdicts);
@@ -237,7 +244,10 @@ export function PointizedAnswer({
     <div key={`points-${parsed.points.length}`} className="pointized-answer">
       {parsed.preamble && (
         <div className="point-preamble">
-          <MarkdownBody content={parsed.preamble} streaming={streaming} />
+          <MarkdownBody
+            content={stripLeakedFeedbackMeta(parsed.preamble)}
+            streaming={streaming}
+          />
         </div>
       )}
 
@@ -253,7 +263,10 @@ export function PointizedAnswer({
           >
             <div className={`point-block${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}>
               <div className="point-content">
-                <MarkdownBody content={point.content} streaming={streaming} />
+                <MarkdownBody
+                  content={stripLeakedFeedbackMeta(point.content)}
+                  streaming={streaming}
+                />
               </div>
               {truncated ? (
                 <p className="point-truncated-hint">{t("checkpoint.truncated")}</p>

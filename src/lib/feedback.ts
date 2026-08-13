@@ -209,6 +209,9 @@ export function countRecentRejectStreak(
 /**
  * Build agent-facing point annotations from structured feedback.
  * Unmarked points default to adopted unless rejected (product rule).
+ *
+ * Keep labels short: long policy essays here get copied into user-visible
+ * answers (e.g. 「默认采纳，权重 1：…」).
  */
 export function describePointFeedbackForAgent(input: {
   index: number;
@@ -221,30 +224,48 @@ export function describePointFeedbackForAgent(input: {
 }): string {
   const { index, content, verdict, doubt, attribution, truncated } = input;
   const attr = formatAttributionForAgent(attribution);
-  const attrSuffix = attr ? `；已确认归因：${attr}` : "";
+  const attrPart = attr ? `；归因：${attr}` : "";
 
   if (truncated && !verdict) {
-    return `【${index}】（已截断：用户在更早分点处分叉，此步骤不再作为可行方案，勿再展开）${content}`;
+    return `【${index}】（已截断，勿再展开）${content}`;
   }
 
   if (verdict === "reject") {
-    const why = attr
-      ? `用户确认原因是「${attr}」——请据此调整决策方式，勿再沿用同类策略`
-      : "尚无确认归因——记为强负信号；勿在当轮自我合理化原因，优先依据用户后续行为或二元确认结果";
-    return `【${index}】（用户反馈·不采纳，权重 ${WEIGHT_REJECT}${attrSuffix}：${why}）${content}`;
+    return `【${index}】（用户不采纳${attrPart}）${content}`;
   }
 
   if (verdict === "unsure") {
     const note = doubt?.trim();
-    const notePart = note ? `；用户备注：${note}` : "";
-    return `【${index}】（用户反馈·存疑：降低该主题置信度并触发验证——补证据、收紧边界或列出关键假设供确认${attrSuffix}${notePart}）${content}`;
+    const notePart = note ? `；备注：${note}` : "";
+    return `【${index}】（用户存疑${attrPart}${notePart}）${content}`;
   }
 
   if (verdict === "accept") {
-    return `【${index}】（用户反馈·主动采纳，权重 ${WEIGHT_EXPLICIT_ACCEPT}${attrSuffix}：此策略在当前场景对该用户有效，后续同类问题优先沿用）${content}`;
+    return `【${index}】（用户已采纳）${content}`;
   }
 
-  return `【${index}】（默认采纳，权重 ${WEIGHT_DEFAULT_ADOPT}：用户未拒绝，按已采纳处理；仅显式「不采纳」才否决）${content}`;
+  // Silent / unmarked: no parenthetical — system prompt already defines
+  // unmarked ≡ default adopt. Verbose labels leak into visible replies.
+  return `【${index}】${content}`;
+}
+
+/**
+ * Remove feedback-policy parentheticals the model sometimes copies into
+ * user-visible point text (from agent-context annotations).
+ */
+export function stripLeakedFeedbackMeta(text: string): string {
+  return text
+    .replace(
+      /（(?:默认采纳|用户反馈·(?:主动采纳|不采纳|存疑)|用户已采纳|用户不采纳|用户存疑|已截断)[^）]*）/g,
+      "",
+    )
+    .replace(
+      /\((?:default adopt|user (?:accepted|rejected|unsure)|truncated)[^)]*\)/gi,
+      "",
+    )
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^\s+/gm, "")
+    .trim();
 }
 
 export type AnnotateFeedbackMaps = {

@@ -1,8 +1,12 @@
 /**
- * Probe: unmarked points default to adopt.
+ * Probe: unmarked points default to adopt; agent labels stay short / non-leaky.
  * Usage: npx tsx scripts/test-default-accept.mts
  */
-import { describePointFeedbackForAgent, WEIGHT_DEFAULT_ADOPT } from "../src/lib/feedback.ts";
+import {
+  describePointFeedbackForAgent,
+  stripLeakedFeedbackMeta,
+  WEIGHT_DEFAULT_ADOPT,
+} from "../src/lib/feedback.ts";
 import {
   annotateContentWithVerdicts,
   formatCheckpointForArchive,
@@ -19,14 +23,27 @@ const silent = describePointFeedbackForAgent({
   content: "do X",
   verdict: undefined,
 });
-ok("silent says 默认采纳", /默认采纳/.test(silent) && !/勿等同于主动采纳/.test(silent));
+ok(
+  "silent has no verbose default-adopt essay",
+  silent === "【1】do X" && !/权重|用户未拒绝/.test(silent),
+);
 ok("silent weight equals accept", WEIGHT_DEFAULT_ADOPT === 1);
 
 const content = "导语\n\n【1】一步\n\n【2】二步\n\n【3】三步";
 const annotated = annotateContentWithVerdicts(content, { 2: "reject" });
-ok("unmarked before reject is default adopt", /【1】（默认采纳/.test(annotated));
-ok("reject labeled", /【2】（用户反馈·不采纳/.test(annotated));
+ok(
+  "unmarked before reject stays bare 【N】",
+  /【1】一步/.test(annotated) && !/【1】（默认采纳/.test(annotated),
+);
+ok("reject labeled short", /【2】（用户不采纳/.test(annotated));
 ok("after reject truncated", /【3】（已截断/.test(annotated));
+
+const leaked =
+  "（默认采纳，权重 1：用户未拒绝，按已采纳处理；仅显式「不采纳」才否决）写一篇博文大纲";
+ok(
+  "strip removes leaked default-adopt meta",
+  stripLeakedFeedbackMeta(leaked) === "写一篇博文大纲",
+);
 
 const cp = formatCheckpointForArchive(content, { 2: "reject", 1: "accept" });
 ok(

@@ -16,6 +16,7 @@ import {
 import {
   countRecentRejectStreak,
   recentRejectAttributions,
+  stripLeakedFeedbackMeta,
 } from "../lib/feedback";
 import type {
   Anchor,
@@ -340,7 +341,10 @@ export function SelectableMarkdown({
             streaming={contentStreaming}
           />
         ) : (
-          <MarkdownBody content={content} streaming={contentStreaming} />
+          <MarkdownBody
+            content={stripLeakedFeedbackMeta(content)}
+            streaming={contentStreaming}
+          />
         )}
       </div>
 
