@@ -273,43 +273,43 @@ export function PointizedAnswer({
                   onDoubt={onDoubt}
                 />
               )}
-            </div>
-            <div
-              className="point-verdict-group"
-              role="group"
-              aria-label={t("verdict.pointAria", { n: point.index })}
-            >
-              {onClarifyPoint ? (
-                <button
-                  type="button"
-                  className="point-verdict-btn v-clarify"
-                  title={t("clarify.point")}
-                  aria-label={t("clarify.point")}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClarifyPoint(point.index, point.content);
-                  }}
-                >
-                  {t("clarify.pointShort")}
-                </button>
-              ) : null}
-              {VERDICT_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={`point-verdict-btn v-${opt.value}${verdict === opt.value ? " active" : ""}`}
-                  title={t(opt.titleKey)}
-                  aria-pressed={verdict === opt.value}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onVerdict(point.index, opt.value);
-                  }}
-                >
-                  {opt.icon}
-                </button>
-              ))}
+              <div
+                className="point-verdict-group"
+                role="group"
+                aria-label={t("verdict.pointAria", { n: point.index })}
+              >
+                {onClarifyPoint ? (
+                  <button
+                    type="button"
+                    className="point-verdict-btn v-clarify"
+                    title={t("clarify.point")}
+                    aria-label={t("clarify.point")}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClarifyPoint(point.index, point.content);
+                    }}
+                  >
+                    {t("clarify.pointShort")}
+                  </button>
+                ) : null}
+                {VERDICT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`point-verdict-btn v-${opt.value}${verdict === opt.value ? " active" : ""}`}
+                    title={t(opt.titleKey)}
+                    aria-pressed={verdict === opt.value}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onVerdict(point.index, opt.value);
+                    }}
+                  >
+                    {opt.icon}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         );
