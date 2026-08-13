@@ -2206,6 +2206,22 @@ mark.branch-highlight:hover {
   background: rgba(255, 210, 80, 0.45);
 }
 
+/* Point Ask / 澄 — whole segment stays reopenable after the float closes */
+.point-row.point-has-clarify > .point-block {
+  outline: 1px solid color-mix(in srgb, var(--ds-highlight) 70%, var(--ds-border));
+  outline-offset: 0;
+  cursor: pointer;
+}
+
+.point-row.point-has-clarify:hover > .point-block {
+  outline-color: color-mix(in srgb, var(--ds-highlight) 90%, var(--ds-border));
+  background: color-mix(in srgb, var(--ds-highlight) 18%, var(--ds-surface, transparent));
+}
+
+.point-row.point-has-clarify-pending > .point-block {
+  outline-style: dashed;
+}
+
 
 /* ── Float Panels ─────────────────────────────────────────── */
 

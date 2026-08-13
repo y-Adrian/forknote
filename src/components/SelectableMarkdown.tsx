@@ -26,6 +26,7 @@ import type {
 } from "../types";
 import {
   applyBranchHighlights,
+  clarifyBranchIdFromEventTarget,
   clearHighlights,
 } from "../lib/domHighlight";
 import { parseAnswerPoints, anchorForAnswerPoint } from "../lib/points";
@@ -197,8 +198,9 @@ export function SelectableMarkdown({
     const el = containerRef.current;
     if (!el) return;
     clearHighlights(el);
-    if (!content.trim() || loading) return;
-    if (!branches.some((b) => b.assistantMessage.trim())) return;
+    if (!content.trim()) return;
+    if (branches.length === 0) return;
+    // Keep reopen targets visible even while another branch is loading.
     applyBranchHighlights(el, branches);
     return () => clearHighlights(el);
   }, [content, branches, loading]);
@@ -227,12 +229,16 @@ export function SelectableMarkdown({
 
   const handleContentClick = useCallback(
     (e: MouseEvent) => {
+      const branchId = clarifyBranchIdFromEventTarget(e.target);
+      if (!branchId) return;
+      // Don't steal clicks on verdict / clarify controls inside the point row.
       const target = e.target as HTMLElement;
-      const mark = target.closest("mark.branch-highlight") as HTMLElement | null;
-      if (!mark?.dataset.branchId) return;
+      if (target.closest(".point-verdict-group, .point-hypo, .point-doubt")) {
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
-      onHighlightClick?.(mark.dataset.branchId);
+      onHighlightClick?.(branchId);
     },
     [onHighlightClick],
   );
