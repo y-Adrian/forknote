@@ -94,6 +94,18 @@
   --ds-line:            1px;
   --ds-hard-shadow:     0 1px 2px rgba(22, 22, 22, 0.06), 0 4px 12px rgba(22, 22, 22, 0.06);
 
+  /* Manga accents — used for user speech bubbles (keeps engineering chrome elsewhere) */
+  --ds-manga-bubble-border: var(--ds-ink);
+  --ds-manga-bubble-shadow: 2.5px 2.5px 0 color-mix(in srgb, var(--ds-ink) 55%, transparent);
+  --ds-manga-tone: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--ds-ink) 9%, transparent) 1px,
+    transparent 0
+  );
+  --ds-manga-tone-size: 5px 5px;
+  --ds-manga-accent: var(--ds-stamp);
+  --ds-manga-tail: 11px;
+
   /* Composer */
   --ds-composer-radius: 10px;
   --ds-composer-shadow: var(--ds-hard-shadow);
@@ -308,6 +320,14 @@
   --ds-shell-wash:      none;
   --ds-ink:             #e6edf3;
   --ds-hard-shadow:     0 1px 2px rgba(1, 4, 9, 0.4), 0 8px 24px rgba(1, 4, 9, 0.35);
+  --ds-manga-bubble-border: #e6edf3;
+  --ds-manga-bubble-shadow: 2.5px 2.5px 0 color-mix(in srgb, #010409 70%, #e6edf3);
+  --ds-manga-tone: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, #e6edf3 11%, transparent) 1px,
+    transparent 0
+  );
+  --ds-manga-accent: #ff5a5a;
 }
 
 /* Light — GitHub / Google DevDocs paper */
@@ -369,6 +389,14 @@
   --ds-shell-wash:      none;
   --ds-ink:             #1f2328;
   --ds-hard-shadow:     0 1px 2px rgba(31, 35, 40, 0.06), 0 4px 12px rgba(31, 35, 40, 0.06);
+  --ds-manga-bubble-border: #1f2328;
+  --ds-manga-bubble-shadow: 2.5px 2.5px 0 color-mix(in srgb, #1f2328 50%, transparent);
+  --ds-manga-tone: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, #1f2328 8%, transparent) 1px,
+    transparent 0
+  );
+  --ds-manga-accent: #e23d3d;
 }
 
 
@@ -503,7 +531,7 @@ body {
     opacity var(--dur-base) ease,
     flex var(--dur-slow) var(--ease-out),
     max-width var(--dur-slow) var(--ease-out);
-  filter: drop-shadow(1.5px 1.5px 0 color-mix(in srgb, var(--ds-ink) 35%, transparent));
+  filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ds-ink) 42%, transparent));
 }
 
 .ds-brand-wordmark .fn-wm-note {
@@ -946,6 +974,22 @@ body {
   justify-content: center;
   align-self: center;
   margin-inline: auto;
+  position: relative;
+}
+
+/* Light manga underline under empty-state brand mark */
+.ds-empty-brand.ds-brand-logo::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: min(72px, 40%);
+  height: 3px;
+  transform: translateX(-50%) skewX(-12deg);
+  background: var(--ds-manga-accent, var(--ds-stamp));
+  border-radius: 1px;
+  box-shadow: 1.5px 1.5px 0 color-mix(in srgb, var(--ds-ink) 35%, transparent);
+  pointer-events: none;
 }
 
 .ds-empty-brand .ds-brand-icon-svg {
@@ -953,6 +997,7 @@ body {
   display: block;
   margin-inline: auto;
   animation: brandFloat 4s ease-in-out infinite;
+  filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ds-ink) 28%, transparent));
 }
 
 .ds-empty-brand .ds-brand-wordmark {
@@ -1174,7 +1219,8 @@ body {
   flex-direction: column;
   gap: 36px;
   min-width: 0;
-  padding: 8px 0 16px;
+  padding: 8px 0 24px;
+  overflow: visible;
 }
 
 .fn-msg {
@@ -1190,6 +1236,9 @@ body {
   align-items: flex-end;
   max-width: min(72%, 560px);
   width: fit-content;
+  /* Room for manga speech-bubble tail */
+  padding-bottom: calc(var(--ds-manga-tail) + 2px);
+  overflow: visible;
 }
 
 .fn-msg-assistant {
@@ -1206,23 +1255,64 @@ body {
   box-shadow: none;
 }
 
-.ds-bubble-user {
+/* Manga speech bubble for user questions — engineering chrome elsewhere stays. */
+.ds-bubble-user,
+.ds-bubble-user.ds-bubble-user--manga {
   position: relative;
-  background: var(--ds-user-bubble);
-  border: 1px solid var(--ds-border);
-  border-radius: 12px;
-  padding: 12px 16px;
-  box-shadow: none;
+  isolation: isolate;
+  background-color: var(--ds-user-bubble);
+  background-image: var(--ds-manga-tone);
+  background-size: var(--ds-manga-tone-size);
+  border: 2px solid var(--ds-manga-bubble-border);
+  border-radius: 16px 16px 4px 16px;
+  padding: 12px 16px 14px;
+  padding-left: 18px;
+  box-shadow: var(--ds-manga-bubble-shadow);
   width: fit-content;
   max-width: 100%;
   color: var(--ds-text);
   font-size: var(--fn-text-chat);
+  overflow: visible;
+}
+
+/* Stamp-red accent bar (manga dialogue cue) */
+.ds-bubble-user::before,
+.ds-bubble-user.ds-bubble-user--manga::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ds-manga-accent);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Speech-bubble tail — solid ink (classic manga) */
+.ds-bubble-user::after,
+.ds-bubble-user.ds-bubble-user--manga::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: calc(-1 * var(--ds-manga-tail) + 1px);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: var(--ds-manga-tail) solid var(--ds-manga-bubble-border);
+  filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--ds-manga-bubble-border) 30%, transparent));
+  z-index: 0;
+  pointer-events: none;
 }
 
 .ds-bubble-user p {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  position: relative;
+  z-index: 1;
 }
 
 /* Document-style on chat ground — no card / filled bubble chrome */
@@ -2472,7 +2562,7 @@ mark.branch-highlight:hover {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 14px 18px 12px;
+  padding: 14px 18px calc(12px + var(--ds-manga-tail));
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -2586,6 +2676,8 @@ mark.branch-highlight:hover {
 
 .float-panel-detail .float-branch-msg.fn-msg-user {
   max-width: min(88%, 420px);
+  padding-bottom: calc(var(--ds-manga-tail) + 2px);
+  overflow: visible;
 }
 
 .float-panel-detail .float-branch-msg.fn-msg-assistant {
@@ -2594,8 +2686,10 @@ mark.branch-highlight:hover {
 }
 
 .float-panel-detail .float-branch-msg .ds-bubble-user {
-  padding: 10px 14px;
+  padding: 10px 14px 12px;
+  padding-left: 16px;
   font-size: 0.9rem;
+  overflow: visible;
 }
 
 .float-panel-detail .float-branch-msg .ds-bubble-assistant .answer-body-compact,
@@ -4612,6 +4706,12 @@ mark.branch-highlight:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: visible;
+}
+
+.fn-share-viewer-msg-user {
+  align-items: flex-end;
+  overflow: visible;
 }
 
 .fn-share-viewer-role {
@@ -4630,6 +4730,7 @@ mark.branch-highlight:hover {
 .fn-share-viewer-msg-user .ds-bubble-user {
   align-self: flex-end;
   max-width: min(100%, 560px);
+  margin-bottom: calc(var(--ds-manga-tail) + 2px);
 }
 
 .fn-session-delete-confirm {

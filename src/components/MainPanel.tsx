@@ -469,7 +469,7 @@ export function MainPanel({
                     data-msg-id={msg.id}
                     className="fn-msg fn-msg-user"
                   >
-                    <div className="ds-bubble ds-bubble-user">
+                    <div className="ds-bubble ds-bubble-user ds-bubble-user--manga">
                       <p>{msg.content}</p>
                     </div>
                     <MessageActions
