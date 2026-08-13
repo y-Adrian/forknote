@@ -214,6 +214,47 @@ assert.ok(
 );
 assert.ok(looksLikeAnswerOnlyRequest(bloggerAsk), "blogger ask is answer-only");
 
+// Relevance: inventory-shaped explore only — not bare「项目」/ advice.
+for (const q of [
+  "看看这个项目怎么样",
+  "当前项目适合做什么",
+  "有哪些建议可以尝试",
+  "帮我看看有什么想法",
+  "解释一下项目结构怎么设计比较好",
+]) {
+  assert.equal(inferExploreIntent(q), null, `not explore list: ${q}`);
+  assert.ok(
+    shouldPreferPlainChatTurn(q, { exploreIntent: inferExploreIntent(q) }),
+    `plain chat by relevance: ${q}`,
+  );
+}
+
+assert.deepEqual(inferExploreIntent("列出当前目录"), {
+  kind: "list",
+  path: ".",
+});
+assert.deepEqual(inferExploreIntent("看看当前目录有什么"), {
+  kind: "list",
+  path: ".",
+});
+assert.deepEqual(inferExploreIntent("当前项目目录有哪些文件"), {
+  kind: "list",
+  path: ".",
+});
+assert.deepEqual(inferExploreIntent("看看项目结构"), {
+  kind: "list",
+  path: ".",
+});
+
+assert.equal(
+  hasAgentWorkSignal("帮我看看有什么建议"),
+  false,
+  "帮我看 without repo object is not work",
+);
+assert.ok(
+  hasAgentWorkSignal("帮我看看报错日志"),
+  "帮我看 + error object is work",
+);
 assert.ok(hasAgentWorkSignal("帮我改一下 README"));
 assert.ok(hasAgentWorkSignal("这个项目是做什么的"));
 assert.equal(
@@ -227,6 +268,11 @@ assert.equal(
   shouldPreferPlainChatTurn("根据本项目画一个架构图", {}),
   false,
   "project-grounded asks keep tools",
+);
+assert.equal(
+  shouldPreferPlainChatTurn("解释一下项目结构怎么设计比较好", {}),
+  true,
+  "conceptual structure advice stays plain chat",
 );
 
 console.log("smoke-answer-only-intent: ok");
