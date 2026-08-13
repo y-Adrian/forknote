@@ -9,6 +9,7 @@ import type {
   ReflectDecision,
   ReflectInput,
 } from "./agentLoop";
+import { observeBatchHasWebTools } from "./agentLoop";
 import { streamChat, type ChatMessage } from "./openai";
 import { withAgentPhaseModel } from "./agentModelRouting";
 
@@ -61,6 +62,10 @@ export function shouldAskLlmReflect(
   if (expectedOutcome?.trim() && observed.successCount + observed.errorCount > 0) {
     return true;
   }
+  // After web search/fetch: judge whether hits suffice or need another angle.
+  if (observeBatchHasWebTools(observed) && observed.successCount > 0) {
+    return true;
+  }
   if (
     observed.errorCount > 0 &&
     (observed.primaryErrorType === "unknown" ||
@@ -88,9 +93,14 @@ function buildReflectPrompt(args: {
   locale?: "zh" | "en";
 }): ChatMessage[] {
   const zh = (args.locale ?? "zh") === "zh";
+  const web = observeBatchHasWebTools(args.observed);
   const system = zh
-    ? `你是 Agent Reflect 控制器。根据观察结果在允许的决策中选一个，只输出 JSON：{"decision":"continue|retry|replan|abort","reason":"一句"}。不要编造工具结果。`
-    : `You are the Agent Reflect controller. Pick one allowed decision from the observation. Output JSON only: {"decision":"continue|retry|replan|abort","reason":"one sentence"}. Do not invent tool results.`;
+    ? web
+      ? `你是 Agent Reflect 控制器。本批含 web_search/web_fetch。在允许的决策中选一个，只输出 JSON：{"decision":"continue|retry|replan|abort","reason":"一句"}。若结果已够支撑用户目标 → continue；若不足/偏题/过旧且预算允许 → retry 或 replan（含义是换查询/角度再搜，或 web_fetch 权威页），不要编造工具结果。`
+      : `你是 Agent Reflect 控制器。根据观察结果在允许的决策中选一个，只输出 JSON：{"decision":"continue|retry|replan|abort","reason":"一句"}。不要编造工具结果。`
+    : web
+      ? `You are the Agent Reflect controller. This batch includes web_search/web_fetch. Pick one allowed decision. Output JSON only: {"decision":"continue|retry|replan|abort","reason":"one sentence"}. If results suffice → continue; if thin/off-topic/stale and budget remains → retry or replan (meaning search again with a different query/angle, or web_fetch an authoritative page). Do not invent tool results.`
+      : `You are the Agent Reflect controller. Pick one allowed decision from the observation. Output JSON only: {"decision":"continue|retry|replan|abort","reason":"one sentence"}. Do not invent tool results.`;
   const user = [
     zh ? `规则基线：${args.ruleDecision}` : `Rule baseline: ${args.ruleDecision}`,
     zh

@@ -329,6 +329,12 @@ export function observeToolBatch(
  * Build a Reflect nudge for the model when decision is retry/replan/abort.
  * Structured guidance — not an open-ended "check your work".
  */
+export function observeBatchHasWebTools(observed: ObserveSignal): boolean {
+  return observed.summaries.some((s) =>
+    /^web_(search|fetch)\s*:/i.test(s),
+  );
+}
+
 export function buildReflectNudge(args: {
   decision: ReflectDecision;
   observed: ObserveSignal;
@@ -345,21 +351,39 @@ export function buildReflectNudge(args: {
     : zh
       ? "本步预期：完成用户目标所需的下一步工具调用"
       : "Expected outcome: the next tool call required by the user goal";
+  const web = observeBatchHasWebTools(args.observed);
+  const webRetryHint = web
+    ? zh
+      ? "若当前检索/抓取结果不足、偏题或过旧：请用不同关键词或角度再次 web_search，或对权威 URL 使用 web_fetch；不要重复同一无效查询。"
+      : "If search/fetch results are thin, off-topic, or stale: web_search again with a different query/angle, or web_fetch an authoritative URL — do not repeat the same ineffective query."
+    : null;
 
   if (args.decision === "retry") {
-    return zh
+    const base = zh
       ? `【Reflect：retry】对照预期自评未通过。\n${expectedLine}\n主要错误类型：${et}\n观察摘要：\n${args.observed.digest}\n请修正参数后重试同一目标（不要换无关工具）。`
       : `[Reflect: retry] Outcome did not match expectation.\n${expectedLine}\nPrimary error: ${et}\nObserve:\n${args.observed.digest}\nFix parameters and retry the same goal (do not switch to unrelated tools).`;
+    return webRetryHint ? `${base}\n${webRetryHint}` : base;
   }
   if (args.decision === "replan") {
-    return zh
+    const base = zh
       ? `【Reflect：replan】同一步重试已达上限。\n${expectedLine}\n主要错误类型：${et}\n观察摘要：\n${args.observed.digest}\n请改用另一种方式达成同一用户目标（重新分解步骤），不要死循环同一失败调用。`
       : `[Reflect: replan] Step retries exhausted.\n${expectedLine}\nPrimary error: ${et}\nObserve:\n${args.observed.digest}\nChoose a different approach for the same user goal; do not loop the same failing call.`;
+    const webReplan = web
+      ? zh
+        ? "联网场景：换检索策略（更具体的实体/时间范围/站点限定），或先 web_search 再 web_fetch 关键页面；禁止假装已掌握未检索到的事实。"
+        : "For web tasks: change search strategy (more specific entities/time window/site: filters), or web_search then web_fetch a key page; do not invent facts you did not retrieve."
+      : null;
+    return webReplan ? `${base}\n${webReplan}` : base;
   }
   if (args.decision === "abort") {
     return zh
       ? `【Reflect：abort】无法继续自动修复（${et}）。\n${expectedLine}\n观察摘要：\n${args.observed.digest}\n请向用户清晰说明失败原因与需要的人工介入；不要假装成功。`
       : `[Reflect: abort] Cannot auto-recover (${et}).\n${expectedLine}\nObserve:\n${args.observed.digest}\nTell the user clearly what failed and what human action is needed; do not claim success.`;
+  }
+  if (web) {
+    return zh
+      ? `【Reflect：continue】观察通过。若信息已够请直接作答；若仍缺关键事实，可再换角度 web_search / web_fetch（按任务复杂度，勿无意义连搜）。\n${expectedLine}`
+      : `[Reflect: continue] Observation looks good. Answer if enough; if a key fact is still missing, search/fetch once more with a new angle (scale with complexity — no pointless search loops).\n${expectedLine}`;
   }
   return zh
     ? `【Reflect：continue】观察通过，继续下一步。\n${expectedLine}`

@@ -87,8 +87,10 @@ import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { reflectWithOptionalLlm } from "./llmReflect";
 import { withAgentPhaseModel } from "./agentModelRouting";
 import {
+  estimateWebTaskComplexity,
   formatNetworkStatusSystem,
   resolveNetworkReachability,
+  resolveWebToolRoundBudget,
 } from "./networkAccess";
 import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, FeedbackEvent, ThreadRoot } from "../types";
@@ -287,7 +289,7 @@ export async function runAgentTurn(
   const codeLlm = withAgentPhaseModel(llm, "code");
   const summaryLlm = withAgentPhaseModel(llm, "summary");
 
-  const agentMaxRounds = resolveAgentMaxRounds(settings);
+  const agentMaxRoundsBase = resolveAgentMaxRounds(settings);
   const allowTerminal = resolveAgentAllowTerminal(settings);
   const autoDiagnostics = resolveAgentAutoDiagnostics(settings);
   const networkReach = await resolveNetworkReachability({
@@ -296,6 +298,7 @@ export async function runAgentTurn(
     signal,
   });
   const allowNetworkTools = networkReach.toolsAllowed;
+  const webTaskComplexity = estimateWebTaskComplexity(trimmed);
   const projectTools = getProjectOpenAITools({
     allowTerminal,
     allowNetwork: allowNetworkTools,
@@ -433,13 +436,25 @@ export async function runAgentTurn(
   }
 
   const networkOnlyTurn = preferPlainChat && allowNetworkTools && !chatOnlyDiagramAsk;
+  /** Soft ceiling for network-only turns; Reflect still decides whether to search again. */
+  const agentMaxRounds = networkOnlyTurn
+    ? resolveWebToolRoundBudget(webTaskComplexity, agentMaxRoundsBase)
+    : agentMaxRoundsBase;
   if (networkOnlyTurn) {
+    const complexityHint =
+      locale === "zh"
+        ? webTaskComplexity === "simple"
+          ? "任务偏简单：优先直接作答或一次高质量检索；仅当结果不足时再经 Reflect 换查询。"
+          : "任务偏复杂：可多角度检索；每轮 Reflect 判断是否够用，不够再换关键词/抓取权威页，禁止无意义连搜。"
+        : webTaskComplexity === "simple"
+          ? "Simple task: prefer a direct answer or one solid search; only Reflect→new query if results are insufficient."
+          : "Multi-angle task: search as needed; after each batch Reflect whether enough, then new query/fetch — no pointless search loops.";
     apiMessages.push({
       role: "system",
       content:
         locale === "zh"
-          ? "本轮是普通问答，但用户已开启联网。优先直接作答；仅当需要最新公开信息时调用 web_search / web_fetch。禁止调用任何项目/仓库工具。"
-          : "This turn is ordinary Q&A, but Network is enabled. Prefer answering directly; call web_search / web_fetch only when live public info is needed. Do not call project/repo tools.",
+          ? `本轮是普通问答，但用户已开启联网。由你决定是否 web_search / web_fetch（无独立分类器）；禁止调用任何项目/仓库工具。\n${complexityHint}`
+          : `Ordinary Q&A with Network on. You decide whether to call web_search / web_fetch (no separate classifier). Do not call project/repo tools.\n${complexityHint}`,
     });
   }
 
@@ -1237,7 +1252,10 @@ export async function runAgentTurn(
         item: PendingCall,
         executed: Awaited<ReturnType<typeof executeToolCall>>,
       ) => {
-        const toolResult = toToolResult(executed);
+        const toolResult = toToolResult({
+          ...executed,
+          tool: item.agent.tool,
+        });
         batchToolResults.push({ tool: item.agent.tool, result: toolResult });
         if (toolResult.ok) {
           batchHadSuccess = true;
