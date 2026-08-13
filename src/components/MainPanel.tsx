@@ -38,7 +38,7 @@ import { SelectableAnswer } from "./SelectableAnswer";
 import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
 import { ThinkingBlock } from "./ThinkingBlock";
-import { AnimeLineBubble } from "./AnimeLineBubble";
+import { GlassMessageBubble } from "./GlassMessageBubble";
 import { TurnBusyIndicator } from "./TurnBusyIndicator";
 
 function SourceBody({ content }: { content: string }) {
@@ -933,9 +933,9 @@ export function MainPanel({
                     data-msg-id={msg.id}
                     className="fn-msg fn-msg-user"
                   >
-                    <AnimeLineBubble>
+                    <GlassMessageBubble>
                       <p>{msg.content}</p>
-                    </AnimeLineBubble>
+                    </GlassMessageBubble>
                     <MessageActions
                       text={msg.content}
                       align="end"
