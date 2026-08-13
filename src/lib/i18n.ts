@@ -297,7 +297,7 @@ const en = {
     "Used for tool rounds after approval. Leave blank to use the session API model.",
   "projectSettings.agentSummaryModel": "Summary/Q&A model (optional)",
   "projectSettings.agentSummaryModelHint":
-    "Used for plain answers (no project) and light summaries. Leave blank to use the session API model.",
+    "Used for Archive, Compress, and light Q&A when no project tools are needed. Leave blank to use the session API model.",
   "projectSettings.agentModelPlaceholder": "Same as session model",
 
   "agentPlan.aria": "Agent plan review",
@@ -967,7 +967,7 @@ const zh: Record<MessageKey, string> = {
     "用于批准后的工具循环。留空则使用会话 API 模型。",
   "projectSettings.agentSummaryModel": "总结/问答模型（可选）",
   "projectSettings.agentSummaryModelHint":
-    "用于无项目时的普通问答与轻量总结。留空则使用会话 API 模型。",
+    "用于归档、压缩上下文，以及无需项目工具时的轻量问答。留空则使用会话 API 模型。",
   "projectSettings.agentModelPlaceholder": "与会话模型相同",
 
   "agentPlan.aria": "Agent 计划审核",

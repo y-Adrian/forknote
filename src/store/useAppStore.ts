@@ -4,6 +4,7 @@ import {
   type AgentFileChange,
 } from "../lib/agentTools";
 import { runAgentTurn } from "../lib/agentTurn";
+import { withAgentPhaseModel } from "../lib/agentModelRouting";
 import {
   archiveHasNewMaterial,
   archiveSystemPrompt,
@@ -31,6 +32,7 @@ import {
   loadContextMemoryPack,
   packThroughMessageId,
   parseCompressedOutput,
+  resolveCompressArchive,
   saveContextMemoryPack,
 } from "../lib/contextMemory";
 import { streamChat } from "../lib/openai";
@@ -1193,7 +1195,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const llm = settingsForSession(settings, session);
+    const llm = withAgentPhaseModel(
+      settingsForSession(settings, session),
+      "summary",
+    );
     const authError = requireApiKey(llm);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
@@ -1264,7 +1269,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             set({ archiveDraft: content });
           }
         },
-        { signal: ctrl.signal, temperature: 0.3 },
+        { signal: ctrl.signal, temperature: 0.2 },
       );
 
       if (ctrl.signal.aborted) return;
@@ -1284,19 +1289,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         storage: "local",
       };
 
-      const { projectRoot, sidecarUrl } = get();
-      if (projectRoot) {
-        const filePath = await saveArchiveMarkdownToProject({
-          snapshot,
-          projectRoot,
-          sidecarUrl,
-        });
-        if (filePath) {
-          snapshot.filePath = filePath;
-          snapshot.storage = "project";
-        }
-      }
-
+      // Persist UI immediately — project sidecar write must not delay compress / view.
       const { sessions } = get();
       const current = sessions.find((s) => s.id === sessionId);
       const archives = [...(current?.archives ?? []), snapshot];
@@ -1318,6 +1311,33 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
           : {}),
       });
+
+      const { projectRoot, sidecarUrl } = get();
+      if (projectRoot) {
+        void saveArchiveMarkdownToProject({
+          snapshot,
+          projectRoot,
+          sidecarUrl,
+        }).then((filePath) => {
+          if (!filePath) return;
+          const latest = get().sessions;
+          const sess = latest.find((s) => s.id === sessionId);
+          if (!sess?.archives?.some((a) => a.id === snapshot.id)) return;
+          const patched = patchActiveSessionMeta(latest, sessionId, {
+            archives: (sess.archives ?? []).map((a) =>
+              a.id === snapshot.id
+                ? { ...a, filePath, storage: "project" as const }
+                : a,
+            ),
+          });
+          persistSessions(patched, get().activeSessionId);
+          set({ sessions: patched });
+        });
+      }
+
+      console.info(
+        `[archive] sourceChars=${source.length} incremental=${incremental}`,
+      );
 
       if (isCompressAfterArchiveEnabled(settings)) {
         // Reuse archive draft — do not re-summarize the same raw thread.
@@ -1367,14 +1387,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       Boolean(override) || thread.messages.some((m) => m.content.trim());
     if (!hasContent) return;
 
-    const llm = settingsForSession(settings, getActiveSession(get()));
+    const activeSession = getActiveSession(get());
+    const llm = withAgentPhaseModel(
+      settingsForSession(settings, activeSession),
+      "summary",
+    );
     const authError = requireApiKey(llm);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
     }
 
-    const source = override || buildCompressSource(thread);
+    const archive = resolveCompressArchive(activeSession);
+    const source =
+      override ||
+      buildCompressSource(thread, {
+        feedbackLog: activeSession?.feedbackLog,
+        archive,
+      });
     if (!source.trim()) return;
 
     if (compressAbortSessionId === sessionId) {
@@ -1388,13 +1418,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const session = get().sessions.find((s) => s.id === sessionId);
-      const existing = await loadContextMemoryPack({
-        settings,
-        session,
-        projectRoot,
-        sidecarUrl,
-        signal: ctrl.signal,
-      });
+      const cached = session?.contextMemory ?? null;
+      const existing =
+        cached &&
+        (cached.summary.trim() ||
+          cached.tasks.trim() ||
+          cached.decisions.trim())
+          ? cached
+          : await loadContextMemoryPack({
+              settings,
+              session,
+              projectRoot,
+              sidecarUrl,
+              signal: ctrl.signal,
+            });
 
       let content = "";
       const locale = getLocale();
@@ -1411,7 +1448,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
           content += delta;
         },
-        { signal: ctrl.signal, temperature: 0.3 },
+        { signal: ctrl.signal, temperature: 0.2 },
       );
 
       if (ctrl.signal.aborted) return;
@@ -1458,6 +1495,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       persistSessions(nextSessions, get().activeSessionId);
       set({ sessions: nextSessions });
+
+      console.info(
+        `[compress] sourceChars=${source.length} reusedArchive=${Boolean(override || archive?.content.trim())}`,
+      );
     } catch (e) {
       if (!isAbortError(e)) {
         set({

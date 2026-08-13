@@ -7,7 +7,13 @@
  * 2. Else session.localStorage draft (`ChatSession.contextMemory`)
  */
 
-import { buildArchiveSource, lastNonEmptyMessageId } from "./archive";
+import {
+  buildArchiveSource,
+  buildCompressDeltaAfterArchive,
+  capArchiveSource,
+  lastNonEmptyMessageId,
+  resolveBaseArchive,
+} from "./archive";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import {
@@ -37,8 +43,10 @@ import { formatUserModelForAgent } from "./userModel";
 import { resolveUserModelForAgent } from "./userModelStore";
 import type {
   ApiSettings,
+  ArchiveSnapshot,
   ChatSession,
   ContextMemoryPack,
+  FeedbackEvent,
   SessionMemory,
   ThreadRoot,
 } from "../types";
@@ -624,8 +632,27 @@ export function compressChatMessages(
   ];
 }
 
-export function buildCompressSource(thread: ThreadRoot): string {
-  return buildArchiveSource(thread);
+export function buildCompressSource(
+  thread: ThreadRoot,
+  options?: {
+    feedbackLog?: FeedbackEvent[] | null;
+    /** Prefer this archive draft (+ post-archive delta) over raw full thread. */
+    archive?: ArchiveSnapshot | null;
+  },
+): string {
+  const archive = options?.archive ?? null;
+  if (archive?.content.trim()) {
+    const draftPart = formatArchiveDraftAsCompressSource(archive.content);
+    const delta = buildCompressDeltaAfterArchive(archive, thread, {
+      feedbackLog: options?.feedbackLog,
+    });
+    return capArchiveSource(
+      delta ? `${draftPart}\n\n${delta}` : draftPart,
+    );
+  }
+  return capArchiveSource(
+    buildArchiveSource(thread, { feedbackLog: options?.feedbackLog }),
+  );
 }
 
 /**
@@ -640,6 +667,13 @@ export function formatArchiveDraftAsCompressSource(archiveMarkdown: string): str
     "",
     body,
   ].join("\n");
+}
+
+/** Resolve best archive to reuse for Compress (active, else latest). */
+export function resolveCompressArchive(
+  session?: ChatSession | null,
+): ArchiveSnapshot | null {
+  return resolveBaseArchive(session?.archives, session?.activeArchiveId);
 }
 
 export function packThroughMessageId(thread: ThreadRoot): string | null {
