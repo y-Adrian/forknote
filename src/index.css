@@ -1,7 +1,7 @@
 /* ============================================================
    ForkNote — Design System
-   Manga ink-line panels: bold outlines, screentone paper,
-   hard offset shadows, stamp-red accents (not soft neon chrome)
+   Engineering surfaces: GitHub + Google DevDocs + VS Code.
+   Stamp-red for brand/focus; reading markdown uses doc tokens.
    ============================================================ */
 
 /* ── Keyframe Library ─────────────────────────────────────── */
@@ -78,9 +78,11 @@
 
 
 /* ── CSS Variables ────────────────────────────────────────── */
+/* Theme: GitHub + Google DevDocs + VS Code engineering surfaces.
+   Stamp-red stays for brand/focus; reading markdown uses doc tokens. */
 
 :root {
-  /* Shape — comic panel corners (not stadium pills) */
+  /* Shape — crisp editor panels */
   --ds-radius:          6px;
   --ds-radius-lg:       8px;
   --ds-radius-xl:       10px;
@@ -89,10 +91,10 @@
   --ds-ink-soft:        rgba(22, 22, 22, 0.72);
   --ds-stamp:           #e23d3d;
   --ds-screen:          #2aa8b8;
-  --ds-line:            2px;
-  --ds-hard-shadow:     3px 3px 0 var(--ds-ink);
+  --ds-line:            1px;
+  --ds-hard-shadow:     0 1px 2px rgba(22, 22, 22, 0.06), 0 4px 12px rgba(22, 22, 22, 0.06);
 
-  /* Composer — ink-bordered panel */
+  /* Composer */
   --ds-composer-radius: 10px;
   --ds-composer-shadow: var(--ds-hard-shadow);
 
@@ -117,23 +119,24 @@
   --fn-text-ui-lg:      1.05rem;
 
   /* Chat conversation type (bubbles, answer markdown, composer input) */
-  --fn-text-chat:       1.05rem;   /* ~16.8px — was ~0.975rem / ~15.6px */
-  --fn-text-chat-sm:    1rem;      /* compact composer — was ~0.925rem */
+  --fn-text-chat:       1.05rem;
+  --fn-text-chat-sm:    1rem;
 
-  /* Typography — rounded gothic UI + display stamp face */
+  /* Typography — IBM Plex (docs/UI) + Dela Gothic (brand mark only) */
   --ds-font-ui:
-    "M PLUS Rounded 1c",
-    "Hiragino Maru Gothic ProN",
+    "IBM Plex Sans",
     "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans SC",
     "Segoe UI",
     system-ui,
     sans-serif;
+  --ds-font-doc: var(--ds-font-ui);
   --ds-font-display:
     "Dela Gothic One",
-    "M PLUS Rounded 1c",
+    "IBM Plex Sans",
     system-ui,
     sans-serif;
-  /* Loaded via Google Fonts in index.html — distinct from DM Sans body/UI */
   --ds-font-mono:
     "JetBrains Mono",
     ui-monospace,
@@ -243,24 +246,24 @@
   line-height: 1.35;
 }
 
-/* Dark — ink night + white linework, stamp-red accent */
+/* Dark — GitHub / VS Code night */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --ds-bg:              #0e0e12;
-  --ds-main:            #141418;
-  --ds-sidebar:         #121216;
-  --ds-surface:         #1a1a20;
-  --ds-surface-hover:   #24242c;
-  --ds-surface-elevated:#1c1c24;
+  --ds-bg:              #010409;
+  --ds-main:            #0d1117;
+  --ds-sidebar:         #010409;
+  --ds-surface:         #161b22;
+  --ds-surface-hover:   #21262d;
+  --ds-surface-elevated:#161b22;
 
-  --ds-border:          rgba(240, 240, 245, 0.55);
-  --ds-border-strong:   rgba(255, 255, 255, 0.78);
+  --ds-border:          rgba(240, 246, 252, 0.12);
+  --ds-border-strong:   rgba(240, 246, 252, 0.22);
 
-  --ds-text:            #f2f2f5;
-  --ds-text-dim:        #c4c4ce;
-  --ds-muted:           #8e8e9a;
+  --ds-text:            #e6edf3;
+  --ds-text-dim:        #b1bac4;
+  --ds-muted:           #8b949e;
 
   --ds-brand:           #ff5a5a;
   --ds-brand-2:         #ff8585;
@@ -268,57 +271,60 @@
 
   --ds-accent:          #ff5a5a;
   --ds-accent-hover:    #ff7575;
-  --ds-accent-soft:     rgba(255, 90, 90, 0.16);
-  --ds-accent-glow:     rgba(255, 90, 90, 0.14);
+  --ds-accent-soft:     rgba(255, 90, 90, 0.14);
+  --ds-accent-glow:     rgba(255, 90, 90, 0.12);
   --ds-on-accent:       #120808;
 
-  --ds-user-bubble:     #1c1c24;
-  --ds-comment-bg:      #18181e;
-  --ds-composer-bg:     #16161c;
-  --ds-composer-shadow: 3px 3px 0 rgba(255, 255, 255, 0.55);
-  --ds-highlight:       rgba(255, 200, 80, 0.28);
-  --ds-error:           #ff6b6b;
+  --ds-link:            #58a6ff;
+  --ds-link-hover:      #79b8ff;
 
-  --ds-overlay:         rgba(0, 0, 0, 0.58);
-  --ds-overlay-strong:  rgba(0, 0, 0, 0.72);
-  --ds-shadow:          4px 4px 0 rgba(255, 255, 255, 0.35);
-  --ds-shadow-lg:       6px 6px 0 rgba(255, 255, 255, 0.28);
-  --ds-card-shadow:     3px 3px 0 rgba(255, 255, 255, 0.35);
-  --ds-inset-edge:      rgba(255, 255, 255, 0.08);
-  --ds-glass-ring:      rgba(255, 255, 255, 0.06);
+  --ds-user-bubble:     #161b22;
+  --ds-comment-bg:      #161b22;
+  --ds-composer-bg:     #0d1117;
+  --ds-composer-shadow: var(--ds-hard-shadow);
+  --ds-highlight:       rgba(210, 153, 34, 0.28);
+  --ds-error:           #f85149;
 
-  --ds-code-bg:         rgba(0, 0, 0, 0.45);
-  --ds-code-text:       #e8e8ef;
-  --ds-code-inline-bg:  rgba(42, 168, 184, 0.18);
-  --ds-code-inline-text:#7ed7e4;
-  --ds-code-border:     rgba(255, 255, 255, 0.35);
-  --ds-blockquote-border: rgba(255, 90, 90, 0.7);
-  --ds-blockquote-bg:   rgba(255, 90, 90, 0.08);
+  --ds-overlay:         rgba(1, 4, 9, 0.72);
+  --ds-overlay-strong:  rgba(1, 4, 9, 0.84);
+  --ds-shadow:          0 8px 24px rgba(1, 4, 9, 0.45);
+  --ds-shadow-lg:       0 16px 40px rgba(1, 4, 9, 0.55);
+  --ds-card-shadow:     0 1px 0 rgba(240, 246, 252, 0.04), 0 8px 24px rgba(1, 4, 9, 0.35);
+  --ds-inset-edge:      rgba(255, 255, 255, 0.04);
+  --ds-glass-ring:      rgba(255, 255, 255, 0.04);
+
+  --ds-code-bg:         #161b22;
+  --ds-code-text:       #e6edf3;
+  --ds-code-inline-bg:  rgba(110, 118, 129, 0.28);
+  --ds-code-inline-text:#e6edf3;
+  --ds-code-border:     rgba(240, 246, 252, 0.12);
+  --ds-blockquote-border: #3d444d;
+  --ds-blockquote-bg:   rgba(110, 118, 129, 0.08);
   --ds-focus-border:    rgba(255, 90, 90, 0.85);
   --ds-focus-ring:      rgba(255, 90, 90, 0.2);
-  --ds-scrollbar:       rgba(220, 220, 230, 0.35);
+  --ds-scrollbar:       rgba(139, 148, 158, 0.45);
   --ds-shell-wash:      none;
-  --ds-ink:             #f2f2f5;
-  --ds-hard-shadow:     3px 3px 0 rgba(255, 255, 255, 0.55);
+  --ds-ink:             #e6edf3;
+  --ds-hard-shadow:     0 1px 2px rgba(1, 4, 9, 0.4), 0 8px 24px rgba(1, 4, 9, 0.35);
 }
 
-/* Light — manga paper + black ink outlines, stamp-red accent */
+/* Light — GitHub / Google DevDocs paper */
 [data-theme="light"] {
   color-scheme: light;
 
-  --ds-bg:              #f3eee6;
-  --ds-main:            #fffdf8;
-  --ds-sidebar:         #fffdf8;
-  --ds-surface:         #f7f1e8;
-  --ds-surface-hover:   #efe7db;
+  --ds-bg:              #f6f8fa;
+  --ds-main:            #ffffff;
+  --ds-sidebar:         #f6f8fa;
+  --ds-surface:         #f6f8fa;
+  --ds-surface-hover:   #eef2f6;
   --ds-surface-elevated:#ffffff;
 
-  --ds-border:          rgba(22, 22, 22, 0.85);
-  --ds-border-strong:   #161616;
+  --ds-border:          #d0d7de;
+  --ds-border-strong:   #afb8c1;
 
-  --ds-text:            #161616;
-  --ds-text-dim:        #3a3a3a;
-  --ds-muted:           #6a6a6a;
+  --ds-text:            #1f2328;
+  --ds-text-dim:        #424a53;
+  --ds-muted:           #656d76;
 
   --ds-brand:           #e23d3d;
   --ds-brand-2:         #c52f2f;
@@ -327,37 +333,40 @@
   --ds-accent:          #e23d3d;
   --ds-accent-hover:    #c52f2f;
   --ds-accent-soft:     rgba(226, 61, 61, 0.1);
-  --ds-accent-glow:     rgba(226, 61, 61, 0.14);
-  --ds-on-accent:       #fffdf8;
+  --ds-accent-glow:     rgba(226, 61, 61, 0.12);
+  --ds-on-accent:       #ffffff;
 
-  --ds-user-bubble:     #fffdf8;
-  --ds-comment-bg:      #faf6f0;
-  --ds-composer-bg:     #fffdf8;
-  --ds-composer-shadow: 3px 3px 0 #161616;
-  --ds-highlight:       rgba(226, 180, 40, 0.28);
-  --ds-error:           #c52f2f;
+  --ds-link:            #0969da;
+  --ds-link-hover:      #0550ae;
 
-  --ds-overlay:         rgba(22, 22, 22, 0.28);
-  --ds-overlay-strong:  rgba(22, 22, 22, 0.45);
-  --ds-shadow:          4px 4px 0 #161616;
-  --ds-shadow-lg:       6px 6px 0 #161616;
-  --ds-card-shadow:     3px 3px 0 #161616;
+  --ds-user-bubble:     #f6f8fa;
+  --ds-comment-bg:      #f6f8fa;
+  --ds-composer-bg:     #ffffff;
+  --ds-composer-shadow: var(--ds-hard-shadow);
+  --ds-highlight:       rgba(234, 179, 8, 0.28);
+  --ds-error:           #cf222e;
+
+  --ds-overlay:         rgba(31, 35, 40, 0.32);
+  --ds-overlay-strong:  rgba(31, 35, 40, 0.48);
+  --ds-shadow:          0 8px 24px rgba(31, 35, 40, 0.08);
+  --ds-shadow-lg:       0 16px 40px rgba(31, 35, 40, 0.12);
+  --ds-card-shadow:     0 1px 0 rgba(31, 35, 40, 0.04), 0 1px 3px rgba(31, 35, 40, 0.06);
   --ds-inset-edge:      rgba(255, 255, 255, 0.9);
-  --ds-glass-ring:      rgba(22, 22, 22, 0.06);
+  --ds-glass-ring:      rgba(31, 35, 40, 0.04);
 
-  --ds-code-bg:         rgba(22, 22, 22, 0.04);
-  --ds-code-text:       #1a1a1a;
-  --ds-code-inline-bg:  rgba(42, 168, 184, 0.12);
-  --ds-code-inline-text:#1a7a88;
-  --ds-code-border:     rgba(22, 22, 22, 0.55);
-  --ds-blockquote-border: #e23d3d;
-  --ds-blockquote-bg:   rgba(226, 61, 61, 0.06);
+  --ds-code-bg:         #f6f8fa;
+  --ds-code-text:       #1f2328;
+  --ds-code-inline-bg:  rgba(175, 184, 193, 0.28);
+  --ds-code-inline-text:#1f2328;
+  --ds-code-border:     #d0d7de;
+  --ds-blockquote-border: #d0d7de;
+  --ds-blockquote-bg:   rgba(175, 184, 193, 0.12);
   --ds-focus-border:    #e23d3d;
   --ds-focus-ring:      rgba(226, 61, 61, 0.18);
-  --ds-scrollbar:       rgba(22, 22, 22, 0.35);
+  --ds-scrollbar:       rgba(175, 184, 193, 0.7);
   --ds-shell-wash:      none;
-  --ds-ink:             #161616;
-  --ds-hard-shadow:     3px 3px 0 #161616;
+  --ds-ink:             #1f2328;
+  --ds-hard-shadow:     0 1px 2px rgba(31, 35, 40, 0.06), 0 4px 12px rgba(31, 35, 40, 0.06);
 }
 
 
@@ -407,9 +416,7 @@ body {
   gap: var(--ds-shell-gap);
   padding: var(--ds-shell-gap);
   background-color: var(--ds-bg);
-  background-image:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ds-ink) 18%, transparent) 1px, transparent 0);
-  background-size: 10px 10px;
+  background-image: none;
 }
 
 
@@ -424,7 +431,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   background: var(--ds-sidebar);
-  border: var(--ds-line) solid var(--ds-border-strong);
+  border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-xl);
   box-shadow: var(--ds-card-shadow);
   transition:
@@ -840,7 +847,7 @@ body {
   height: 100%;
   overflow: hidden;
   background: var(--ds-main);
-  border: var(--ds-line) solid var(--ds-border-strong);
+  border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-xl);
   box-shadow: var(--ds-card-shadow);
 }
@@ -1200,10 +1207,10 @@ body {
 .ds-bubble-user {
   position: relative;
   background: var(--ds-user-bubble);
-  border: var(--ds-line) solid var(--ds-border-strong);
-  border-radius: 14px 14px 4px 14px;
+  border: 1px solid var(--ds-border);
+  border-radius: 12px;
   padding: 12px 16px;
-  box-shadow: var(--ds-hard-shadow);
+  box-shadow: none;
   width: fit-content;
   max-width: 100%;
   color: var(--ds-text);
@@ -1376,22 +1383,22 @@ body {
 .ds-typing span:nth-child(3) { animation-delay: 0.36s; }
 
 
-/* ── Answer / Markdown ────────────────────────────────────── */
+/* ── Answer / Markdown (GitHub + DevDocs + VS Code) ───────── */
 
 .answer-body {
   background: transparent;
   border: none;
   padding: 0;
   color: var(--ds-text);
-  font-family: var(--ds-font-ui);
+  font-family: var(--ds-font-doc);
   font-size: var(--fn-text-chat);
   font-optical-sizing: auto;
-  letter-spacing: -0.006em;
-  max-width: 100%;
+  letter-spacing: -0.011em;
+  max-width: min(100%, var(--ds-content-max-width));
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
-  line-height: 1.72;
+  line-height: 1.7;
 }
 
 .answer-body.selectable {
@@ -1411,13 +1418,14 @@ body {
 .answer-body :last-child  { margin-bottom: 0; }
 
 .answer-body a {
-  color: var(--ds-accent);
+  color: var(--ds-link);
+  text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
 
 .answer-body a:hover {
-  color: var(--ds-accent-hover);
+  color: var(--ds-link-hover);
 }
 
 .answer-body p,
@@ -1443,12 +1451,12 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
   font-family: var(--ds-font-mono);
-  font-size: 0.86em;
+  font-size: 0.875em;
   background: var(--ds-code-inline-bg);
   color: var(--ds-code-inline-text);
-  padding: 0.12em 0.38em;
-  border-radius: 4px;
-  border: 1px solid var(--ds-code-border);
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  border: none;
 }
 
 /* Fenced code blocks with toolbar + line-number gutter */
@@ -1464,15 +1472,14 @@ body {
   display: flex;
   flex-direction: column;
   max-width: 100%;
-  margin: 14px 0;
-  border-radius: 14px;
+  margin: 16px 0;
+  border-radius: var(--ds-radius);
   background: var(--ds-code-bg);
-  border: 1px solid var(--ds-border);
-  border-left: 3px solid var(--ds-accent);
+  border: 1px solid var(--ds-code-border);
   box-sizing: border-box;
   overflow: hidden;
   font-family: var(--ds-font-mono);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   line-height: 1.55;
   color: var(--ds-code-text);
 }
@@ -1481,11 +1488,10 @@ body {
   display: flex;
   flex-direction: column;
   max-width: 100%;
-  margin: 14px 0;
-  border-radius: 14px;
+  margin: 16px 0;
+  border-radius: var(--ds-radius);
   background: var(--ds-code-bg);
-  border: 1px solid var(--ds-border);
-  border-left: 3px solid var(--ds-accent);
+  border: 1px solid var(--ds-code-border);
   box-sizing: border-box;
   overflow: auto;
 }
@@ -1613,12 +1619,11 @@ body {
 .answer-body pre:not(.fn-code-pre) {
   max-width: 100%;
   overflow-x: auto;
-  margin: 14px 0;
+  margin: 16px 0;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: var(--ds-radius);
   background: var(--ds-code-bg);
-  border: 1px solid var(--ds-border);
-  border-left: 3px solid var(--ds-accent);
+  border: 1px solid var(--ds-code-border);
   box-sizing: border-box;
   position: relative;
 }
@@ -1630,7 +1635,7 @@ body {
   padding: 0;
   border: none;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--ds-code-text);
 }
 
@@ -1639,29 +1644,38 @@ body {
   max-width: 100%;
   overflow-x: auto;
   border-collapse: collapse;
+  margin: 16px 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .answer-body th,
 .answer-body td {
-  padding: 7px 12px;
+  padding: 8px 13px;
   border: 1px solid var(--ds-border);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
 }
 
 .answer-body th {
   background: var(--ds-surface);
   font-weight: 600;
-  color: var(--ds-text-dim);
+  color: var(--ds-text);
+}
+
+.answer-body tr:nth-child(2n) td {
+  background: color-mix(in srgb, var(--ds-surface) 70%, transparent);
 }
 
 .answer-body blockquote {
-  margin: 12px 0;
-  padding: 10px 16px;
+  margin: 16px 0;
+  padding: 4px 16px;
   border-left: 3px solid var(--ds-blockquote-border);
   background: var(--ds-blockquote-bg);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0;
   color: var(--ds-text-dim);
 }
+
+.answer-body blockquote > :first-child { margin-top: 0.4em; }
+.answer-body blockquote > :last-child { margin-bottom: 0.4em; }
 
 .fn-markdown-with-adopts {
   display: flex;
@@ -1673,24 +1687,18 @@ body {
   position: relative;
   margin: 4px 0 8px;
   padding: 14px 16px 12px;
-  border-radius: 8px;
-  border: var(--ds-line) solid var(--ds-border-strong);
-  background:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ds-ink) 16%, transparent) 1px, transparent 0),
-    var(--ds-surface);
-  background-size: 8px 8px, auto;
-  box-shadow: var(--ds-hard-shadow);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  box-shadow: none;
   color: var(--ds-text);
   overflow: hidden;
 }
 
 [data-theme="light"] .fn-adopt-card {
-  border-color: var(--ds-border-strong);
-  background:
-    radial-gradient(circle at 1px 1px, rgba(22, 22, 22, 0.14) 1px, transparent 0),
-    #fffdf8;
-  background-size: 8px 8px, auto;
-  box-shadow: 3px 3px 0 #161616;
+  border-color: var(--ds-border);
+  background: var(--ds-surface);
+  box-shadow: none;
 }
 
 .fn-adopt-sparkles {
@@ -1796,9 +1804,50 @@ body {
 
 .answer-body h1,
 .answer-body h2,
-.answer-body h3 {
+.answer-body h3,
+.answer-body h4 {
   color: var(--ds-text);
-  letter-spacing: -0.01em;
+  font-family: var(--ds-font-doc);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin: 1.35em 0 0.55em;
+}
+
+.answer-body h1 {
+  font-size: 1.55em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.answer-body h2 {
+  font-size: 1.3em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.answer-body h3 {
+  font-size: 1.12em;
+}
+
+.answer-body h4 {
+  font-size: 1em;
+}
+
+.answer-body hr {
+  height: 1px;
+  margin: 1.5em 0;
+  border: none;
+  background: var(--ds-border);
+}
+
+.answer-body ul,
+.answer-body ol {
+  padding-left: 1.6em;
+}
+
+.answer-body li + li {
+  margin-top: 0.25em;
 }
 
 
@@ -1835,7 +1884,7 @@ body {
 
 /* Mild alternating tint so adjacent segments stay distinguishable */
 .pointized-answer > .point-row:nth-child(even) > .point-block:not(.is-accept):not(.is-unsure):not(.is-reject) {
-  background: color-mix(in srgb, var(--ds-accent) 7%, var(--ds-surface, var(--ds-bg)));
+  background: color-mix(in srgb, var(--ds-text) 2.5%, var(--ds-surface, var(--ds-bg)));
 }
 
 .point-verdict-group {
@@ -2179,7 +2228,7 @@ mark.branch-highlight:hover {
   background: var(--ds-composer-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border: var(--ds-line) solid var(--ds-border-strong);
+  border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-xl);
   box-shadow: var(--ds-shadow-lg);
   padding: 18px 20px;
@@ -3741,7 +3790,7 @@ mark.branch-highlight:hover {
   display: flex;
   flex-direction: column;
   background: var(--ds-composer-bg);
-  border: var(--ds-line) solid var(--ds-border-strong);
+  border: 1px solid var(--ds-border);
   border-radius: var(--ds-composer-radius);
   padding: 18px 20px 14px;
   box-shadow: var(--ds-composer-shadow);
@@ -5608,48 +5657,26 @@ mark.branch-highlight:hover {
 .fn-at-option:hover, .fn-at-option.is-active { background: var(--ds-accent-soft); color: var(--ds-accent); }
 
 
-/* ── Manga ink-line polish ─────────────────────────────── */
-/* Settings `.ss-panel` stays borderless — nested ink box made the dialog feel cramped. */
+/* Soften remaining ink chrome toward engineering panels */
 .modal-card,
 .ds-settings-panel,
 .fn-memory-item,
 .fn-at-menu {
-  border: var(--ds-line) solid var(--ds-border-strong) !important;
+  border: 1px solid var(--ds-border) !important;
   border-radius: var(--ds-radius-lg) !important;
-  box-shadow: var(--ds-hard-shadow) !important;
+  box-shadow: var(--ds-card-shadow) !important;
 }
 
 .fn-include-chip {
-  border-radius: 4px !important;
-  border: 1.5px solid var(--ds-border-strong) !important;
-  box-shadow: 1.5px 1.5px 0 var(--ds-ink);
+  border-radius: 6px !important;
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: none;
   color: var(--ds-text) !important;
-}
-
-.answer-body h1,
-.answer-body h2,
-.answer-body h3 {
-  font-family: var(--ds-font-display);
-  letter-spacing: 0.01em;
-}
-
-.ds-bubble-user::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 12px;
-  height: 12px;
-  background: var(--ds-user-bubble);
-  border-right: var(--ds-line) solid var(--ds-border-strong);
-  border-bottom: var(--ds-line) solid var(--ds-border-strong);
-  transform: translate(4px, 4px) rotate(45deg);
-  box-shadow: 2px 2px 0 transparent;
 }
 
 .selection-toolbar,
 .fn-selection-toolbar {
-  border: var(--ds-line) solid var(--ds-border-strong) !important;
-  border-radius: 6px !important;
-  box-shadow: var(--ds-hard-shadow) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--ds-shadow) !important;
 }

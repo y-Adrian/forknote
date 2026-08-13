@@ -113,7 +113,7 @@ const en = {
   "general.fontDesc":
     "Pick any font installed on this device. Code blocks still use JetBrains Mono.",
   "general.fontAria": "Interface font",
-  "general.font.default": "Default (DM Sans)",
+  "general.font.default": "Default (IBM Plex Sans)",
   "general.font.system": "System UI",
   "general.font.load": "Load installed fonts",
   "general.font.loading": "Loading fonts…",
@@ -741,7 +741,7 @@ const zh: Record<MessageKey, string> = {
   "general.fontDesc":
     "可读取并选择本机已安装的字体。代码区域仍使用 JetBrains Mono。",
   "general.fontAria": "界面字体",
-  "general.font.default": "默认（DM Sans）",
+  "general.font.default": "默认（IBM Plex Sans）",
   "general.font.system": "系统 UI",
   "general.font.load": "读取已安装字体",
   "general.font.loading": "正在读取字体…",
