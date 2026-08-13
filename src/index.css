@@ -2162,6 +2162,19 @@ body {
   border-color: rgba(120, 120, 120, 0.35);
 }
 
+.point-verdict-btn.v-clarify.is-suggested {
+  background: color-mix(in srgb, var(--ds-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ds-accent) 40%, var(--ds-border));
+  color: var(--ds-accent);
+}
+
+.point-unsure-clarify-hint {
+  margin: 4px 0 2px;
+  font-size: var(--fn-text-ui-xs);
+  color: var(--ds-muted);
+  line-height: 1.35;
+}
+
 /* Verdict state on the whole block (tint only — no side bar) */
 .point-block.is-accept {
   background: color-mix(in srgb, #4ade80 12%, var(--ds-surface, var(--ds-bg)));

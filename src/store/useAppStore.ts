@@ -101,6 +101,7 @@ import type {
   ContextMode,
   ThreadView,
   FeedbackAttribution,
+  FeedbackEvent,
   FocusTarget,
   NodeId,
   AgentPendingPlan,
@@ -336,6 +337,21 @@ function applySessionFeedback(
       updatedAt: Date.now(),
     };
   });
+}
+
+function commitDecisionFeedbackBatch(
+  get: () => AppState,
+  set: (partial: { sessions: ChatSession[] }) => void,
+  sessionId: NodeId,
+  events: FeedbackEvent[],
+) {
+  if (events.length === 0) return;
+  let sessions = get().sessions;
+  for (const event of events) {
+    sessions = applySessionFeedback(sessions, sessionId, event);
+  }
+  persistSessions(sessions, get().activeSessionId);
+  set({ sessions });
 }
 
 function upsertActiveSession(
@@ -1540,6 +1556,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         targetId,
         pointIndex,
         signal: nextSignal,
+        decisionId: `${targetId}:${pointIndex}`,
+        decisionType: "point_verdict",
+        phase: "reflect",
+        contextSnapshot: `point:${pointIndex}`,
       });
       const content = resolvePointContent(nextThread, targetId, pointIndex);
       nextSessions = applySessionFeedback(
@@ -1627,6 +1647,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         pointIndex,
         signal: "unsure",
         note: trimmed,
+        decisionId: `${targetId}:${pointIndex}`,
+        decisionType: "point_verdict",
+        phase: "reflect",
+        contextSnapshot: `point:${pointIndex}`,
       });
       const content = resolvePointContent(nextThread, targetId, pointIndex);
       nextSessions = applySessionFeedback(
@@ -2377,6 +2401,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           persistSessions(repaired, sessionId);
           set({ sessions: repaired });
         },
+        onDecisionFeedback: (events) => {
+          commitDecisionFeedbackBatch(get, set, sessionId, events);
+        },
         onAwaitPlanApproval: ({
           planText,
           steps,
@@ -2640,6 +2667,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             persistSessions(repaired, sessionId);
             set({ sessions: repaired });
           },
+          onDecisionFeedback: (events) => {
+            commitDecisionFeedbackBatch(get, set, sessionId, events);
+          },
           onAwaitPlanApproval: ({
             planText,
             steps,
@@ -2860,6 +2890,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             });
             persistSessions(repaired, sessionId);
             set({ sessions: repaired });
+          },
+          onDecisionFeedback: (events) => {
+            commitDecisionFeedbackBatch(get, set, sessionId, events);
           },
           onAwaitPlanApproval: ({
             planText,

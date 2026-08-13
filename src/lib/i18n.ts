@@ -622,6 +622,8 @@ const en = {
   "checkpoint.working": "Integrating…",
   "verdict.hypoConfirmed": "Reason confirmed",
   "verdict.hypoUnsureConfirmed": "Needs more verification",
+  "verdict.unsureClarifyHint":
+    "Unsure is not a reject — confirm the reason above, or clarify this point for a sharper answer.",
   "verdict.hypoStreakHint": "Similar answers were rejected a few times — a quick check helps me adjust.",
 
   "chat.generating": "Generating…",
@@ -1265,6 +1267,8 @@ const zh: Record<MessageKey, string> = {
   "checkpoint.working": "整合中…",
   "verdict.hypoConfirmed": "已确认原因",
   "verdict.hypoUnsureConfirmed": "需要进一步验证",
+  "verdict.unsureClarifyHint":
+    "存疑不等于否定——请先确认上方原因，或点「澄」针对此点追问。",
   "verdict.hypoStreakHint": "同类回答已被连续拒绝几次——确认一下能帮我更快调整。",
 
   "chat.generating": "生成中…",
