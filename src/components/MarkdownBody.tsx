@@ -11,6 +11,7 @@ import {
   memo,
   useContext,
   useState,
+  type AnchorHTMLAttributes,
   type HTMLAttributes,
   type ImgHTMLAttributes,
   type ReactNode,
@@ -204,11 +205,40 @@ function MarkdownCode({
   );
 }
 
+/**
+ * Keep ForkNote's conversation mounted when a reader opens a source.
+ * Electron routes new-window requests to the system browser; regular browsers
+ * retain the chat in the original tab.
+ */
+function MarkdownLink({
+  href,
+  children,
+  node: _node,
+  ...props
+}: AnchorHTMLAttributes<HTMLAnchorElement> & ExtraProps) {
+  const safeHref =
+    typeof href === "string" ? forknoteUrlTransform(href.trim()) : "";
+  if (!safeHref) return <>{children}</>;
+
+  const opensAwayFromDocument = !safeHref.startsWith("#");
+  return (
+    <a
+      {...props}
+      href={safeHref}
+      target={opensAwayFromDocument ? "_blank" : props.target}
+      rel={opensAwayFromDocument ? "noreferrer noopener" : props.rel}
+    >
+      {children}
+    </a>
+  );
+}
+
 /** Module-stable map so react-markdown never remounts fences/images on parent churn. */
 const MARKDOWN_COMPONENTS: Components = {
   pre: MarkdownPre,
   img: MarkdownImage,
   code: MarkdownCode,
+  a: MarkdownLink,
 };
 
 /**
