@@ -3,6 +3,7 @@ import {
   type AgentActivity,
   type AgentFileChange,
 } from "../lib/agentTools";
+import { isAgentTurnPlaceholder } from "../lib/agentStatus";
 import { runAgentTurn } from "../lib/agentTurn";
 import { withAgentPhaseModel } from "../lib/agentModelRouting";
 import {
@@ -492,9 +493,6 @@ type ThinkingTimingState = {
   firstAnswerAt: number | null;
 };
 
-const THINKING_PLACEHOLDER_RE =
-  /^(Creating |Listing |Reading |Searching |Running |Using project tools|Thinking|Drafting plan|思考中|正在制定计划|正在创建 |正在列出 |正在读取 |正在搜索 |正在运行 |正在使用项目工具)/;
-
 function updateThinkingTiming(
   timing: ThinkingTimingState,
   patch: {
@@ -513,7 +511,7 @@ function updateThinkingTiming(
     patch.content !== undefined &&
     patch.content.trim() &&
     timing.firstAnswerAt == null &&
-    !THINKING_PLACEHOLDER_RE.test(patch.content.trim())
+    !isAgentTurnPlaceholder(patch.content)
   ) {
     timing.firstAnswerAt = now;
   }

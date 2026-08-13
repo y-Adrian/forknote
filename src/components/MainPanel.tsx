@@ -19,6 +19,7 @@ import {
   joinProjectPath,
 } from "../lib/archiveFiles";
 import { copyTextToClipboard } from "../lib/clipboard";
+import { isAgentTurnPlaceholder } from "../lib/agentStatus";
 import { useAppStore } from "../store/useAppStore";
 import type { ArchiveSnapshot, ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
@@ -38,6 +39,7 @@ import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { LinePuppyBubble } from "./LinePuppyBubble";
+import { TurnBusyIndicator } from "./TurnBusyIndicator";
 
 function SourceBody({ content }: { content: string }) {
   return (
@@ -987,11 +989,27 @@ export function MainPanel({
                             />
                           )}
                         </div>
-                        <MessageActions
-                          text={msg.content}
-                          align="start"
-                          onCopy={() => recordPassiveCopy(msg.id)}
-                        />
+                        <div
+                          className="fn-msg-footer is-start"
+                          aria-busy={
+                            loadingMain &&
+                            msg.id === lastThreadMessageId &&
+                            isAgentTurnPlaceholder(msg.content)
+                              ? true
+                              : undefined
+                          }
+                        >
+                          <MessageActions
+                            text={msg.content}
+                            align="start"
+                            onCopy={() => recordPassiveCopy(msg.id)}
+                          />
+                          {loadingMain &&
+                          msg.id === lastThreadMessageId &&
+                          isAgentTurnPlaceholder(msg.content) ? (
+                            <TurnBusyIndicator label={t("chat.generating")} />
+                          ) : null}
+                        </div>
                       </>
                     ) : loadingMain && msg.id === lastThreadMessageId ? (
                       !msg.reasoning?.trim() ? (

@@ -1384,6 +1384,61 @@ body {
   justify-content: flex-start;
 }
 
+/* Footer row: actions + in-progress tool status spinner */
+.fn-msg-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.fn-msg-footer.is-start {
+  justify-content: flex-start;
+}
+
+.fn-msg-footer.is-end {
+  justify-content: flex-end;
+}
+
+.fn-msg-footer .fn-msg-actions {
+  opacity: 0.55;
+}
+
+.fn-msg:hover .fn-msg-footer .fn-msg-actions,
+.fn-msg:focus-within .fn-msg-footer .fn-msg-actions {
+  opacity: 1;
+}
+
+.fn-turn-busy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  color: var(--ds-muted);
+}
+
+.fn-turn-busy-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--ds-muted) 35%, transparent);
+  border-top-color: var(--ds-text-dim);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.ds-bubble-assistant.is-agent-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ds-bubble-assistant.is-agent-status > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .fn-msg-action {
   display: inline-flex;
   align-items: center;
