@@ -672,6 +672,15 @@ function ProjectSettingsPanel() {
   const [autoDiagDraft, setAutoDiagDraft] = useState(
     settings.agentAutoDiagnostics ?? true,
   );
+  const [planModelDraft, setPlanModelDraft] = useState(
+    settings.agentPlanModel ?? "",
+  );
+  const [codeModelDraft, setCodeModelDraft] = useState(
+    settings.agentCodeModel ?? "",
+  );
+  const [summaryModelDraft, setSummaryModelDraft] = useState(
+    settings.agentSummaryModel ?? "",
+  );
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -681,6 +690,9 @@ function ProjectSettingsPanel() {
     setApprovalDraft(settings.agentRequireApproval ?? true);
     setTerminalDraft(settings.agentAllowTerminal ?? true);
     setAutoDiagDraft(settings.agentAutoDiagnostics ?? true);
+    setPlanModelDraft(settings.agentPlanModel ?? "");
+    setCodeModelDraft(settings.agentCodeModel ?? "");
+    setSummaryModelDraft(settings.agentSummaryModel ?? "");
     setSaved(false);
   }, [
     sidecarUrl,
@@ -688,6 +700,9 @@ function ProjectSettingsPanel() {
     settings.agentRequireApproval,
     settings.agentAllowTerminal,
     settings.agentAutoDiagnostics,
+    settings.agentPlanModel,
+    settings.agentCodeModel,
+    settings.agentSummaryModel,
   ]);
 
   const save = () => {
@@ -707,6 +722,9 @@ function ProjectSettingsPanel() {
       agentRequireApproval: approvalDraft,
       agentAllowTerminal: terminalDraft,
       agentAutoDiagnostics: autoDiagDraft,
+      agentPlanModel: planModelDraft.trim(),
+      agentCodeModel: codeModelDraft.trim(),
+      agentSummaryModel: summaryModelDraft.trim(),
     });
     saveSettings(nextSettings);
     setSettings(nextSettings);
@@ -792,6 +810,50 @@ function ProjectSettingsPanel() {
       </label>
       <p className="hint local-hint">
         {t("projectSettings.agentAutoDiagnosticsHint")}
+      </p>
+
+      <label>
+        {t("projectSettings.agentPlanModel")}
+        <input
+          value={planModelDraft}
+          onChange={(e) => {
+            setPlanModelDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={t("projectSettings.agentModelPlaceholder")}
+          spellCheck={false}
+        />
+      </label>
+      <p className="hint local-hint">{t("projectSettings.agentPlanModelHint")}</p>
+
+      <label>
+        {t("projectSettings.agentCodeModel")}
+        <input
+          value={codeModelDraft}
+          onChange={(e) => {
+            setCodeModelDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={t("projectSettings.agentModelPlaceholder")}
+          spellCheck={false}
+        />
+      </label>
+      <p className="hint local-hint">{t("projectSettings.agentCodeModelHint")}</p>
+
+      <label>
+        {t("projectSettings.agentSummaryModel")}
+        <input
+          value={summaryModelDraft}
+          onChange={(e) => {
+            setSummaryModelDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={t("projectSettings.agentModelPlaceholder")}
+          spellCheck={false}
+        />
+      </label>
+      <p className="hint local-hint">
+        {t("projectSettings.agentSummaryModelHint")}
       </p>
 
       {projectRoot ? (

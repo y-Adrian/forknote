@@ -284,6 +284,16 @@ const en = {
   "projectSettings.agentAutoDiagnostics": "Auto typecheck after code edits",
   "projectSettings.agentAutoDiagnosticsHint":
     "After successful TypeScript/JavaScript edits, automatically run run_diagnostics and feed errors back into the agent loop. Default on.",
+  "projectSettings.agentPlanModel": "Plan-phase model (optional)",
+  "projectSettings.agentPlanModelHint":
+    "Used when drafting the approval plan. Leave blank to use the session API model.",
+  "projectSettings.agentCodeModel": "Code/tool-phase model (optional)",
+  "projectSettings.agentCodeModelHint":
+    "Used for tool rounds after approval. Leave blank to use the session API model.",
+  "projectSettings.agentSummaryModel": "Summary/Q&A model (optional)",
+  "projectSettings.agentSummaryModelHint":
+    "Used for plain answers (no project) and light summaries. Leave blank to use the session API model.",
+  "projectSettings.agentModelPlaceholder": "Same as session model",
 
   "agentPlan.aria": "Agent plan review",
   "agentPlan.kicker": "Agent plan",
@@ -891,6 +901,16 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentAutoDiagnostics": "改代码后自动类型检查",
   "projectSettings.agentAutoDiagnosticsHint":
     "成功改写 TypeScript/JavaScript 后自动跑 run_diagnostics，并把错误喂回 Agent 循环。默认开启。",
+  "projectSettings.agentPlanModel": "计划阶段模型（可选）",
+  "projectSettings.agentPlanModelHint":
+    "用于起草待批准计划。留空则使用会话 API 模型。",
+  "projectSettings.agentCodeModel": "编码/工具阶段模型（可选）",
+  "projectSettings.agentCodeModelHint":
+    "用于批准后的工具循环。留空则使用会话 API 模型。",
+  "projectSettings.agentSummaryModel": "总结/问答模型（可选）",
+  "projectSettings.agentSummaryModelHint":
+    "用于无项目时的普通问答与轻量总结。留空则使用会话 API 模型。",
+  "projectSettings.agentModelPlaceholder": "与会话模型相同",
 
   "agentPlan.aria": "Agent 计划审核",
   "agentPlan.kicker": "执行计划",
