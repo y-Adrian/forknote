@@ -731,10 +731,49 @@ async function renderPlantumlViaSidecar(
 }
 
 /**
+ * Soft-retry server render (sidecar proxy, then direct Kroki/plantuml.com).
+ * Used when local spawn fails but a server URL is configured.
+ */
+async function renderPlantumlServerWithFallback(
+  options: {
+    source: string;
+    serverUrl?: string;
+    format?: "svg" | "png";
+  },
+  sidecarUrl: string,
+  signal?: AbortSignal,
+): Promise<PlantumlRenderResult> {
+  try {
+    return await renderPlantumlViaSidecar(
+      {
+        mode: "server",
+        source: options.source,
+        serverUrl: options.serverUrl,
+        format: options.format ?? "svg",
+      },
+      sidecarUrl,
+      signal,
+    );
+  } catch (e) {
+    if (!isSidecarUnreachableError(e) && !(e instanceof TypeError)) {
+      // Sidecar reachable but server proxy failed — still try direct for
+      // public hosts; self-hosted may fail the same way.
+    }
+    return await renderPlantumlServerDirect({
+      source: options.source,
+      serverUrl: options.serverUrl,
+      format: options.format ?? "svg",
+      signal,
+    });
+  }
+}
+
+/**
  * Render PlantUML via sidecar (server proxy or local jar/binary).
  * Server mode: if sidecar is down, fall back to a direct browser fetch of
- * Kroki / plantuml.com (CORS allows public hosts). Local jar mode always
- * needs the sidecar.
+ * Kroki / plantuml.com (CORS allows public hosts). Local mode needs the
+ * sidecar for spawn; if local fails and a server URL is set, soft-retry
+ * server render so diagrams still show.
  */
 export async function renderPlantuml(
   options: {
@@ -752,8 +791,36 @@ export async function renderPlantuml(
     try {
       return await renderPlantumlViaSidecar(options, sidecarUrl, signal);
     } catch (e) {
+      const serverUrl = (options.serverUrl ?? "").trim();
       if (isSidecarUnreachableError(e)) {
+        if (serverUrl && !signal?.aborted) {
+          try {
+            return await renderPlantumlServerDirect({
+              source: options.source,
+              serverUrl,
+              format: options.format ?? "svg",
+              signal,
+            });
+          } catch {
+            /* fall through to local sidecar hint */
+          }
+        }
         throw new Error(PLANTUML_LOCAL_SIDECAR_HINT);
+      }
+      if (serverUrl && !signal?.aborted) {
+        try {
+          return await renderPlantumlServerWithFallback(
+            {
+              source: options.source,
+              serverUrl,
+              format: options.format ?? "svg",
+            },
+            sidecarUrl,
+            signal,
+          );
+        } catch {
+          // Prefer the local error (now includes stderr) for diagnosis.
+        }
       }
       throw e;
     }
