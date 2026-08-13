@@ -161,6 +161,7 @@ export function hasExplicitAcceptOrReject(
 
 /**
  * Checkpoint note for archive source: where the user branched, what to keep.
+ * Unmarked points count as adopted unless rejected.
  */
 export function formatCheckpointForArchive(
   content: string,
@@ -170,22 +171,37 @@ export function formatCheckpointForArchive(
   const parsed = parseAnswerPoints(content);
   if (parsed.points.length < 2) return null;
 
-  const accepted = Object.entries(verdicts ?? {})
-    .filter(([, v]) => v === "accept")
-    .map(([k]) => Number(k))
-    .sort((a, b) => a - b);
   const rejected = Object.entries(verdicts ?? {})
     .filter(([, v]) => v === "reject")
     .map(([k]) => Number(k))
     .sort((a, b) => a - b);
+  const unsure = Object.entries(verdicts ?? {})
+    .filter(([, v]) => v === "unsure")
+    .map(([k]) => Number(k))
+    .sort((a, b) => a - b);
   const cut = earliestRejectIndex(verdicts);
+  const rejectedSet = new Set(rejected);
+  const unsureSet = new Set(unsure);
+  const accepted = parsed.points
+    .map((p) => p.index)
+    .filter((n) => {
+      if (rejectedSet.has(n) || unsureSet.has(n)) return false;
+      if (cut != null && n > cut && !verdicts?.[n]) return false;
+      return true;
+    })
+    .sort((a, b) => a - b);
 
   const lines: string[] = ["### 检查点（阶段性整合）"];
   if (accepted.length) {
-    lines.push(`- 已主动采纳：${accepted.map((n) => `【${n}】`).join(" ")}`);
+    lines.push(
+      `- 已采纳（含未拒绝的默认采纳）：${accepted.map((n) => `【${n}】`).join(" ")}`,
+    );
   }
   if (rejected.length) {
     lines.push(`- 已不采纳：${rejected.map((n) => `【${n}】`).join(" ")}`);
+  }
+  if (unsure.length) {
+    lines.push(`- 存疑待验证：${unsure.map((n) => `【${n}】`).join(" ")}`);
   }
   if (cut != null) {
     lines.push(
@@ -193,7 +209,7 @@ export function formatCheckpointForArchive(
     );
   } else {
     lines.push(
-      "- 请把已采纳步骤与已收进主线的澄清整合成下一轮底座；未裁决点保持弱正信号，勿等同于主动采纳。",
+      "- 请把已采纳步骤（含未拒绝的默认采纳）与已收进主线的澄清整合成下一轮底座。",
     );
   }
   return lines.join("\n");
@@ -201,7 +217,7 @@ export function formatCheckpointForArchive(
 
 /**
  * 构建带裁决标注的回答文本，用于发给模型的上下文。
- * 对齐反馈闭环：主动采纳 ≠ 默认沉默；不采纳/存疑可带归因标签。
+ * 未拒绝的分点按默认采纳；不采纳/存疑可带归因标签。
  * 更早分点被不采纳时，其后未裁决步骤标记为已截断。
  */
 export function annotateContentWithVerdicts(
@@ -210,8 +226,6 @@ export function annotateContentWithVerdicts(
   doubts?: PointDoubtMap,
   attributions?: PointAttributionMap,
 ): string {
-  if (!verdicts || Object.keys(verdicts).length === 0) return content;
-
   const parsed = parseAnswerPoints(content);
   if (parsed.points.length === 0) return content;
 
@@ -220,7 +234,7 @@ export function annotateContentWithVerdicts(
   if (parsed.preamble) parts.push(parsed.preamble);
 
   for (const p of parsed.points) {
-    const verdict = verdicts[p.index];
+    const verdict = verdicts?.[p.index];
     const truncated = cut != null && p.index > cut && !verdict;
     parts.push(
       describePointFeedbackForAgent({

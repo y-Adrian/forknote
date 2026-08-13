@@ -9,8 +9,13 @@ import type {
 
 /** Explicit Accept — strong positive. */
 export const WEIGHT_EXPLICIT_ACCEPT = 1;
-/** Silent default (no click) — weak positive; do not treat as equal to Accept. */
-export const WEIGHT_SILENT_DEFAULT = 0.25;
+/**
+ * Default when the user did not click Reject (unmarked).
+ * Product rule: unmarked ≡ adopted unless rejected.
+ */
+export const WEIGHT_SILENT_DEFAULT = WEIGHT_EXPLICIT_ACCEPT;
+/** Alias for WEIGHT_SILENT_DEFAULT under the default-adopt rule. */
+export const WEIGHT_DEFAULT_ADOPT = WEIGHT_SILENT_DEFAULT;
 /** Passive use (e.g. copy) — strong positive without clicking Accept. */
 export const WEIGHT_PASSIVE_USE = 0.9;
 /** Reject magnitude (direction is negative; attribution decides how Policy moves). */
@@ -203,7 +208,7 @@ export function countRecentRejectStreak(
 
 /**
  * Build agent-facing point annotations from structured feedback.
- * Explicit Accept ≠ silent default (weights differ).
+ * Unmarked points default to adopted unless rejected (product rule).
  */
 export function describePointFeedbackForAgent(input: {
   index: number;
@@ -211,7 +216,7 @@ export function describePointFeedbackForAgent(input: {
   verdict: PointVerdict | undefined;
   doubt?: string;
   attribution?: FeedbackAttribution;
-  /** Later silent points after an earlier reject — obsolete, not live advice. */
+  /** Later unmarked points after an earlier reject — obsolete, not live advice. */
   truncated?: boolean;
 }): string {
   const { index, content, verdict, doubt, attribution, truncated } = input;
@@ -239,7 +244,7 @@ export function describePointFeedbackForAgent(input: {
     return `【${index}】（用户反馈·主动采纳，权重 ${WEIGHT_EXPLICIT_ACCEPT}${attrSuffix}：此策略在当前场景对该用户有效，后续同类问题优先沿用）${content}`;
   }
 
-  return `【${index}】（默认沉默，弱正信号权重 ${WEIGHT_SILENT_DEFAULT}：未主动确认，勿等同于主动采纳）${content}`;
+  return `【${index}】（默认采纳，权重 ${WEIGHT_DEFAULT_ADOPT}：用户未拒绝，按已采纳处理；仅显式「不采纳」才否决）${content}`;
 }
 
 export type AnnotateFeedbackMaps = {
