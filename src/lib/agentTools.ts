@@ -2760,14 +2760,14 @@ export function inferExploreIntent(
   }
 
   const readNamed = t.match(
-    /(?:读取|打开|查看|看看|读一下|显示|cat|read|open|show)\s*[：:\s]*[`"'“”]?([\w./\\-]+\.\w{1,10})[`"'“”]?/i,
+    /(?:读取|打开|查看|看看|读一下|显示|\bcat\b|\bread\b|\bopen\b|\bshow\b)\s*[：:\s]*[`"'“”]?([\w./\\-]+\.\w{1,10})[`"'“”]?/i,
   );
   if (readNamed?.[1]) {
     return { kind: "read", path: normalizeRelPath(readNamed[1]) };
   }
 
   const tickRead = t.match(
-    /(?:读取|打开|查看|读一下|read|open|cat).{0,20}[`"'“”]([\w./\\-]+\.\w{1,10})[`"'“”]/i,
+    /(?:读取|打开|查看|读一下|\bread\b|\bopen\b|\bcat\b).{0,20}[`"'“”]([\w./\\-]+\.\w{1,10})[`"'“”]/i,
   );
   if (tickRead?.[1]) {
     return { kind: "read", path: normalizeRelPath(tickRead[1]) };
