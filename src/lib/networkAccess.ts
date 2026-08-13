@@ -163,7 +163,7 @@ export function formatNetworkStatusSystem(
       "何时搜索：需要时效/公开事实、版本与发布说明、文档原文、新闻或用户粘贴的 URL 时，用 web_search；已知 URL 用 web_fetch。",
       "何时不搜索：纯概念/推理/写作、本地项目已能回答、闲聊或绘图，以及用户未要求核验的常识——直接作答。",
       "搜几次：按任务复杂度——简单事实通常一次够用；对比/多源/信息不足时，经 Reflect 换关键词或角度再搜，不要固定「只搜一次就停」。",
-      "图片：若检索/抓取得到可直接访问的图片 URL（.png/.jpg/.webp 等），回答里用 `![描述](url)` 内联显示；禁止声称聊天无法显示图片。",
+      "图片（硬性）：检索/抓取得到可直接访问的图片 URL（.png/.jpg/.webp 等）时，必须用 `![描述](url)` 内联嵌入——ForkNote 会在气泡里渲染图片；可另附链接，但禁止只贴裸链，严禁声称「无法显示图片 / 只能给链接」或为此道歉。",
       "例1：「量子纠缠是什么」→ 不搜，直接讲清。例2：「OpenAI 本周有什么发布」→ web_search。例3：首轮结果偏题/过旧 → Reflect 后换查询再搜或 web_fetch 权威页。",
     ].join("\n");
   }
@@ -181,7 +181,7 @@ export function formatNetworkStatusSystem(
     "When to search: live/public facts, release notes, docs, news, or a user-pasted URL — use web_search; known URLs → web_fetch.",
     "When not to: pure concepts/reasoning/writing, answers already available locally, chit-chat/diagrams, or unchallenged general knowledge — answer directly.",
     "How many: tie to complexity — one good search often enough for simple facts; for compare/multi-source or thin results, Reflect and search again with a different query/angle (not a fixed one-and-done).",
-    "Images: when search/fetch yields a direct image URL (.png/.jpg/.webp etc.), embed with `![description](url)` so it renders inline — never claim chat cannot show images.",
+    "Images (hard rule): when search/fetch yields a direct image URL (.png/.jpg/.webp etc.), embed with `![description](url)` — ForkNote renders Markdown images in the bubble; optional link beside it is fine, but never bare-link-only, and never claim you cannot show images / can only give links or apologize for that.",
     'Ex1: "What is entanglement?" → no search. Ex2: "What did OpenAI ship this week?" → web_search. Ex3: first hits off-topic/stale → Reflect, then new query or web_fetch an authoritative page.',
   ].join("\n");
 }

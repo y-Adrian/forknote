@@ -34,7 +34,8 @@ assert.ok(
   "chat systems teach Markdown inline images",
 );
 assert.ok(
-  MARKDOWN_INLINE_IMAGE_RULE.includes("无法在聊天里显示图片"),
+  MARKDOWN_INLINE_IMAGE_RULE.includes("无法显示图片") &&
+    MARKDOWN_INLINE_IMAGE_RULE.includes("ForkNote"),
   "must correct the false cannot-show-images claim",
 );
 

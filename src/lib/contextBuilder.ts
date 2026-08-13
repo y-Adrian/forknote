@@ -120,14 +120,49 @@ export const GOAL_FOCUS_RULE = `目标与篇幅（重要）：
 - 回答尽可能凝练：先给结论或结果，必要处再补少量要点；信息过多会降低效率，避免长篇复述与堆砌背景。`;
 
 /**
- * Chat renders standard Markdown images. Models often wrongly claim they can
- * only paste bare links — steer them to `![alt](url)` when a direct image URL
- * is available (web_search / web_fetch / user paste).
+ * False claims models repeat (often from their own earlier turns). Kept as a
+ * shared regex so prompts + session correction stay aligned.
  */
-export const MARKDOWN_INLINE_IMAGE_RULE = `图片显示（重要）：
-- 本聊天用 Markdown 渲染：当有可直接访问的图片 URL（http/https，常见扩展名如 .png/.jpg/.jpeg/.gif/.webp/.svg）时，优先写成 \`![简短描述](url)\`，客户端会在对话里内联显示。
-- 禁止声称「只能返回网页链接、无法在聊天里显示图片」——那是错误的；裸 URL 往往只显示为可点击链接，不如 Markdown 图片语法。
+export const FALSE_NO_IMAGE_DISPLAY_RE =
+  /无法(?:在聊天(?:中|里))?显示图片|不能(?:在聊天(?:中|里))?显示图片|只能(?:给|返回)(?:网页)?链接|cannot (?:display|show) images?(?: in (?:the )?chat)?|can'?t (?:display|show) images?(?: in (?:the )?chat)?|only (?:give|return|paste) (?:a )?(?:bare )?links?/i;
+
+/**
+ * Chat renders standard Markdown images. Models often wrongly claim they
+ * cannot show images / can only paste bare links — especially after saying so
+ * earlier in the same thread. Steer hard to `![alt](url)`.
+ */
+export const MARKDOWN_INLINE_IMAGE_RULE = `图片显示（硬性 · ForkNote）：
+- ForkNote 聊天用 Markdown 渲染回复：标准语法 \`![简短描述](https://…)\` **会在对话气泡内直接显示图片**（不是纯文本链接）。
+- 有可直接访问的图片 URL（http/https；常见扩展名 .png/.jpg/.jpeg/.gif/.webp/.svg）时：必须用 \`![…](url)\` 内联嵌入；可另附同一 URL 的普通链接方便新开，但禁止只贴裸链接。
+- **严禁**声称、暗示或重复道歉：「无法显示图片」「在聊天中无法显示图片」「只能给/返回链接」「只能返回网页链接」「cannot display/show images in chat」等——这些都是错误的；也不要写「这点已经多次说明」。
+- 你不会在 token 流里嵌入二进制像素；正确做法是输出 Markdown，由 UI 渲染。有直链 → 写 \`![…](url)\` 即可让用户看见图。
 - 示意图/流程图仍优先 \`\`\`mermaid\`\`\`（或用户明确要求的 PlantUML）；远程照片/截图/图标用 \`![…](url)\`。`;
+
+/**
+ * When earlier assistant turns already claimed chat cannot show images,
+ * inject a short override so that self-reinforcing history does not win.
+ */
+export function formatMarkdownImageHistoryCorrection(
+  messages: Array<{ role: string; content: string }> | null | undefined,
+  locale: Locale = "zh",
+): string | null {
+  const recentAssistants = (messages ?? [])
+    .filter((m) => m.role === "assistant" && m.content.trim())
+    .slice(-10);
+  if (!recentAssistants.some((m) => FALSE_NO_IMAGE_DISPLAY_RE.test(m.content))) {
+    return null;
+  }
+  if (locale === "zh") {
+    return [
+      "【本会话纠偏 · 图片】你在本会话中曾错误声称「无法在聊天中显示图片」或「只能给链接」。",
+      "那是错的：ForkNote 会渲染 Markdown 图片。此后禁止再重复该说法或道歉；有直链时直接写 `![描述](url)`（可另附链接）。",
+    ].join("\n");
+  }
+  return [
+    "[Session correction · images] You previously claimed chat cannot show images or that you can only give links.",
+    "That is false: ForkNote renders Markdown images. Do not repeat that claim or apologize; when you have a direct URL, write `![alt](url)` (optional link beside it).",
+  ].join("\n");
+}
 
 /** Point / step format shared by main chat and Clarify floats. */
 export const POINT_ANSWER_FORMAT = `回答结构（重要 — 先判断问题类型，再决定是否用【N】分点）：
@@ -445,6 +480,13 @@ export function buildConversationMessages(
   );
   if (structureHint) {
     system = `${system.trimEnd()}\n\n${structureHint}`;
+  }
+  const imageHistoryFix = formatMarkdownImageHistoryCorrection(
+    thread.messages,
+    locale,
+  );
+  if (imageHistoryFix) {
+    system = `${system.trimEnd()}\n\n${imageHistoryFix}`;
   }
 
   // Archive only when a concrete snapshot is supplied (same rule as resolveConversationContext)

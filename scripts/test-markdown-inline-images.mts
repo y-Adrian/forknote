@@ -9,8 +9,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHAT_SYSTEM,
+  FALSE_NO_IMAGE_DISPLAY_RE,
   MARKDOWN_INLINE_IMAGE_RULE,
   PROJECT_CHAT_SYSTEM,
+  buildConversationMessages,
+  formatMarkdownImageHistoryCorrection,
 } from "../src/lib/contextBuilder.ts";
 import {
   forknoteUrlTransform,
@@ -21,22 +24,98 @@ import {
   buildNetworkToolsSystem,
 } from "../src/lib/agentTools.ts";
 import { formatNetworkStatusSystem } from "../src/lib/networkAccess.ts";
+import type { ThreadRoot } from "../src/types.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mdSrc = readFileSync(join(root, "src/components/MarkdownBody.tsx"), "utf8");
 const cssSrc = readFileSync(join(root, "src/index.css"), "utf8");
 
 assert.ok(
-  MARKDOWN_INLINE_IMAGE_RULE.includes("![简短描述](url)") ||
+  MARKDOWN_INLINE_IMAGE_RULE.includes("![简短描述](https://…)") ||
+    MARKDOWN_INLINE_IMAGE_RULE.includes("`![简短描述](https://…)`") ||
+    MARKDOWN_INLINE_IMAGE_RULE.includes("![简短描述](url)") ||
     MARKDOWN_INLINE_IMAGE_RULE.includes("`![简短描述](url)`"),
   "inline-image rule must teach Markdown image syntax",
 );
 assert.ok(
-  MARKDOWN_INLINE_IMAGE_RULE.includes("无法在聊天里显示图片"),
-  "inline-image rule must forbid the false 'cannot show images' claim",
+  MARKDOWN_INLINE_IMAGE_RULE.includes("ForkNote") &&
+    MARKDOWN_INLINE_IMAGE_RULE.includes("会在对话气泡内直接显示图片"),
+  "inline-image rule must state ForkNote renders Markdown images in the bubble",
+);
+assert.ok(
+  MARKDOWN_INLINE_IMAGE_RULE.includes("无法显示图片") &&
+    MARKDOWN_INLINE_IMAGE_RULE.includes("只能给/返回链接") &&
+    MARKDOWN_INLINE_IMAGE_RULE.includes("这点已经多次说明"),
+  "inline-image rule must forbid the exact false claims users still see",
+);
+assert.ok(
+  MARKDOWN_INLINE_IMAGE_RULE.includes("二进制像素") ||
+    MARKDOWN_INLINE_IMAGE_RULE.includes("token"),
+  "inline-image rule must explain Markdown-not-pixels",
 );
 assert.ok(CHAT_SYSTEM.includes(MARKDOWN_INLINE_IMAGE_RULE));
 assert.ok(PROJECT_CHAT_SYSTEM.includes(MARKDOWN_INLINE_IMAGE_RULE));
+
+assert.ok(
+  FALSE_NO_IMAGE_DISPLAY_RE.test(
+    "因为我在聊天中无法显示图片，这点已经多次说明。",
+  ),
+  "regex must catch the screenshot phrasing",
+);
+assert.ok(
+  FALSE_NO_IMAGE_DISPLAY_RE.test("I cannot display images in chat"),
+  "regex must catch English cannot-display claim",
+);
+assert.equal(
+  formatMarkdownImageHistoryCorrection([
+    { role: "assistant", content: "这里是普通回答" },
+  ]),
+  null,
+);
+const histZh = formatMarkdownImageHistoryCorrection(
+  [
+    {
+      role: "assistant",
+      content: "其实更简单：因为我在聊天中无法显示图片，这点已经多次说明。",
+    },
+  ],
+  "zh",
+);
+assert.ok(histZh && /本会话纠偏/.test(histZh) && /ForkNote/.test(histZh));
+
+const thread: ThreadRoot = {
+  id: "t1",
+  messages: [
+    {
+      id: "u1",
+      role: "user",
+      content: "给我看一张图",
+      children: [],
+      createdAt: 1,
+    },
+    {
+      id: "a1",
+      role: "assistant",
+      content: "因为我在聊天中无法显示图片，这点已经多次说明。",
+      children: [],
+      createdAt: 2,
+    },
+    {
+      id: "u2",
+      role: "user",
+      content: "那 Markdown 呢？",
+      children: [],
+      createdAt: 3,
+    },
+  ],
+  createdAt: 0,
+};
+const api = buildConversationMessages(thread, {
+  locale: "zh",
+  contextAutoSummary: false,
+});
+assert.equal(api[0]?.role, "system");
+assert.match(api[0]?.content ?? "", /本会话纠偏 · 图片/);
 
 assert.ok(
   /urlTransform=\{forknoteUrlTransform\}/.test(mdSrc),
