@@ -135,6 +135,9 @@ export function FloatingBranchDetail({
     branchId,
   });
   const [followUp, setFollowUp] = useState("");
+  /** Collapsed by default so review stays focused; expand for follow-ups. */
+  const [composerOpen, setComposerOpen] = useState(false);
+  const followUpRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   const { t } = useLocale();
 
@@ -158,7 +161,21 @@ export function FloatingBranchDetail({
 
   useEffect(() => {
     setFollowUp("");
+    setComposerOpen(false);
   }, [branchId]);
+
+  const forceComposer =
+    pendingPlanForThis ||
+    (isLoadingThis && loadingLatestReply);
+  const showComposer =
+    composerOpen || forceComposer || Boolean(followUp.trim());
+
+  useEffect(() => {
+    if (!showComposer || pendingPlanForThis || pendingInline) return;
+    const el = followUpRef.current;
+    if (!el) return;
+    el.focus();
+  }, [showComposer, pendingPlanForThis, pendingInline, branchId]);
 
   const layoutToken = [
     branch?.assistantMessage?.length ?? 0,
@@ -453,15 +470,18 @@ export function FloatingBranchDetail({
         ) : null}
       </div>
 
-      <footer className="float-panel-detail-footer">
+      <footer
+        className={`float-panel-detail-footer${showComposer ? "" : " is-collapsed"}`}
+      >
         {pendingPlanForThis && !pendingInline ? (
           <AgentPlanReview
             scope={{ kind: "branch", branchId }}
             className="is-float"
           />
-        ) : (
+        ) : showComposer ? (
           <>
             <textarea
+              ref={followUpRef}
               rows={2}
               value={followUp}
               onChange={(e) => setFollowUp(e.target.value)}
@@ -482,31 +502,58 @@ export function FloatingBranchDetail({
             />
             <div className="float-panel-detail-footer-actions">
               <span className="hint">{t("fork.followUpHint")}</span>
-              {isLoadingThis ? (
-                <button
-                  type="button"
-                  className="btn danger"
-                  onClick={() => stopGeneration()}
-                >
-                  {t("common.stop")}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={
-                    branchLoading ||
-                    pendingInline ||
-                    !followUp.trim() ||
-                    !branch.assistantMessage.trim()
-                  }
-                  onClick={() => void submitFollowUp()}
-                >
-                  {t("common.send")}
-                </button>
-              )}
+              <div className="float-panel-detail-footer-btns">
+                {!forceComposer ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => {
+                      setFollowUp("");
+                      setComposerOpen(false);
+                    }}
+                  >
+                    {t("fork.hideComposer")}
+                  </button>
+                ) : null}
+                {isLoadingThis ? (
+                  <button
+                    type="button"
+                    className="btn danger"
+                    onClick={() => stopGeneration()}
+                  >
+                    {t("common.stop")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={
+                      branchLoading ||
+                      pendingInline ||
+                      !followUp.trim() ||
+                      !branch.assistantMessage.trim()
+                    }
+                    onClick={() => void submitFollowUp()}
+                  >
+                    {t("common.send")}
+                  </button>
+                )}
+              </div>
             </div>
           </>
+        ) : (
+          <button
+            type="button"
+            className="float-panel-detail-continue-ask"
+            disabled={
+              branchLoading ||
+              !branch.assistantMessage.trim() ||
+              pendingInline
+            }
+            onClick={() => setComposerOpen(true)}
+          >
+            {t("fork.continueAsk")}
+          </button>
         )}
       </footer>
       {onResizeHandlePointerDown ? (

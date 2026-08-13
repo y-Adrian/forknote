@@ -553,6 +553,8 @@ const en = {
   "fork.followUpPlaceholder": "Follow-up stays in this window…",
   "fork.followUpAria": "Follow-up",
   "fork.followUpHint": "Same window · Enter to send · Shift+Enter for a new line",
+  "fork.continueAsk": "Continue asking…",
+  "fork.hideComposer": "Hide",
   "fork.adoptIntoMain": "Adopt into main",
   "fork.adoptIntoMainAgain": "Update in main",
   "fork.adoptIntoMainHint":
@@ -1162,6 +1164,8 @@ const zh: Record<MessageKey, string> = {
   "fork.followUpPlaceholder": "在此窗口继续追问…",
   "fork.followUpAria": "追问",
   "fork.followUpHint": "同窗口 · Enter 发送 · Shift+Enter 换行",
+  "fork.continueAsk": "继续追问…",
+  "fork.hideComposer": "收起",
   "fork.adoptIntoMain": "采纳进主线",
   "fork.adoptIntoMainAgain": "更新主线注记",
   "fork.adoptIntoMainHint":
