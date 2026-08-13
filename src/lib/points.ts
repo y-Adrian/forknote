@@ -25,12 +25,54 @@ export interface ParsedAnswer {
   points: AnswerPoint[];
 }
 
-const POINT_RE = /^(?:\*{1,2}|[-*]\s+)?【(\d{1,2})】(?:\*{1,2})?/;
+/**
+ * Match a point-start line and return the body after the 【N】 marker.
+ * Do not steal the opening `**` of bold titles like `【1】**title**`
+ * (old regex left a dangling `title**` in the UI).
+ */
+export function matchPointStartLine(
+  line: string,
+): { index: number; rest: string } | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  // **【N】** body — marker wrapped in matching emphasis
+  let m = /^(\*{1,2})\s*【(\d{1,2})】\s*\1\s*(.*)$/.exec(trimmed);
+  if (m) {
+    return { index: Number(m[2]), rest: m[3].trim() };
+  }
+
+  // **【N】body** / **【N】body — leading stars wrap past the marker; keep them
+  // on the body so Markdown bold/italic still balances.
+  m = /^(\*{1,2})\s*【(\d{1,2})】\s*(.*)$/.exec(trimmed);
+  if (m) {
+    const stars = m[1];
+    let rest = m[3].trim();
+    if (rest && !rest.startsWith(stars)) {
+      rest = `${stars}${rest}`;
+    }
+    return { index: Number(m[2]), rest };
+  }
+
+  // List bullet: "- 【N】" / "* 【N】" (space after * required)
+  m = /^[-*]\s+【(\d{1,2})】\s*(.*)$/.exec(trimmed);
+  if (m) {
+    return { index: Number(m[1]), rest: m[2].trim() };
+  }
+
+  // Bare 【N】 — leave any following **title** intact
+  m = /^【(\d{1,2})】\s*(.*)$/.exec(trimmed);
+  if (m) {
+    return { index: Number(m[1]), rest: m[2].trim() };
+  }
+
+  return null;
+}
 
 /**
  * 把回答按「【N】」行拆分。
  * 支持标记出现在行首（模型被提示词约束为独立行起始）；
- * 也容忍常见变体：`**【1】**`、`- 【1】`。
+ * 也容忍常见变体：`**【1】**`、`- 【1】`、`【1】**标题**`。
  */
 export function parseAnswerPoints(content: string): ParsedAnswer {
   const lines = content.split("\n");
@@ -39,8 +81,8 @@ export function parseAnswerPoints(content: string): ParsedAnswer {
   let current: { index: number; lines: string[] } | null = null;
 
   for (const line of lines) {
-    const m = POINT_RE.exec(line.trim());
-    if (m) {
+    const matched = matchPointStartLine(line);
+    if (matched) {
       if (current) {
         points.push({
           index: current.index,
@@ -48,8 +90,8 @@ export function parseAnswerPoints(content: string): ParsedAnswer {
         });
       }
       current = {
-        index: Number(m[1]),
-        lines: [line.trim().replace(POINT_RE, "").trim()],
+        index: matched.index,
+        lines: [matched.rest],
       };
     } else if (current) {
       current.lines.push(line);
