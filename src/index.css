@@ -5731,6 +5731,8 @@ mark.branch-highlight:hover {
 
 .fn-composer-toolbar-row .fn-context-segment {
   flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 1px;
   min-width: max-content;
 }
@@ -5738,6 +5740,9 @@ mark.branch-highlight:hover {
 .fn-composer-toolbar-row .fn-context-seg {
   padding: 2px 7px;
   font-size: 0.7rem;
+  text-align: center;
+  justify-content: center;
+  min-width: 4.75rem;
 }
 
 .fn-composer-toolbar-row .fn-archive-btn {
@@ -5845,7 +5850,8 @@ mark.branch-highlight:hover {
 }
 
 .fn-context-segment {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   flex-shrink: 0;
   padding: 3px;
   border-radius: 999px;
@@ -5865,6 +5871,11 @@ mark.branch-highlight:hover {
   background: transparent;
   cursor: pointer;
   white-space: nowrap;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
   transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 
@@ -6085,6 +6096,13 @@ mark.branch-highlight:hover {
   font-size: var(--fn-text-ui-xs);
   color: var(--ds-muted);
   line-height: 1.4;
+  min-height: calc(var(--fn-text-ui-xs) * 1.4);
+}
+
+.fn-context-composer-hint.is-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 .fn-archive-modal.modal {
