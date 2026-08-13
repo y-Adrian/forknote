@@ -1781,11 +1781,9 @@ body {
   margin-bottom: 2px;
 }
 
-/* Content card + verdict rail outside to the right */
+/* Content with verdict actions anchored bottom-right */
 .point-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
+  display: block;
 }
 
 .point-block {
@@ -1804,11 +1802,12 @@ body {
 
 .point-verdict-group {
   display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 2px;
-  margin-top: 10px;
+  gap: 4px;
+  margin-top: 6px;
   opacity: 0.32;
   transition: opacity var(--dur-fast) ease;
 }
