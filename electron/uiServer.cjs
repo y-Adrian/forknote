@@ -11,6 +11,10 @@ const { URL } = require("node:url");
 
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
+const SIDECAR_UNREACHABLE = {
+  error:
+    "Sidecar unreachable on 127.0.0.1:8787. Run npm run sidecar (or npm run dev), then retry.",
+};
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -47,7 +51,14 @@ function sendJson(res, status, body) {
   res.end(data);
 }
 
-function proxyTo(targetOrigin, req, res, rewritePath) {
+/**
+ * @param {string} targetOrigin
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {string} rewritePath
+ * @param {{ kind?: 'sidecar' | 'openai' }} [opts]
+ */
+function proxyTo(targetOrigin, req, res, rewritePath, opts = {}) {
   let dest;
   try {
     dest = new URL(rewritePath, targetOrigin.endsWith("/") ? targetOrigin : `${targetOrigin}/`);
@@ -92,6 +103,10 @@ function proxyTo(targetOrigin, req, res, rewritePath) {
   proxyReq.on("error", (err) => {
     if (res.headersSent) {
       res.destroy(err);
+      return;
+    }
+    if (opts.kind === "sidecar") {
+      sendJson(res, 502, SIDECAR_UNREACHABLE);
       return;
     }
     sendJson(res, 502, {
@@ -165,7 +180,9 @@ function startUiServer(opts) {
       const url = req.url || "/";
       if (url.startsWith("/sidecar")) {
         const rest = url.replace(/^\/sidecar/, "") || "/";
-        proxyTo(`http://${SIDECAR_HOST}:${SIDECAR_PORT}`, req, res, rest);
+        proxyTo(`http://${SIDECAR_HOST}:${SIDECAR_PORT}`, req, res, rest, {
+          kind: "sidecar",
+        });
         return;
       }
       if (url.startsWith("/openai")) {

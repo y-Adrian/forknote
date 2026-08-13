@@ -1,5 +1,12 @@
 /** Client for the local ForkNote sidecar (proxied at /sidecar in Vite). */
 
+import {
+  isSidecarUnreachableError,
+  PLANTUML_LOCAL_SIDECAR_HINT,
+  PLANTUML_SERVER_SIDECAR_HINT,
+  renderPlantumlServerDirect,
+} from "./plantumlClient";
+
 export const DEFAULT_SIDECAR_URL = "/sidecar";
 
 export type FsEntry = {
@@ -678,7 +685,57 @@ export type PlantumlRenderResult =
       imageBase64: string;
     };
 
-/** Render PlantUML via sidecar (server proxy or local jar/binary). */
+async function renderPlantumlViaSidecar(
+  options: {
+    mode: "server" | "local";
+    source: string;
+    serverUrl?: string;
+    localPath?: string;
+    javaPath?: string;
+    format?: "svg" | "png";
+  },
+  sidecarUrl: string,
+  signal?: AbortSignal,
+): Promise<PlantumlRenderResult> {
+  const endpoint =
+    options.mode === "local" ? "/plantuml/local" : "/plantuml/server";
+  try {
+    const res = await fetch(`${base(sidecarUrl)}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: options.source,
+        serverUrl: options.serverUrl,
+        localPath: options.localPath,
+        javaPath: options.javaPath,
+        format: options.format ?? "svg",
+      }),
+      signal,
+    });
+    return await parseJson(res);
+  } catch (e) {
+    // Raw fetch failures (no proxy JSON body) → actionable hint.
+    if (
+      e instanceof TypeError ||
+      (e instanceof Error &&
+        /failed to fetch|networkerror|load failed|econnrefused/i.test(e.message))
+    ) {
+      throw new Error(
+        options.mode === "local"
+          ? PLANTUML_LOCAL_SIDECAR_HINT
+          : "Sidecar unreachable on 127.0.0.1:8787. Run npm run sidecar (or npm run dev), then retry.",
+      );
+    }
+    throw e;
+  }
+}
+
+/**
+ * Render PlantUML via sidecar (server proxy or local jar/binary).
+ * Server mode: if sidecar is down, fall back to a direct browser fetch of
+ * Kroki / plantuml.com (CORS allows public hosts). Local jar mode always
+ * needs the sidecar.
+ */
 export async function renderPlantuml(
   options: {
     mode: "server" | "local";
@@ -691,19 +748,33 @@ export async function renderPlantuml(
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
 ): Promise<PlantumlRenderResult> {
-  const endpoint =
-    options.mode === "local" ? "/plantuml/local" : "/plantuml/server";
-  const res = await fetch(`${base(sidecarUrl)}${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source: options.source,
-      serverUrl: options.serverUrl,
-      localPath: options.localPath,
-      javaPath: options.javaPath,
-      format: options.format ?? "svg",
-    }),
-    signal,
-  });
-  return parseJson(res);
+  if (options.mode === "local") {
+    try {
+      return await renderPlantumlViaSidecar(options, sidecarUrl, signal);
+    } catch (e) {
+      if (isSidecarUnreachableError(e)) {
+        throw new Error(PLANTUML_LOCAL_SIDECAR_HINT);
+      }
+      throw e;
+    }
+  }
+
+  try {
+    return await renderPlantumlViaSidecar(options, sidecarUrl, signal);
+  } catch (e) {
+    if (!isSidecarUnreachableError(e)) throw e;
+    try {
+      return await renderPlantumlServerDirect({
+        source: options.source,
+        serverUrl: options.serverUrl,
+        format: options.format ?? "svg",
+        signal,
+      });
+    } catch (directErr) {
+      if (signal?.aborted) throw directErr;
+      const detail =
+        directErr instanceof Error ? directErr.message : String(directErr);
+      throw new Error(`${PLANTUML_SERVER_SIDECAR_HINT} (${detail})`);
+    }
+  }
 }
