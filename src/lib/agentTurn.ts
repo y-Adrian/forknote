@@ -1107,6 +1107,7 @@ export async function runAgentTurn(
               item.agent.tool,
               item.agent.command,
               projectRoot,
+              item.agent.action,
             )
           ) {
             lastMutatingToolSuccesses += 1;
@@ -1183,6 +1184,7 @@ export async function runAgentTurn(
             item.agent.tool,
             item.agent.command,
             projectRoot,
+            item.agent.action,
           ),
         );
 

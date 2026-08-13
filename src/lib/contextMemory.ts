@@ -36,8 +36,10 @@ import type {
 
 export const MEMORY_FILES = ["SUMMARY.md", "TASKS.md", "DECISIONS.md"] as const;
 export type MemoryFileName = (typeof MEMORY_FILES)[number];
+/** Agent-maintained coding conventions / failures (not LLM-compressed). */
+export const CODING_MEMORY_FILE = "CODING.md";
 
-/** Project-relative folder holding SUMMARY.md / TASKS.md / DECISIONS.md */
+/** Project-relative folder holding SUMMARY.md / TASKS.md / DECISIONS.md / CODING.md */
 export const DEFAULT_MEMORY_DIR = ".forknote/memory";
 
 const FILE_MAX_INJECT = 1800;
@@ -148,7 +150,10 @@ export function parseCompressedOutput(raw: string): ContextMemoryPack {
   };
 }
 
-function memoryPath(dir: string, file: MemoryFileName): string {
+function memoryPath(
+  dir: string,
+  file: MemoryFileName | typeof CODING_MEMORY_FILE,
+): string {
   return `${dir}/${file}`;
 }
 
@@ -164,8 +169,8 @@ export async function loadContextMemoryPack(options: {
 
   if (projectRoot) {
     try {
-      const [summary, tasks, decisions] = await Promise.all(
-        MEMORY_FILES.map(async (file) => {
+      const [summary, tasks, decisions, coding] = await Promise.all([
+        ...MEMORY_FILES.map(async (file) => {
           try {
             const res = await readFile(memoryPath(dir, file), sidecarUrl, signal);
             return res.content ?? "";
@@ -173,12 +178,30 @@ export async function loadContextMemoryPack(options: {
             return "";
           }
         }),
-      );
-      if (summary.trim() || tasks.trim() || decisions.trim()) {
+        (async () => {
+          try {
+            const res = await readFile(
+              memoryPath(dir, CODING_MEMORY_FILE),
+              sidecarUrl,
+              signal,
+            );
+            return res.content ?? "";
+          } catch {
+            return "";
+          }
+        })(),
+      ]);
+      if (
+        summary.trim() ||
+        tasks.trim() ||
+        decisions.trim() ||
+        coding.trim()
+      ) {
         return {
           summary,
           tasks,
           decisions,
+          coding,
           updatedAt: Date.now(),
           storage: "project",
           dir,
@@ -192,7 +215,10 @@ export async function loadContextMemoryPack(options: {
   const local = session?.contextMemory;
   if (
     local &&
-    (local.summary?.trim() || local.tasks?.trim() || local.decisions?.trim())
+    (local.summary?.trim() ||
+      local.tasks?.trim() ||
+      local.decisions?.trim() ||
+      local.coding?.trim())
   ) {
     return { ...local, storage: "local" };
   }
@@ -223,6 +249,12 @@ export async function saveContextMemoryPack(options: {
         writeFile(
           memoryPath(dir, "DECISIONS.md"),
           pack.decisions,
+          sidecarUrl,
+          signal,
+        ),
+        writeFile(
+          memoryPath(dir, CODING_MEMORY_FILE),
+          pack.coding ?? "",
           sidecarUrl,
           signal,
         ),
@@ -328,18 +360,20 @@ function scoreChunkBm25(
   }
 
   // Soft boosts
+  if (chunk.source === "CODING.md") score *= 1.25;
   if (chunk.source === "TASKS.md") score *= 1.05;
   if (chunk.source === "DECISIONS.md") score *= 1.08;
   return score;
 }
 
-/** Local fallback: chunk + BM25-rank excerpts from the three MD files. */
+/** Local fallback: chunk + BM25-rank excerpts from the memory MD files. */
 export function selectRelevantMemoryExcerpts(
   pack: ContextMemoryPack,
   query: string,
 ): string {
   const queryTokens = tokenize(query);
   const sections: { title: string; body: string }[] = [
+    { title: "CODING.md", body: pack.coding ?? "" },
     { title: "SUMMARY.md", body: pack.summary },
     { title: "TASKS.md", body: pack.tasks },
     { title: "DECISIONS.md", body: pack.decisions },
@@ -390,7 +424,7 @@ export function selectRelevantMemoryExcerpts(
     bySource.set(p.source, list);
   }
 
-  const order = ["SUMMARY.md", "TASKS.md", "DECISIONS.md"];
+  const order = ["CODING.md", "SUMMARY.md", "TASKS.md", "DECISIONS.md"];
   const blocks: string[] = [];
   for (const title of order) {
     const parts = bySource.get(title);
@@ -412,12 +446,53 @@ export function formatLocalMemoryAddendum(
       ? `项目目录 ${pack.dir || DEFAULT_MEMORY_DIR}/`
       : "本笔记 localStorage 草稿";
   return [
-    `【项目记忆包 · 本地】（来自 ${where} 的 SUMMARY / TASKS / DECISIONS）`,
+    `【项目记忆包 · 本地】（来自 ${where} 的 CODING / SUMMARY / TASKS / DECISIONS）`,
     "- 下列为压缩后的跨轮上下文；与当前会话消息冲突时以当前会话为准。",
+    "- CODING.md 存放编码约定与失败教训，优先遵守。",
     "- 不要声称你「天生」记得这些；它们是注入的。",
     "",
     excerpts,
   ].join("\n");
+}
+
+/** Append a dated note to CODING.md (project memory). */
+export async function appendCodingMemoryNote(options: {
+  note: string;
+  settings: ApiSettings;
+  session?: ChatSession | null;
+  projectRoot?: string | null;
+  sidecarUrl: string;
+  signal?: AbortSignal;
+}): Promise<{ ok: boolean; path: string; coding: string }> {
+  const note = options.note.trim();
+  if (!note) {
+    throw new Error("note is required");
+  }
+  const dir = resolveMemoryDir(options.settings);
+  const path = memoryPath(dir, CODING_MEMORY_FILE);
+  const existing =
+    (await loadContextMemoryPack(options)) ??
+    ({
+      summary: "",
+      tasks: "",
+      decisions: "",
+      coding: "",
+      updatedAt: Date.now(),
+      storage: options.projectRoot ? "project" : "local",
+      dir,
+    } satisfies ContextMemoryPack);
+
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const entry = `- [${stamp}] ${note.replace(/\s+/g, " ").trim()}`;
+  const coding = [existing.coding?.trim(), entry].filter(Boolean).join("\n\n");
+  const saved = await saveContextMemoryPack({
+    pack: { ...existing, coding },
+    settings: options.settings,
+    projectRoot: options.projectRoot,
+    sidecarUrl: options.sidecarUrl,
+    signal: options.signal,
+  });
+  return { ok: true, path, coding: saved.coding ?? coding };
 }
 
 /**
