@@ -134,6 +134,24 @@ assert.deepEqual(inferExploreIntent("search for math.js"), {
   query: "math.js",
 });
 
+// English read/open/cat must not match inside filenames (README.md → ME.md).
+assert.equal(inferExploreIntent("总结 README.md"), null);
+assert.equal(inferExploreIntent("what does README.md say"), null);
+assert.equal(inferExploreIntent("总结 OPENING.md"), null);
+assert.equal(inferExploreIntent("catalog.json 是什么"), null);
+assert.deepEqual(inferExploreIntent("read README.md"), {
+  kind: "read",
+  path: "README.md",
+});
+assert.deepEqual(inferExploreIntent("open README.md"), {
+  kind: "read",
+  path: "README.md",
+});
+assert.deepEqual(inferExploreIntent("读取 README.md"), {
+  kind: "read",
+  path: "README.md",
+});
+
 for (const q of [
   "帮我随便画一个mermaid的图",
   "随便画个流程图",
