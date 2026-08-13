@@ -238,7 +238,7 @@ export interface ContextMemoryPack {
   dir?: string;
 }
 
-/** 一次归档生成的归纳文 / 开发日志草稿 */
+/** 一次归档生成的开发日志草稿（dated entries: 背景/目标 · 尝试过程 · 结论/结果 · 参考） */
 export interface ArchiveSnapshot {
   id: NodeId;
   createdAt: number;
