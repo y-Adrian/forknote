@@ -302,7 +302,7 @@ const en = {
   "projectPanel.connecting": "Connecting…",
   "projectSettings.agentMaxRounds": "Agent tool rounds (per message)",
   "projectSettings.agentMaxRoundsHint":
-    "Max model↔tool loops when a project is bound (1–128). Default 50. Ends early when the task is done.",
+    "Hard cap on model↔tool loops per send (1–128, default 50), including Network-only web_search/web_fetch turns. Network-only tasks also use a soft complexity budget (simple ≈8, multi ≈16) that never exceeds this value — raise this if you still hit the tool-round limit. Ends early when the task is done.",
   "projectSettings.agentRequireApproval": "Require plan approval before tools",
   "projectSettings.agentRequireApprovalHint":
     "When a project is connected, the agent drafts a plan first. Tools run only after you approve.",
@@ -689,6 +689,8 @@ const en = {
   "agent.status.tools": "Using project tools…",
   "agent.status.listRoot": "Listing project root…",
   "agent.status.terminal": "Running `{command}`…",
+  "agent.toolRoundLimit":
+    "(Reached the tool-round limit ({rounds}). Continue from the results so far, or send another message. To allow more loops, raise Agent tool rounds in Settings → Project.)",
 
   "agent.activity.listed": "Listed {path}",
   "agent.activity.reading": "Reading {path} ({size} bytes)",
@@ -1000,7 +1002,7 @@ const zh: Record<MessageKey, string> = {
   "projectPanel.connecting": "连接中…",
   "projectSettings.agentMaxRounds": "Agent 工具循环轮数（每条消息）",
   "projectSettings.agentMaxRoundsHint":
-    "绑定项目后，单次发送最多允许的模型↔工具往返次数（1–128，默认 50）。任务完成会提前结束。",
+    "单次发送的模型↔工具硬上限（1–128，默认 50），含仅联网的 web_search/web_fetch 回合。联网问答还会套一层复杂度软预算（简单约 8、复杂约 16），且不会超过本值——若仍看到工具轮数上限提示，可在此调高。任务完成会提前结束。",
   "projectSettings.agentRequireApproval": "执行工具前需批准计划",
   "projectSettings.agentRequireApprovalHint":
     "连接项目后，Agent 会先输出计划；你点击「批准并执行」后才会读写文件。",
@@ -1370,6 +1372,8 @@ const zh: Record<MessageKey, string> = {
   "agent.status.tools": "正在使用项目工具…",
   "agent.status.listRoot": "正在列出项目根目录…",
   "agent.status.terminal": "正在运行 `{command}`…",
+  "agent.toolRoundLimit":
+    "（已达到工具循环上限（{rounds} 轮）。可基于已有结果继续，或再发一条消息。若需要更多轮次，请到「设置 → 项目」提高 Agent 工具循环轮数。）",
 
   "agent.activity.listed": "已列出 {path}",
   "agent.activity.reading": "正在读取 {path}（{size} 字节）",
