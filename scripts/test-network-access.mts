@@ -11,11 +11,14 @@ import {
 import {
   formatNetworkStatusSystem,
   resolveAgentAllowNetwork,
+  estimateWebTaskComplexity,
+  resolveWebToolRoundBudget,
 } from "../src/lib/networkAccess.ts";
 import {
   NETWORK_OPENAI_TOOLS,
   getProjectOpenAITools,
   agentCallFromOpenAI,
+  buildNetworkToolsSystem,
 } from "../src/lib/agentTools.ts";
 
 function testPrivateIpClassification() {
@@ -147,10 +150,67 @@ function testSettingsToggle() {
   console.log("ok settings toggle messaging");
 }
 
+function testWhenToSearchPromptRules() {
+  const zh = formatNetworkStatusSystem(
+    {
+      wanted: true,
+      browserOnline: true,
+      probedOnline: true,
+      toolsAllowed: true,
+      reason: "ok",
+    },
+    "zh",
+  );
+  assert.match(zh, /何时搜索/);
+  assert.match(zh, /何时不搜索/);
+  assert.match(zh, /例1/);
+  assert.match(zh, /无独立分类器|由你（主模型）/);
+  assert.match(zh, /Reflect/);
+
+  const en = formatNetworkStatusSystem(
+    {
+      wanted: true,
+      browserOnline: true,
+      probedOnline: true,
+      toolsAllowed: true,
+      reason: "ok",
+    },
+    "en",
+  );
+  assert.match(en, /When to search/i);
+  assert.match(en, /When not to/i);
+  assert.match(en, /Ex1/);
+  assert.match(en, /no separate classifier/i);
+  assert.match(en, /Reflect/);
+
+  const toolsZh = buildNetworkToolsSystem("zh");
+  assert.match(toolsZh, /是否搜索/);
+  assert.match(toolsZh, /搜几次/);
+  assert.match(toolsZh, /例：/);
+  const toolsEn = buildNetworkToolsSystem("en");
+  assert.match(toolsEn, /Whether to search/i);
+  assert.match(toolsEn, /How many/i);
+  console.log("ok when-to-search prompt rules");
+}
+
+function testWebComplexityBudget() {
+  assert.equal(estimateWebTaskComplexity("什么是递归？"), "simple");
+  assert.equal(
+    estimateWebTaskComplexity("对比 React 与 Vue 2024 生态并列出多方来源"),
+    "multi",
+  );
+  assert.equal(resolveWebToolRoundBudget("simple", 12), 3);
+  assert.equal(resolveWebToolRoundBudget("multi", 12), 6);
+  assert.equal(resolveWebToolRoundBudget("multi", 2), 2);
+  console.log("ok web complexity budget");
+}
+
 await testPrivateIpClassification();
 testHasPublicResolvedAddress();
 await testSsrfBlocksPrivate();
 testHtmlToText();
 testToolsSchema();
 testSettingsToggle();
+testWhenToSearchPromptRules();
+testWebComplexityBudget();
 console.log("all network-access tests passed");

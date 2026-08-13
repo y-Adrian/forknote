@@ -103,6 +103,36 @@ export async function resolveNetworkReachability(args: {
   };
 }
 
+/**
+ * Soft web-tool round budget by task complexity (network-only turns).
+ * Prefer Reflect for "search again" — this is a ceiling, not "search once".
+ */
+export type WebTaskComplexity = "simple" | "multi";
+
+export function estimateWebTaskComplexity(userText: string): WebTaskComplexity {
+  const t = (userText ?? "").trim();
+  if (!t) return "simple";
+  const lower = t.toLowerCase();
+  const multiHints =
+    /对比|比较|调研|综述|多方|几个|分别|以及|还有|详细|全面|compare|versus|\bvs\b|research|survey|pros\s*and\s*cons|both|several|multiple|sources?|and then|step by step/i;
+  const questionMarks = (t.match(/[?？]/g) ?? []).length;
+  if (multiHints.test(t) || questionMarks >= 2 || t.length >= 160) {
+    return "multi";
+  }
+  // Short single-fact asks stay simple even if they mention "latest".
+  if (t.length <= 80 && !/\b(and|与|和|以及)\b/i.test(lower)) return "simple";
+  return t.length >= 120 ? "multi" : "simple";
+}
+
+/** Soft cap for web tool batches; never raises above agentMaxRounds. */
+export function resolveWebToolRoundBudget(
+  complexity: WebTaskComplexity,
+  agentMaxRounds: number,
+): number {
+  const soft = complexity === "simple" ? 3 : 6;
+  return Math.max(1, Math.min(agentMaxRounds, soft));
+}
+
 export function formatNetworkStatusSystem(
   reach: NetworkReachability,
   locale: "zh" | "en",
@@ -117,7 +147,13 @@ export function formatNetworkStatusSystem(
     if (reach.reason === "sidecar_unreachable") {
       return "【联网】用户已开启联网，但本地 sidecar 网络代理不可达（请确认已运行 npm run sidecar / npm run dev）。暂时无法 web_search / web_fetch；请说明原因，不要编造网页内容。";
     }
-    return "【联网】用户已开启联网且网络可用。需要最新公开信息时，优先调用 web_search；已知 URL 时用 web_fetch。不要编造未检索到的网页内容。";
+    return [
+      "【联网】用户已开启联网且网络可用。由你（主模型）决定是否检索——不要另设分类器；不要编造未返回的网页内容。",
+      "何时搜索：需要时效/公开事实、版本与发布说明、文档原文、新闻或用户粘贴的 URL 时，用 web_search；已知 URL 用 web_fetch。",
+      "何时不搜索：纯概念/推理/写作、本地项目已能回答、闲聊或绘图，以及用户未要求核验的常识——直接作答。",
+      "搜几次：按任务复杂度——简单事实通常一次够用；对比/多源/信息不足时，经 Reflect 换关键词或角度再搜，不要固定「只搜一次就停」。",
+      "例1：「量子纠缠是什么」→ 不搜，直接讲清。例2：「OpenAI 本周有什么发布」→ web_search。例3：首轮结果偏题/过旧 → Reflect 后换查询再搜或 web_fetch 权威页。",
+    ].join("\n");
   }
   if (reach.reason === "off") {
     return "[Network] The user left network access off. Do not call web_search / web_fetch or pretend you browsed the web. If live info is needed, ask them to enable Network beside the model selector.";
@@ -128,7 +164,13 @@ export function formatNetworkStatusSystem(
   if (reach.reason === "sidecar_unreachable") {
     return "[Network] Network is enabled, but the local sidecar network proxy is unreachable (ensure npm run sidecar / npm run dev). web_search / web_fetch are unavailable — explain that; do not invent page contents.";
   }
-  return "[Network] Network access is on and reachable. Prefer web_search for live public info; use web_fetch for known URLs. Do not invent page contents you did not retrieve.";
+  return [
+    "[Network] Access is on. You (the main model) decide whether to search — no separate classifier. Do not invent page contents you did not retrieve.",
+    "When to search: live/public facts, release notes, docs, news, or a user-pasted URL — use web_search; known URLs → web_fetch.",
+    "When not to: pure concepts/reasoning/writing, answers already available locally, chit-chat/diagrams, or unchallenged general knowledge — answer directly.",
+    "How many: tie to complexity — one good search often enough for simple facts; for compare/multi-source or thin results, Reflect and search again with a different query/angle (not a fixed one-and-done).",
+    'Ex1: "What is entanglement?" → no search. Ex2: "What did OpenAI ship this week?" → web_search. Ex3: first hits off-topic/stale → Reflect, then new query or web_fetch an authoritative page.',
+  ].join("\n");
 }
 
 export async function sidecarWebFetch(

@@ -782,9 +782,19 @@ export function getNetworkOpenAITools(): OpenAITool[] {
 
 export function buildNetworkToolsSystem(locale: Locale): string {
   if (locale === "zh") {
-    return `【联网工具】可用 web_search（检索）与 web_fetch（抓取公开 URL）。仅在需要最新公开信息时使用；不要编造未返回的网页内容。本地私有地址不可访问。`;
+    return [
+      "【联网工具】可用 web_search（检索）与 web_fetch（抓取公开 URL）。本地私有地址不可访问；禁止编造未返回的网页内容。",
+      "是否搜索：由你按任务判断（无独立分类器）。需要时效/公开事实、版本说明、文档原文、新闻，或用户给出 URL → 调用工具；纯概念/推理/写作/闲聊/绘图或本地已够用 → 直接作答。",
+      "搜几次：随复杂度调整。简单事实通常一次检索即可作答；对比、多源或结果不够时，经 Reflect 换查询/角度再搜或 web_fetch，不要固定「只搜一次」。",
+      "例：「相对论是什么」→ 不搜。「Rust 1.xx 发布了什么」→ web_search。「上一轮 hits 太泛」→ 换更具体 query 再搜。",
+    ].join("\n");
   }
-  return `[Network tools] You may use web_search and web_fetch for public URLs. Use only when live public info is needed; do not invent page contents. Private/local hosts are blocked.`;
+  return [
+    "[Network tools] web_search and web_fetch for public URLs. Private/local hosts are blocked; do not invent page contents.",
+    "Whether to search: you decide from the task (no separate classifier). Live/public facts, release notes, docs, news, or a pasted URL → use tools; pure concepts/reasoning/writing/chat/diagrams or local knowledge suffices → answer directly.",
+    "How many: scale with complexity. One solid search often enough for simple facts; for compare/multi-source or thin hits, Reflect and search again with a different query/angle or web_fetch — not a fixed one-and-done.",
+    'Ex: "What is relativity?" → no search. "What shipped in Rust 1.xx?" → web_search. "Hits too vague" → new, more specific query.',
+  ].join("\n");
 }
 
 /**

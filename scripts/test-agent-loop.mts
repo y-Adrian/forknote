@@ -5,13 +5,17 @@ import assert from "node:assert/strict";
 import {
   classifyToolError,
   normalizeObserveOutput,
+  normalizeWebFetchOutput,
+  normalizeWebSearchOutput,
   toToolResult,
 } from "../src/lib/agentResult.ts";
 import {
   AgentLoopController,
   buildReflectNudge,
+  observeBatchHasWebTools,
   parseStructuredPlanHints,
 } from "../src/lib/agentLoop.ts";
+import { shouldAskLlmReflect } from "../src/lib/llmReflect.ts";
 import { assembleMemoryLayers, MEMORY_CHAR_BUDGETS } from "../src/lib/memoryBudget.ts";
 import {
   applyFeedbackToUserModel,
@@ -53,6 +57,76 @@ function testObserveNormalize() {
   assert.ok(n.length <= 1100);
   assert.match(n, /observe truncated/);
   console.log("ok normalizeObserveOutput");
+}
+
+function testWebObserveNormalize() {
+  const rawSearch = [
+    "1. Cookie Privacy Policy All Rights Reserved Mega Title That Goes On Forever And Should Be Clipped",
+    "   https://example.com/a",
+    "   We use cookies. Real snippet about the release notes for the product update this week.",
+    "",
+    "2. Second Hit",
+    "   https://example.com/b",
+    "   " + "x".repeat(500),
+  ].join("\n");
+  const search = normalizeWebSearchOutput(rawSearch);
+  assert.match(search, /1\. /);
+  assert.match(search, /https:\/\/example\.com\/a/);
+  assert.doesNotMatch(search, /We use cookies/i);
+  assert.ok(!search.includes("x".repeat(300)));
+  assert.ok(search.length < rawSearch.length);
+
+  const rawFetch = [
+    "URL: https://example.com/doc",
+    "HTTP: 200",
+    "Type: text/html",
+    "",
+    "Accept all cookies. Privacy policy. " + "body ".repeat(3000),
+  ].join("\n");
+  const fetchOut = normalizeWebFetchOutput(rawFetch);
+  assert.match(fetchOut, /URL: https:\/\/example\.com\/doc/);
+  assert.match(fetchOut, /HTTP: 200/);
+  assert.ok(fetchOut.length < rawFetch.length);
+  assert.doesNotMatch(fetchOut, /Accept all cookies/i);
+
+  const asResult = toToolResult({
+    ok: true,
+    resultText: rawSearch,
+    tool: "web_search",
+  });
+  assert.equal(asResult.ok, true);
+  assert.ok(asResult.resultText.length < asResult.rawOutput.length);
+  console.log("ok web observe normalize");
+}
+
+function testWebReflectNudge() {
+  const loop = new AgentLoopController();
+  const ok = toToolResult({
+    ok: true,
+    resultText: "1. Title\n   https://ex.com\n   snippet",
+    tool: "web_search",
+  });
+  const observed = loop.recordToolResults([
+    { tool: "web_search", result: ok },
+  ]);
+  assert.equal(observeBatchHasWebTools(observed), true);
+  assert.equal(
+    shouldAskLlmReflect({ observed }, "continue"),
+    true,
+  );
+  const retry = buildReflectNudge({
+    decision: "retry",
+    observed,
+    locale: "en",
+  });
+  assert.match(retry, /different query/i);
+  const replan = buildReflectNudge({
+    decision: "replan",
+    observed,
+    locale: "zh",
+  });
+  assert.match(replan, /换检索|web_search/);
+  console.log("ok web reflect nudge");
 }
 
 function testReflectCircuit() {
@@ -171,6 +245,8 @@ function testUserModel() {
 testClassify();
 testToToolResult();
 testObserveNormalize();
+testWebObserveNormalize();
+testWebReflectNudge();
 testReflectCircuit();
 testStructuredPlanHints();
 testMemoryBudget();
