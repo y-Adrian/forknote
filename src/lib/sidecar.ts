@@ -118,8 +118,9 @@ export async function listDir(
   relPath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; entries: FsEntry[] }> {
-  const q = new URLSearchParams({ path: relPath });
+  const q = new URLSearchParams({ path: relPath, expectedRoot: expectedRoot ?? "" });
   const res = await fetch(`${base(sidecarUrl)}/fs/list?${q}`, { signal });
   return parseJson(res);
 }
@@ -129,6 +130,7 @@ export async function readFile(
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
   options?: { offset?: number; limit?: number },
+  expectedRoot?: string,
 ): Promise<{
   path: string;
   content: string;
@@ -139,6 +141,7 @@ export async function readFile(
   truncated?: boolean;
 }> {
   const q = new URLSearchParams({ path: relPath });
+  q.set("expectedRoot", expectedRoot ?? "");
   if (options?.offset != null) q.set("offset", String(options.offset));
   if (options?.limit != null) q.set("limit", String(options.limit));
   const res = await fetch(`${base(sidecarUrl)}/fs/read?${q}`, { signal });
@@ -150,11 +153,12 @@ export async function writeFile(
   content: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; size: number; written: boolean; diff?: string; created?: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/write`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath, content }),
+    body: JSON.stringify({ path: relPath, content, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -169,6 +173,7 @@ export async function searchReplace(
   },
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   path: string;
   size: number;
@@ -185,6 +190,7 @@ export async function searchReplace(
       old_string: options.old_string,
       new_string: options.new_string,
       replace_all: options.replace_all,
+      expectedRoot,
     }),
     signal,
   });
@@ -200,6 +206,7 @@ export async function applyPatch(
   }>,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   path: string;
   size: number;
@@ -212,7 +219,7 @@ export async function applyPatch(
   const res = await fetch(`${base(sidecarUrl)}/fs/apply_patch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath, edits }),
+    body: JSON.stringify({ path: relPath, edits, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -223,6 +230,7 @@ export async function writeDocx(
   options: { title?: string; paragraphs: string[] },
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; size: number; written: boolean; kind: string }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/write_docx`, {
     method: "POST",
@@ -231,6 +239,7 @@ export async function writeDocx(
       path: relPath,
       title: options.title,
       paragraphs: options.paragraphs,
+      expectedRoot,
     }),
     signal,
   });
@@ -245,6 +254,7 @@ export async function writeXlsx(
   },
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   path: string;
   size: number;
@@ -259,6 +269,7 @@ export async function writeXlsx(
       path: relPath,
       sheet_name: options.sheet_name,
       rows: options.rows,
+      expectedRoot,
     }),
     signal,
   });
@@ -269,11 +280,12 @@ export async function mkdir(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; created: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/mkdir`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath }),
+    body: JSON.stringify({ path: relPath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -285,6 +297,7 @@ export async function searchFiles(
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
   options?: { regex?: boolean; glob?: string },
+  expectedRoot?: string,
 ): Promise<{ query: string; hits: SearchHit[]; truncated: boolean; regex?: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/search`, {
     method: "POST",
@@ -294,6 +307,7 @@ export async function searchFiles(
       path: subpath,
       regex: options?.regex,
       glob: options?.glob,
+      expectedRoot,
     }),
     signal,
   });
@@ -305,11 +319,12 @@ export async function globFiles(
   subpath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ pattern: string; matches: string[]; truncated: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/glob`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pattern, path: subpath }),
+    body: JSON.stringify({ pattern, path: subpath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -329,6 +344,7 @@ export async function findSymbol(
   subpath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   name: string;
   symbols: SymbolHit[];
@@ -338,7 +354,7 @@ export async function findSymbol(
   const res = await fetch(`${base(sidecarUrl)}/fs/find_symbol`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, path: subpath }),
+    body: JSON.stringify({ name, path: subpath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -349,6 +365,7 @@ export async function goToDefinition(
   hintPath?: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   name: string;
   definition: SymbolHit | null;
@@ -358,7 +375,7 @@ export async function goToDefinition(
   const res = await fetch(`${base(sidecarUrl)}/fs/go_to_definition`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, path: hintPath || undefined }),
+    body: JSON.stringify({ name, path: hintPath || undefined, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -369,6 +386,7 @@ export async function findReferences(
   subpath = ".",
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   name: string;
   references: Array<{ path: string; line: number; snippet: string }>;
@@ -378,7 +396,7 @@ export async function findReferences(
   const res = await fetch(`${base(sidecarUrl)}/fs/find_references`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, path: subpath }),
+    body: JSON.stringify({ name, path: subpath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -401,6 +419,7 @@ export async function dependencyGraph(
   } = {},
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   path: string;
   files: number;
@@ -422,6 +441,7 @@ export async function dependencyGraph(
       path: opts.path ?? ".",
       focus: opts.focus,
       limit: opts.limit,
+      expectedRoot,
     }),
     signal,
   });
@@ -443,6 +463,7 @@ export async function semanticSearch(
   opts: { path?: string; limit?: number } = {},
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   query: string;
   hits: SemanticHit[];
@@ -456,6 +477,7 @@ export async function semanticSearch(
       query,
       path: opts.path ?? ".",
       limit: opts.limit,
+      expectedRoot,
     }),
     signal,
   });
@@ -466,11 +488,12 @@ export async function deleteFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; deleted: boolean; kind: string; size?: number }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath }),
+    body: JSON.stringify({ path: relPath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -481,11 +504,12 @@ export async function renameFile(
   to: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ from: string; to: string; renamed: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/rename`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to }),
+    body: JSON.stringify({ from, to, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -495,11 +519,12 @@ export async function readDocx(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; text: string; truncated?: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/read_docx`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath }),
+    body: JSON.stringify({ path: relPath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -509,6 +534,7 @@ export async function readXlsx(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{
   path: string;
   sheets: Array<{ name: string; rows: Array<{ row: number; cells: string[] }> }>;
@@ -516,7 +542,7 @@ export async function readXlsx(
   const res = await fetch(`${base(sidecarUrl)}/fs/read_xlsx`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath }),
+    body: JSON.stringify({ path: relPath, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -530,6 +556,7 @@ export async function patchXlsx(
   },
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ path: string; sheet_name: string; patched: number; size: number; written: boolean }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/patch_xlsx`, {
     method: "POST",
@@ -538,6 +565,7 @@ export async function patchXlsx(
       path: relPath,
       sheet_name: options.sheet_name,
       cells: options.cells,
+      expectedRoot,
     }),
     signal,
   });
@@ -547,11 +575,12 @@ export async function patchXlsx(
 export async function runDiagnostics(
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ ok: boolean; skipped?: boolean; output: string }> {
   const res = await fetch(`${base(sidecarUrl)}/fs/diagnostics`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -560,11 +589,12 @@ export async function runDiagnostics(
 export async function gitStatus(
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ ok: boolean; output: string; exitCode: number }> {
   const res = await fetch(`${base(sidecarUrl)}/git/status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -574,11 +604,12 @@ export async function gitDiff(
   relPath?: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ ok: boolean; output: string; exitCode: number }> {
   const res = await fetch(`${base(sidecarUrl)}/git/diff`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: relPath || undefined }),
+    body: JSON.stringify({ path: relPath || undefined, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -589,11 +620,12 @@ export async function gitCommit(
   paths: string[],
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
+  expectedRoot?: string,
 ): Promise<{ ok: boolean; output: string; exitCode: number; paths: string[] }> {
   const res = await fetch(`${base(sidecarUrl)}/git/commit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, paths }),
+    body: JSON.stringify({ message, paths, expectedRoot }),
     signal,
   });
   return parseJson(res);
@@ -613,35 +645,6 @@ export type RunTerminalResult = {
   timedOut?: boolean;
 };
 
-/**
- * Ensure the sidecar's bound root matches `expectedRoot` (re-open if stale).
- * Prevents /fs/run from listing a previous project's tree while the UI shows another.
- */
-export async function ensureProjectBound(
-  expectedRoot: string,
-  sidecarUrl = DEFAULT_SIDECAR_URL,
-  signal?: AbortSignal,
-): Promise<string> {
-  const expected = expectedRoot.trim().replace(/\/+$/, "");
-  if (!expected) {
-    throw new Error("expectedRoot is required");
-  }
-  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
-  try {
-    const health = await sidecarHealth(sidecarUrl);
-    if (health.root && norm(health.root) === norm(expected)) {
-      return health.root;
-    }
-  } catch {
-    // Fall through to open
-  }
-  const { root } = await openProject(expected, sidecarUrl);
-  if (signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-  return root;
-}
-
 /** Run a shell command via sidecar (cwd must resolve under the bound project). */
 export async function runTerminal(
   options: {
@@ -649,7 +652,7 @@ export async function runTerminal(
     cwd?: string;
     timeoutMs?: number;
     /** UI-bound project root — sidecar rejects on mismatch (409). */
-    expectedRoot?: string;
+    expectedRoot: string;
     /** After user approval for outside-project paths. */
     allowOutsideProject?: boolean;
   },

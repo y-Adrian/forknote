@@ -216,7 +216,13 @@ export async function loadContextMemoryPack(options: {
       const [summary, tasks, decisions, coding] = await Promise.all([
         ...MEMORY_FILES.map(async (file) => {
           try {
-            const res = await readFile(memoryPath(dir, file), sidecarUrl, signal);
+            const res = await readFile(
+              memoryPath(dir, file),
+              sidecarUrl,
+              signal,
+              undefined,
+              projectRoot,
+            );
             return res.content ?? "";
           } catch {
             return "";
@@ -228,6 +234,8 @@ export async function loadContextMemoryPack(options: {
               memoryPath(dir, CODING_MEMORY_FILE),
               sidecarUrl,
               signal,
+              undefined,
+              projectRoot,
             );
             return res.content ?? "";
           } catch {
@@ -287,21 +295,35 @@ export async function saveContextMemoryPack(options: {
 
   if (projectRoot) {
     try {
-      await mkdir(dir, sidecarUrl, signal);
+      await mkdir(dir, sidecarUrl, signal, projectRoot);
       await Promise.all([
-        writeFile(memoryPath(dir, "SUMMARY.md"), pack.summary, sidecarUrl, signal),
-        writeFile(memoryPath(dir, "TASKS.md"), pack.tasks, sidecarUrl, signal),
+        writeFile(
+          memoryPath(dir, "SUMMARY.md"),
+          pack.summary,
+          sidecarUrl,
+          signal,
+          projectRoot,
+        ),
+        writeFile(
+          memoryPath(dir, "TASKS.md"),
+          pack.tasks,
+          sidecarUrl,
+          signal,
+          projectRoot,
+        ),
         writeFile(
           memoryPath(dir, "DECISIONS.md"),
           pack.decisions,
           sidecarUrl,
           signal,
+          projectRoot,
         ),
         writeFile(
           memoryPath(dir, CODING_MEMORY_FILE),
           pack.coding ?? "",
           sidecarUrl,
           signal,
+          projectRoot,
         ),
       ]);
       return { ...pack, storage: "project" };

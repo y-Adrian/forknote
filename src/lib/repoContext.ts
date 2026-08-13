@@ -97,10 +97,11 @@ function scorePath(path: string, query: string): number {
 
 async function collectShallowFiles(
   sidecarUrl: string,
+  projectRoot: string,
   signal?: AbortSignal,
 ): Promise<string[]> {
   const out: string[] = [];
-  const root = await listDir(".", sidecarUrl, signal);
+  const root = await listDir(".", sidecarUrl, signal, projectRoot);
   const dirs: FsEntry[] = [];
   for (const e of root.entries) {
     if (e.type === "file") out.push(e.path);
@@ -109,7 +110,7 @@ async function collectShallowFiles(
   await Promise.all(
     dirs.slice(0, 12).map(async (d) => {
       try {
-        const nested = await listDir(d.path, sidecarUrl, signal);
+        const nested = await listDir(d.path, sidecarUrl, signal, projectRoot);
         for (const e of nested.entries) {
           if (e.type === "file") out.push(e.path);
         }
@@ -132,7 +133,7 @@ export async function listProjectFileHints(options: {
   const recent = loadRecentProjectFiles(projectRoot);
   const files: string[] = [...recent];
   try {
-    const shallow = await collectShallowFiles(sidecarUrl, signal);
+    const shallow = await collectShallowFiles(sidecarUrl, projectRoot, signal);
     for (const p of shallow) {
       if (!files.includes(p)) files.push(p);
     }
@@ -172,7 +173,13 @@ export async function buildIncludedFilesAddendum(options: {
   const blocks: string[] = [];
   for (const rel of paths.slice(0, MAX_INCLUDE_FILES)) {
     try {
-      const res = await readFile(rel, sidecarUrl, signal);
+      const res = await readFile(
+        rel,
+        sidecarUrl,
+        signal,
+        undefined,
+        projectRoot,
+      );
       let body = (res.content ?? "").replace(/\r\n/g, "\n");
       if (body.length > FILE_INJECT_MAX) {
         body = `${body.slice(0, FILE_INJECT_MAX)}\n…`;

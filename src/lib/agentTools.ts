@@ -4,7 +4,6 @@ import type { ChatSession } from "../types";
 import {
   applyPatch,
   deleteFile,
-  ensureProjectBound,
   dependencyGraph,
   findReferences,
   findSymbol,
@@ -3683,7 +3682,7 @@ export async function executeToolCall(
     switch (call.tool) {
       case "list_dir": {
         const path = normalizeRelPath(call.path?.trim() || ".", projectRoot);
-        const { entries } = await listDir(path, sidecarUrl, signal);
+        const { entries } = await listDir(path, sidecarUrl, signal, projectRoot ?? undefined);
         const lines = entries.map(
           (e) => `${e.type === "dir" ? "dir " : "file"} ${e.path}`,
         );
@@ -3706,7 +3705,7 @@ export async function executeToolCall(
           await readFile(path, sidecarUrl, signal, {
             offset: call.offset,
             limit: call.limit,
-          });
+          }, projectRoot ?? undefined);
         let resultText = content;
         if (truncated) {
           resultText += `\n\n…(truncated; totalLines=${totalLines ?? "?"}; showing ${startLine ?? 1}–${endLine ?? "?"}. Pass offset+limit to read more.)`;
@@ -3729,7 +3728,7 @@ export async function executeToolCall(
             activity: { kind: "error", message: t("agent.activity.mkdirMissingPath", undefined, locale) },
           };
         }
-        await sidecarMkdir(path, sidecarUrl, signal);
+        await sidecarMkdir(path, sidecarUrl, signal, projectRoot ?? undefined);
         return {
           ok: true,
           resultText: `Created directory ${path}`,
@@ -3767,6 +3766,7 @@ export async function executeToolCall(
           call.content,
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -3813,6 +3813,7 @@ export async function executeToolCall(
           },
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -3844,7 +3845,7 @@ export async function executeToolCall(
           };
         }
         const { size, path: writtenPath, edits, replacements, diff } =
-          await applyPatch(path, call.edits, sidecarUrl, signal);
+          await applyPatch(path, call.edits, sidecarUrl, signal, projectRoot ?? undefined);
         return {
           ok: true,
           resultText: withDiffFooter(
@@ -3876,6 +3877,7 @@ export async function executeToolCall(
           { title, paragraphs },
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -3908,6 +3910,7 @@ export async function executeToolCall(
           },
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -3931,6 +3934,7 @@ export async function executeToolCall(
           sidecarUrl,
           signal,
           { regex: call.regex, glob: call.glob },
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -3959,6 +3963,7 @@ export async function executeToolCall(
           normalizeRelPath(call.path?.trim() || ".", projectRoot),
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -3992,6 +3997,7 @@ export async function executeToolCall(
           normalizeRelPath(call.path?.trim() || ".", projectRoot),
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         const lines = symbols.map(
           (s) =>
@@ -4032,6 +4038,7 @@ export async function executeToolCall(
           hint,
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         if (!found || !definition) {
           return {
@@ -4084,6 +4091,7 @@ export async function executeToolCall(
           normalizeRelPath(call.path?.trim() || ".", projectRoot),
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         const lines = references.map(
           (r) => `${r.path}:${r.line} — ${r.snippet}`,
@@ -4113,6 +4121,7 @@ export async function executeToolCall(
           },
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         let resultText: string;
         if (graph.focus) {
@@ -4175,6 +4184,7 @@ export async function executeToolCall(
           },
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         const lines = hits.map(
           (h) =>
@@ -4259,7 +4269,12 @@ export async function executeToolCall(
             },
           };
         }
-        const { kind, size } = await deleteFile(path, sidecarUrl, signal);
+        const { kind, size } = await deleteFile(
+          path,
+          sidecarUrl,
+          signal,
+          projectRoot ?? undefined,
+        );
         return {
           ok: true,
           resultText: `Deleted ${path} (${kind})`,
@@ -4291,6 +4306,7 @@ export async function executeToolCall(
           to,
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -4314,7 +4330,12 @@ export async function executeToolCall(
             },
           };
         }
-        const { text, truncated } = await readDocx(path, sidecarUrl, signal);
+        const { text, truncated } = await readDocx(
+          path,
+          sidecarUrl,
+          signal,
+          projectRoot ?? undefined,
+        );
         return {
           ok: true,
           resultText: truncated ? `${text}\n\n…(truncated)` : text || "(empty)",
@@ -4336,7 +4357,12 @@ export async function executeToolCall(
             },
           };
         }
-        const { sheets } = await readXlsx(path, sidecarUrl, signal);
+        const { sheets } = await readXlsx(
+          path,
+          sidecarUrl,
+          signal,
+          projectRoot ?? undefined,
+        );
         const lines = sheets.flatMap((sheet) => [
           `# ${sheet.name}`,
           ...sheet.rows.map(
@@ -4379,6 +4405,7 @@ export async function executeToolCall(
           { sheet_name: call.sheet_name, cells: call.cells },
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok: true,
@@ -4395,7 +4422,11 @@ export async function executeToolCall(
         };
       }
       case "run_diagnostics": {
-        const { ok, skipped, output } = await runDiagnostics(sidecarUrl, signal);
+        const { ok, skipped, output } = await runDiagnostics(
+          sidecarUrl,
+          signal,
+          projectRoot ?? undefined,
+        );
         return {
           ok,
           resultText: skipped
@@ -4416,7 +4447,11 @@ export async function executeToolCall(
         };
       }
       case "git_status": {
-        const { ok, output, exitCode } = await gitStatus(sidecarUrl, signal);
+        const { ok, output, exitCode } = await gitStatus(
+          sidecarUrl,
+          signal,
+          projectRoot ?? undefined,
+        );
         return {
           ok,
           resultText: output || "(clean)",
@@ -4434,6 +4469,7 @@ export async function executeToolCall(
           rel,
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok,
@@ -4474,6 +4510,7 @@ export async function executeToolCall(
           paths,
           sidecarUrl,
           signal,
+          projectRoot ?? undefined,
         );
         return {
           ok,
@@ -4538,19 +4575,7 @@ export async function executeToolCall(
             },
           };
         }
-        // Re-bind sidecar if another session left a stale root (wrong ls listings).
-        let ensuredRoot = boundRoot;
-        try {
-          ensuredRoot = await ensureProjectBound(boundRoot, sidecarUrl, signal);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          return {
-            ok: false,
-            resultText: `Error: could not bind sidecar to project: ${msg}`,
-            activity: { kind: "error", message: msg },
-          };
-        }
-        if (commandLeavesProject(command, ensuredRoot) && !allowOutsideProject) {
+        if (commandLeavesProject(command, boundRoot) && !allowOutsideProject) {
           return {
             ok: false,
             resultText:
@@ -4568,7 +4593,7 @@ export async function executeToolCall(
         // Always start under the project root (or a relative subdir) — never process.cwd().
         const cwdRaw = call.cwd?.trim() || ".";
         if (
-          isAbsoluteOutsideProject(cwdRaw, ensuredRoot) &&
+          isAbsoluteOutsideProject(cwdRaw, boundRoot) &&
           !allowOutsideProject
         ) {
           return {
@@ -4585,13 +4610,13 @@ export async function executeToolCall(
             },
           };
         }
-        const cwd = normalizeRelPath(cwdRaw, ensuredRoot);
+        const cwd = normalizeRelPath(cwdRaw, boundRoot);
         const result = await runTerminal(
           {
             command,
             cwd,
             timeoutMs: call.timeoutMs,
-            expectedRoot: ensuredRoot,
+            expectedRoot: boundRoot,
             allowOutsideProject,
           },
           sidecarUrl,
@@ -4599,8 +4624,8 @@ export async function executeToolCall(
         );
         const preview =
           command.length > 80 ? `${command.slice(0, 77)}…` : command;
-        const absCwd = result.cwdAbsolute || ensuredRoot;
-        const absRoot = result.projectRoot || ensuredRoot;
+        const absCwd = result.cwdAbsolute || boundRoot;
+        const absRoot = result.projectRoot || boundRoot;
         const parts = [
           `projectRoot=${JSON.stringify(absRoot)}`,
           `cwdAbsolute=${JSON.stringify(absCwd)}`,

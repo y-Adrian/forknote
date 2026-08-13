@@ -5,6 +5,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
@@ -14,6 +15,9 @@ const BASE = process.env.SIDECAR_URL || "http://127.0.0.1:8787";
 const PROJECT = path.resolve("/tmp/forknote-run-terminal-test");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+const require = createRequire(import.meta.url);
+const { loadOrCreateSidecarToken } = require("../shared/sidecarAuth.cjs");
+const AUTH_TOKEN = loadOrCreateSidecarToken();
 
 const results = [];
 
@@ -34,7 +38,10 @@ async function real(p) {
 async function json(method, pathname, body, signal) {
   const res = await fetch(`${BASE}${pathname}`, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      "X-ForkNote-Sidecar-Token": AUTH_TOKEN,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
@@ -49,7 +56,14 @@ async function json(method, pathname, body, signal) {
 }
 
 async function run(body, signal) {
-  return json("POST", "/fs/run", body, signal);
+  return json(
+    "POST",
+    "/fs/run",
+    Object.prototype.hasOwnProperty.call(body, "expectedRoot")
+      ? body
+      : { ...body, expectedRoot: PROJECT },
+    signal,
+  );
 }
 
 async function setupProject() {

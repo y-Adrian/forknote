@@ -1376,7 +1376,7 @@ export async function runAgentTurn(
       ) {
         try {
           const diag = await abortable(
-            runDiagnostics(sidecarUrl, signal),
+            runDiagnostics(sidecarUrl, signal, projectRoot),
             signal,
           );
           const feedback = formatAutoDiagnosticsFeedback({
