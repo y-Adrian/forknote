@@ -23,6 +23,15 @@ const WINDOW_MIN_HEIGHT = 480;
 const VISUAL_ZOOM_MIN = 1;
 const VISUAL_ZOOM_MAX = 1;
 
+function isSafeExternalUrl(rawUrl) {
+  try {
+    const protocol = new URL(rawUrl).protocol;
+    return protocol === "http:" || protocol === "https:" || protocol === "mailto:";
+  } catch {
+    return false;
+  }
+}
+
 /** Prefer the brand mark exported into `build/` for Dock / window chrome. */
 function resolveAppIconPath() {
   const candidates = [
@@ -293,8 +302,28 @@ async function createWindow() {
     }
   });
 
+  const appOrigin = new URL(loadUrl).origin;
+  const keepExternalNavigationOutOfChat = (event, url) => {
+    let targetOrigin = "";
+    try {
+      targetOrigin = new URL(url).origin;
+    } catch {
+      event.preventDefault();
+      return;
+    }
+    if (targetOrigin === appOrigin) return;
+
+    event.preventDefault();
+    if (isSafeExternalUrl(url)) void shell.openExternal(url);
+  };
+
+  // A normal same-tab link used to replace the entire React conversation with
+  // the remote page. Keep the app mounted even if a renderer misses target=_blank.
+  win.webContents.on("will-navigate", keepExternalNavigationOutOfChat);
+  win.webContents.on("will-redirect", keepExternalNavigationOutOfChat);
+
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (isSafeExternalUrl(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
 
