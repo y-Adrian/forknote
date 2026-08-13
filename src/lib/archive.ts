@@ -13,14 +13,80 @@ import type { ChatMessage as ApiChatMessage } from "./openai";
 
 const QUOTE_MAX = 120;
 const CLARIFY_MAX = 220;
-const CLARIFY_ADOPTED_MAX = 4000;
-const MSG_MAX = 4000;
-const FEEDBACK_LOG_MAX = 24;
+/** Adopted clarify bodies used to be 4k; keep lean for archive prompts. */
+const CLARIFY_ADOPTED_MAX = 1200;
+/** Recent turns keep more detail; older turns are aggressively capped. */
+export const MSG_MAX_RECENT = 2200;
+export const MSG_MAX_OLDER = 1000;
+const RECENT_TURN_KEEP = 2;
+const FEEDBACK_LOG_MAX = 16;
+/** Cap previous log body when doing incremental archive. */
+export const PREV_ARCHIVE_CONTENT_MAX = 10_000;
+/** Hard ceiling on archive/compress user-material size (chars). */
+export const ARCHIVE_SOURCE_HARD_MAX = 48_000;
+const CODE_FENCE_BODY_MAX = 600;
+const TOOL_DUMP_KEEP = 160;
 
 function truncate(text: string, max: number): string {
   const t = text.trim().replace(/\s+/g, " ");
   if (t.length <= max) return t;
   return `${t.slice(0, max)}…`;
+}
+
+/**
+ * Collapse tool-result dumps and huge code fences before per-message caps.
+ * Agent turns often leave status/tool noise that burns tokens without helping the log.
+ */
+export function shrinkTextForArchive(text: string): string {
+  let t = text.replace(/\r\n/g, "\n");
+  // Tool-result blocks injected into agent transcripts / status pastes
+  t = t.replace(
+    /【(?:工具结果|run_terminal|list_dir|read_file)[^】\n]*】[^\n]*(?:\n(?!【|#|##)[^\n]*)*/g,
+    (block) => {
+      const head = block.slice(0, TOOL_DUMP_KEEP).replace(/\s+/g, " ").trim();
+      return `${head}…（工具输出已省略）`;
+    },
+  );
+  t = t.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (full, lang: string, body: string) => {
+    if (body.length <= CODE_FENCE_BODY_MAX) return full;
+    const tag = lang ? `\`\`\`${lang}` : "```";
+    return `${tag}\n${body.slice(0, CODE_FENCE_BODY_MAX)}\n…\n\`\`\``;
+  });
+  return t;
+}
+
+/** Keep head + tail when the assembled source still exceeds the hard max. */
+export function capArchiveSource(
+  source: string,
+  max = ARCHIVE_SOURCE_HARD_MAX,
+): string {
+  if (source.length <= max) return source;
+  const head = Math.floor(max * 0.35);
+  const tail = Math.floor(max * 0.55);
+  return `${source.slice(0, head)}\n\n…（中间材料已截断以控制长度）\n\n${source.slice(-tail)}`;
+}
+
+function capPreviousArchiveContent(content: string): string {
+  const t = content.trim();
+  if (t.length <= PREV_ARCHIVE_CONTENT_MAX) return t;
+  return `…（较早日志条目已截断）\n\n${t.slice(-PREV_ARCHIVE_CONTENT_MAX)}`;
+}
+
+function countUserTurns(messages: ChatMessage[]): number {
+  let n = 0;
+  for (const msg of messages) {
+    if (msg.role === "user" && msg.content.trim()) n += 1;
+  }
+  return n;
+}
+
+function msgCapForTurn(turn: number, totalTurns: number): number {
+  if (totalTurns <= 0) return MSG_MAX_RECENT;
+  return turn > totalTurns - RECENT_TURN_KEEP ? MSG_MAX_RECENT : MSG_MAX_OLDER;
+}
+
+function prepareMessageBody(text: string, max: number): string {
+  return truncate(shrinkTextForArchive(text), max);
 }
 
 function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
@@ -37,11 +103,11 @@ function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
     }
     const adopted = Boolean(node.adoptedAt);
     const body = adopted
-      ? truncate(
+      ? prepareMessageBody(
           node.adoptedSummary?.trim() || answer,
           CLARIFY_ADOPTED_MAX,
         )
-      : truncate(answer, CLARIFY_MAX);
+      : prepareMessageBody(answer, CLARIFY_MAX);
     const flag = adopted ? "【已收进主线】" : "【未采纳进主线】";
     const point =
       node.anchor.pointIndex != null ? ` · 分点【${node.anchor.pointIndex}】` : "";
@@ -75,15 +141,19 @@ export function buildArchiveSource(
   const blocks: string[] = [];
   const topic = firstUserMessage(thread)?.trim();
   if (topic) {
-    blocks.push(`# 原始问题\n${topic}`);
+    blocks.push(`# 原始问题\n${prepareMessageBody(topic, MSG_MAX_RECENT)}`);
   }
 
+  const totalTurns = countUserTurns(thread.messages);
   let turn = 0;
   for (const msg of thread.messages) {
     if (!msg.content.trim()) continue;
     if (msg.role === "user") {
       turn += 1;
-      blocks.push(`## 用户 · 第 ${turn} 轮\n${truncate(msg.content, MSG_MAX)}`);
+      const cap = msgCapForTurn(turn, totalTurns);
+      blocks.push(
+        `## 用户 · 第 ${turn} 轮\n${prepareMessageBody(msg.content, cap)}`,
+      );
       continue;
     }
     const annotated = annotateContentWithVerdicts(
@@ -92,8 +162,9 @@ export function buildArchiveSource(
       msg.pointDoubts,
       msg.pointAttributions,
     );
+    const cap = msgCapForTurn(turn || 1, totalTurns);
     blocks.push(
-      `## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${truncate(annotated, MSG_MAX)}`,
+      `## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${prepareMessageBody(annotated, cap)}`,
     );
     const clarifications: string[] = [];
     flattenClarifications(msg.children, clarifications);
@@ -107,7 +178,7 @@ export function buildArchiveSource(
   const feedback = formatFeedbackLogSummary(options?.feedbackLog ?? []);
   if (feedback) blocks.push(feedback);
 
-  return blocks.join("\n\n");
+  return capArchiveSource(blocks.join("\n\n"));
 }
 
 /**
@@ -332,12 +403,16 @@ function formatMessageBlocks(
   startTurn = 0,
 ): string[] {
   const blocks: string[] = [];
+  const totalTurns = startTurn + countUserTurns(messages);
   let turn = startTurn;
   for (const msg of messages) {
     if (!msg.content.trim()) continue;
     if (msg.role === "user") {
       turn += 1;
-      blocks.push(`## 用户 · 第 ${turn} 轮\n${truncate(msg.content, MSG_MAX)}`);
+      const cap = msgCapForTurn(turn, totalTurns);
+      blocks.push(
+        `## 用户 · 第 ${turn} 轮\n${prepareMessageBody(msg.content, cap)}`,
+      );
       continue;
     }
     const annotated = annotateContentWithVerdicts(
@@ -346,8 +421,9 @@ function formatMessageBlocks(
       msg.pointDoubts,
       msg.pointAttributions,
     );
+    const cap = msgCapForTurn(turn || 1, totalTurns);
     blocks.push(
-      `## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${truncate(annotated, MSG_MAX)}`,
+      `## 助手 · 第 ${turn || 1} 轮（含分点裁决标注）\n${prepareMessageBody(annotated, cap)}`,
     );
     const clarifications: string[] = [];
     flattenClarifications(msg.children, clarifications);
@@ -379,11 +455,11 @@ function collectNewClarificationsAfter(
       );
       const adopted = Boolean(node.adoptedAt);
       const body = adopted
-        ? truncate(
+        ? prepareMessageBody(
             node.adoptedSummary?.trim() || answer,
             CLARIFY_ADOPTED_MAX,
           )
-        : truncate(answer, CLARIFY_MAX);
+        : prepareMessageBody(answer, CLARIFY_MAX);
       const flag = adopted ? "【已收进主线】" : "【未采纳进主线】";
       const point =
         node.anchor.pointIndex != null
@@ -409,7 +485,7 @@ export function buildIncrementalArchiveSource(
   options?: BuildArchiveSourceOptions,
 ): string {
   const blocks: string[] = [
-    `# 上一版开发日志（底座）\n标题：${previous.title}\n\n${previous.content.trim()}`,
+    `# 上一版开发日志（底座）\n标题：${previous.title}\n\n${capPreviousArchiveContent(previous.content)}`,
   ];
 
   const later = messagesAfterArchive(thread, previous);
@@ -442,7 +518,50 @@ export function buildIncrementalArchiveSource(
     blocks.push(`# 自上一版以来的反馈\n${feedback}`);
   }
 
-  return blocks.join("\n\n");
+  return capArchiveSource(blocks.join("\n\n"));
+}
+
+/**
+ * Delta-only material after an archive (no previous-log body).
+ * Used when Compress already has the archive draft as its primary source.
+ */
+export function buildCompressDeltaAfterArchive(
+  previous: ArchiveSnapshot,
+  thread: ThreadRoot,
+  options?: BuildArchiveSourceOptions,
+): string {
+  const blocks: string[] = [];
+  const later = messagesAfterArchive(thread, previous);
+  if (later.length) {
+    blocks.push(
+      `# 归档之后的新对话\n${formatMessageBlocks(later).join("\n\n")}`,
+    );
+  }
+
+  const newClarifications: string[] = [];
+  for (const msg of coveredMessages(thread, previous)) {
+    if (msg.role !== "assistant") continue;
+    collectNewClarificationsAfter(
+      msg.children,
+      previous.createdAt,
+      newClarifications,
+    );
+  }
+  if (newClarifications.length) {
+    blocks.push(
+      `# 归档覆盖范围内的新澄清 / 采纳\n${newClarifications.join("\n")}`,
+    );
+  }
+
+  const freshEvents = (options?.feedbackLog ?? []).filter(
+    (e) => e.at > previous.createdAt,
+  );
+  const feedback = formatFeedbackLogSummary(freshEvents);
+  if (feedback) {
+    blocks.push(`# 自上一版以来的反馈\n${feedback}`);
+  }
+
+  return blocks.length ? capArchiveSource(blocks.join("\n\n")) : "";
 }
 
 export const INCREMENTAL_ARCHIVE_SYSTEM = `${ARCHIVE_SYSTEM}
