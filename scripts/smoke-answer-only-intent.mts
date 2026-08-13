@@ -153,10 +153,22 @@ assert.equal(
   "project-grounded diagram keeps tools path",
 );
 assert.ok(looksLikeProjectGroundedAsk("根据本项目画一个架构图"));
+assert.ok(looksLikeProjectGroundedAsk("本项目架构图"));
+assert.ok(looksLikeProjectGroundedAsk("在项目里画架构图"));
 assert.equal(
   isChatOnlyDiagramAsk("根据本项目画一个架构图"),
   false,
   "not hard chat-only when project-grounded",
 );
+
+// Bare「项目」must not defeat the chat-only diagram gate (#226).
+for (const q of [
+  "画一个项目的流程图",
+  "画一个项目架构图",
+  "画个项目管理流程图",
+]) {
+  assert.equal(looksLikeProjectGroundedAsk(q), false, `not grounded: ${q}`);
+  assert.ok(isChatOnlyDiagramAsk(q), `chat-only despite 项目: ${q}`);
+}
 
 console.log("smoke-answer-only-intent: ok");
