@@ -54,9 +54,11 @@ import {
 import {
   createEmptySession,
   DEFAULT_SESSION_TITLE,
+  flushScheduledSessionStoreSave,
   loadSessionStore,
   normalizeStoredSessionTitle,
   saveSessionStore,
+  scheduleSessionStoreSave,
   sessionTitleFromThread,
 } from "../lib/storage";
 import { patchSessionApi, settingsForSession } from "../lib/sessionApi";
@@ -306,12 +308,25 @@ function getActiveSession(state: AppState): ChatSession | undefined {
 function persistSessions(
   sessions: ChatSession[],
   activeSessionId: NodeId | null,
+  opts?: { mode?: "immediate" | "scheduled" },
 ): void {
   try {
-    saveSessionStore({ sessions, activeSessionId });
+    if (opts?.mode === "scheduled") {
+      scheduleSessionStoreSave({ sessions, activeSessionId });
+    } else {
+      saveSessionStore({ sessions, activeSessionId });
+    }
   } catch (e) {
     // QuotaExceeded / private-mode write failures must not crash the agent turn.
     console.warn("[ForkNote] persistSessions failed", e);
+  }
+}
+
+function flushSessionPersistence(): void {
+  try {
+    flushScheduledSessionStoreSave();
+  } catch (e) {
+    console.warn("[ForkNote] flushSessionPersistence failed", e);
   }
 }
 
@@ -719,10 +734,11 @@ function commitSessionThread(
   ) => void,
   sessionId: NodeId,
   next: ThreadRoot | null,
+  persistMode: "immediate" | "scheduled" = "immediate",
 ): void {
   const state = get();
   const updatedSessions = upsertActiveSession(state.sessions, sessionId, next);
-  persistSessions(updatedSessions, state.activeSessionId);
+  persistSessions(updatedSessions, state.activeSessionId, { mode: persistMode });
   if (state.activeSessionId === sessionId) {
     set({ thread: next, sessions: updatedSessions });
   } else {
@@ -1094,6 +1110,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     setSessionMainLoading(set, sessionId, false);
     setSessionBranchLoading(set, sessionId, null);
     clearSessionSummaryLoading(set, sessionId);
+    flushSessionPersistence();
     return turn?.prompt ?? null;
   },
 
@@ -2495,7 +2512,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           : {}),
         ...(thinkingSeconds != null ? { thinkingSeconds } : {}),
       });
-      commitSessionThread(get, set, sessionId, next);
+      commitSessionThread(get, set, sessionId, next, "scheduled");
     };
 
     try {
@@ -2590,6 +2607,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         mainTurnsBySession.delete(sessionId);
         setSessionMainLoading(set, sessionId, false);
       }
+      flushSessionPersistence();
     }
     return "started";
   },
@@ -2747,7 +2765,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             : {}),
           ...(thinkingSeconds != null ? { thinkingSeconds } : {}),
         });
-        commitSessionThread(get, set, sessionId, updated);
+        commitSessionThread(get, set, sessionId, updated, "scheduled");
       };
 
       try {
@@ -2852,6 +2870,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           setSessionBranchLoading(set, sessionId, null);
           queueMicrotask(() => flushPendingClarify(get, set, sessionId));
         }
+        flushSessionPersistence();
       }
     })();
 
@@ -2969,7 +2988,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             : {}),
           ...(thinkingSeconds != null ? { thinkingSeconds } : {}),
         });
-        commitSessionThread(get, set, sessionId, updated);
+        commitSessionThread(get, set, sessionId, updated, "scheduled");
       };
 
       try {
@@ -3076,6 +3095,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           setSessionBranchLoading(set, sessionId, null);
           queueMicrotask(() => flushPendingClarify(get, set, sessionId));
         }
+        flushSessionPersistence();
       }
     })();
   },
