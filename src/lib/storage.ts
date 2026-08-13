@@ -1,4 +1,9 @@
-import type { ChatSession, SessionStore, ThreadRoot } from "../types";
+import type {
+  ChatSession,
+  SessionApiOverride,
+  SessionStore,
+  ThreadRoot,
+} from "../types";
 import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
 import { t } from "./i18n";
@@ -190,8 +195,29 @@ export function setSkipSessionDeleteConfirm(skip: boolean): void {
   }
 }
 
+/** Drop session API keys from a backup payload (never write secrets to export files). */
+export function redactSessionApiForExport(
+  api: SessionApiOverride | null | undefined,
+): SessionApiOverride | null | undefined {
+  if (api == null) return api;
+  const { apiKey: _omit, ...rest } = api;
+  return Object.keys(rest).length > 0 ? rest : null;
+}
+
+export function sanitizeSessionStoreForExport(store: SessionStore): SessionStore {
+  return {
+    ...store,
+    sessions: store.sessions.map(
+      (s: ChatSession): ChatSession => ({
+        ...s,
+        api: redactSessionApiForExport(s.api),
+      }),
+    ),
+  };
+}
+
 export function exportSessionStoreJson(): string {
-  const store = loadSessionStore();
+  const store = sanitizeSessionStoreForExport(loadSessionStore());
   return JSON.stringify(store, null, 2);
 }
 
