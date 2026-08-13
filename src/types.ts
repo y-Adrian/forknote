@@ -8,7 +8,7 @@ export interface Anchor {
   pointIndex?: number;
 }
 
-/** 用户对回答中某个分点的裁决；缺省（未点击）= 沉默弱正信号，≠ 主动采纳 */
+/** 用户对回答中某个分点的裁决；缺省（未点击）= 默认采纳（未拒绝即采纳） */
 export type PointVerdict = "accept" | "unsure" | "reject";
 
 /** key = 分点编号（回答中的 N） */
