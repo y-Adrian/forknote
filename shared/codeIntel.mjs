@@ -44,6 +44,66 @@ export function isCodeFile(filePath) {
 }
 
 /**
+ * Strip // and /* * / comments only (keep string literals for import specs).
+ * @param {string} source
+ */
+export function maskComments(source) {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const c = source[i];
+    const n = source[i + 1];
+    if (c === "/" && n === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && n === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        out += source[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      if (i < source.length) {
+        out += "  ";
+        i += 2;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < source.length) {
+        out += source[i];
+        if (source[i] === "\\") {
+          i++;
+          if (i < source.length) {
+            out += source[i];
+            i++;
+          }
+          continue;
+        }
+        if (source[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
  * Strip // and /* * / comments and string/template literals for safer scans.
  * @param {string} source
  */
@@ -219,7 +279,7 @@ export function findIdentifierRefs(source, name) {
  * @returns {{ from: string, to: string, kind: string, line: number }[]}
  */
 export function extractImports(source, fromPath) {
-  const masked = maskNoise(source);
+  const masked = maskComments(source);
   /** @type {{ from: string, to: string, kind: string, line: number }[]} */
   const edges = [];
   const patterns = [

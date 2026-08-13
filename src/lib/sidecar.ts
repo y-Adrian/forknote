@@ -377,6 +377,50 @@ export async function findReferences(
   return parseJson(res);
 }
 
+export type DependencyEdge = {
+  from: string;
+  to: string;
+  resolved: string | null;
+  kind: string;
+  line: number;
+  external: boolean;
+};
+
+export async function dependencyGraph(
+  opts: {
+    path?: string;
+    focus?: string;
+    limit?: number;
+  } = {},
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  path: string;
+  files: number;
+  edges: DependencyEdge[];
+  edgeCount: number;
+  truncated: boolean;
+  focus: {
+    path: string;
+    imports: DependencyEdge[];
+    importers: DependencyEdge[];
+    importCount: number;
+    importerCount: number;
+  } | null;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/dependency_graph`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: opts.path ?? ".",
+      focus: opts.focus,
+      limit: opts.limit,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
 export async function deleteFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,

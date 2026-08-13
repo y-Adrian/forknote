@@ -4,6 +4,7 @@ import {
   applyPatch,
   deleteFile,
   ensureProjectBound,
+  dependencyGraph,
   findReferences,
   findSymbol,
   gitCommit,
@@ -60,6 +61,7 @@ export type AgentToolName =
   | "find_symbol"
   | "go_to_definition"
   | "find_references"
+  | "dependency_graph"
   | "delete_file"
   | "rename_file"
   | "run_diagnostics"
@@ -82,6 +84,7 @@ export type AgentToolCall = {
   content?: string;
   query?: string;
   name?: string;
+  focus?: string;
   title?: string;
   paragraphs?: string[];
   sheet_name?: string;
@@ -144,6 +147,7 @@ const TOOL_NAMES = new Set<string>([
   "find_symbol",
   "go_to_definition",
   "find_references",
+  "dependency_graph",
   "delete_file",
   "rename_file",
   "run_diagnostics",
@@ -469,6 +473,31 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
   {
     type: "function",
     function: {
+      name: "dependency_graph",
+      description:
+        "Build a TS/JS import graph (import/require/reexport). Pass focus=path to see outbound imports and inbound importers for impact analysis.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: 'Subdirectory to scan, default "."',
+          },
+          focus: {
+            type: "string",
+            description: "Relative file to center the graph on (inbound + outbound).",
+          },
+          limit: {
+            type: "number",
+            description: "Max edges to return (default 400).",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "delete_file",
       description:
         "Delete a file, or an empty directory, relative to the project root. Non-empty directories are rejected.",
@@ -771,7 +800,7 @@ export function buildExecutionPhaseSystem(locale: Locale): string {
 }
 
 const TOOL_MENTION_RE =
-  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
 
 /** Disk-mutating tools excluding run_terminal (terminal is classified by command). */
 const DISK_MUTATING_TOOL_RE =
@@ -1101,7 +1130,7 @@ export function isPrimarilyTerminalPlan(
 
   const mentioned = [
     ...blob.matchAll(
-      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
+      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
     ),
   ].map((m) => m[1]!.toLowerCase());
   const nonTerminal = mentioned.filter(
@@ -1114,6 +1143,7 @@ export function isPrimarilyTerminalPlan(
       n !== "find_symbol" &&
       n !== "go_to_definition" &&
       n !== "find_references" &&
+      n !== "dependency_graph" &&
       n !== "read_docx" &&
       n !== "read_xlsx" &&
       n !== "run_diagnostics" &&
@@ -1412,8 +1442,8 @@ export function buildCodingToolsSystem(
 ): string {
   const allowTerminal = options?.allowTerminal !== false;
   const toolNames = allowTerminal
-    ? "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
-    : "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
+    ? "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、dependency_graph、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
+    : "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、dependency_graph、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
   const terminalBlock = allowTerminal
     ? `
 终端：
@@ -1434,6 +1464,7 @@ export function buildCodingToolsSystem(
 查看项目（必须用工具，不要凭空猜目录内容）：
 - 按名找文件 → glob_files（如 pattern="**/*.ts"）
 - 按符号名导航 → find_symbol / go_to_definition / find_references（TS/JS）
+- 依赖/影响面 → dependency_graph（可传 focus=文件路径）
 - 列出目录 → list_dir（项目根用 path="."）——仅当用户要看项目内目录且未要求 shell/run/绝对路径 ls 时
 - 用户要「执行 shell / 终端 / run 命令」或带绝对路径的 ls → run_terminal，不要用 list_dir 顶替
 - 全文搜索 → search_files（子串；正则设 regex=true；可用 glob 限文件）
@@ -1564,6 +1595,7 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
     content: typeof args.content === "string" ? args.content : undefined,
     query: typeof args.query === "string" ? args.query : undefined,
     name: typeof args.name === "string" ? args.name : undefined,
+    focus: typeof args.focus === "string" ? args.focus : undefined,
     title: typeof args.title === "string" ? args.title : undefined,
     sheet_name:
       typeof args.sheet_name === "string" ? args.sheet_name : undefined,
@@ -2191,6 +2223,7 @@ function inferToolFromPartialObject(
     (typeof obj.name === "string" || query)
   )
     return "find_references";
+  if (/dependency_graph\b/i.test(assistantText)) return "dependency_graph";
   if (/delete_file\b/i.test(assistantText) && path) return "delete_file";
   if (/rename_file\b/i.test(assistantText) && path) return "rename_file";
   if (/read_docx\b/i.test(assistantText) && path) return "read_docx";
@@ -2255,6 +2288,7 @@ function agentCallFromPartialObject(
   ) {
     call.name = obj.name.trim();
   }
+  if (typeof obj.focus === "string") call.focus = obj.focus.trim();
   if (typeof obj.title === "string") call.title = obj.title;
   if (typeof obj.content === "string") call.content = obj.content;
   if (typeof obj.old_string === "string") call.old_string = obj.old_string;
@@ -3176,7 +3210,7 @@ export function stripToolCalls(text: string): string {
       const obj = JSON.parse(inner);
       if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return "";
     } catch {
-      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
         return "";
       }
     }
@@ -3771,6 +3805,58 @@ export async function executeToolCall(
           },
         };
       }
+      case "dependency_graph": {
+        const focus = (call.focus ?? call.query ?? "").trim() || undefined;
+        const graph = await dependencyGraph(
+          {
+            path: normalizeRelPath(call.path?.trim() || ".", projectRoot),
+            focus,
+            limit: call.limit,
+          },
+          sidecarUrl,
+          signal,
+        );
+        let resultText: string;
+        if (graph.focus) {
+          const f = graph.focus;
+          const out = f.imports
+            .map(
+              (e) =>
+                `→ ${e.resolved ?? e.to}${e.external ? " (external)" : ""} [${e.kind}@${e.line}]`,
+            )
+            .join("\n");
+          const inn = f.importers
+            .map(
+              (e) =>
+                `← ${e.from} imports ${e.to} [${e.kind}@${e.line}]`,
+            )
+            .join("\n");
+          resultText = `Focus ${f.path}\nImports (${f.importCount}):\n${out || "(none)"}\n\nImporters (${f.importerCount}):\n${inn || "(none)"}`;
+        } else {
+          const lines = graph.edges.slice(0, 120).map((e) => {
+            const target = e.external
+              ? `${e.to} (external)`
+              : e.resolved ?? e.to;
+            return `${e.from} → ${target} [${e.kind}@${e.line}]`;
+          });
+          resultText =
+            `files=${graph.files} edges=${graph.edgeCount}\n` +
+            (lines.join("\n") || "(no edges)") +
+            (graph.truncated ? "\n…(truncated)" : "");
+        }
+        return {
+          ok: true,
+          resultText,
+          activity: {
+            kind: "search",
+            message: t(
+              "agent.activity.dependencyGraph",
+              { n: graph.edgeCount },
+              locale,
+            ),
+          },
+        };
+      }
       case "delete_file": {
         const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
         if (!path || path === ".") {
@@ -4191,6 +4277,8 @@ export function toolResultMessage(
             call.tool === "go_to_definition" ||
             call.tool === "find_references"
           ? `${call.tool} name=${JSON.stringify(call.name ?? call.query ?? "")}`
+        : call.tool === "dependency_graph"
+          ? `dependency_graph focus=${JSON.stringify(call.focus ?? call.query ?? call.path ?? ".")}`
         : call.tool === "run_terminal"
           ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
           : call.tool === "git_commit"

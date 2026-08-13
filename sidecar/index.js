@@ -11,9 +11,11 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { isDeniedTerminalCommand } from "../shared/terminalDenyList.mjs";
 import {
+  extractImports,
   extractSymbols,
   findIdentifierRefs,
   isCodeFile,
+  resolveImportSpec,
   shouldSkipDir,
 } from "../shared/codeIntel.mjs";
 
@@ -1139,6 +1141,84 @@ async function handleFindReferences(body) {
   return { name, references, truncated, count: references.length };
 }
 
+const CODE_EXT_TRY = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", "/index.ts", "/index.tsx", "/index.js", "/index.mjs"];
+
+/**
+ * @param {Set<string>} fileSet
+ * @param {string} resolvedNoExt relative posix path without guaranteed ext
+ */
+function matchProjectFile(fileSet, resolvedNoExt) {
+  const base = resolvedNoExt.replace(/\\/g, "/").replace(/\/+$/, "");
+  for (const ext of CODE_EXT_TRY) {
+    const cand = `${base}${ext}`.replace(/^\.\//, "");
+    if (fileSet.has(cand)) return cand;
+  }
+  return null;
+}
+
+async function handleDependencyGraph(body) {
+  const startRel = String(body?.path ?? ".").trim() || ".";
+  const focus = String(body?.focus ?? body?.file ?? "").trim();
+  const maxEdges = Math.min(
+    800,
+    Math.max(20, Number(body?.limit) || 400),
+  );
+
+  /** @type {Map<string, string>} */
+  const sources = new Map();
+  await walkCodeFiles(startRel, (rel, source) => {
+    sources.set(rel, source);
+  });
+  const fileSet = new Set(sources.keys());
+
+  /** @type {Array<{ from: string, to: string, resolved: string | null, kind: string, line: number, external: boolean }>} */
+  const edges = [];
+  for (const [rel, source] of sources) {
+    for (const edge of extractImports(source, rel)) {
+      const resolved = resolveImportSpec(rel, edge.to);
+      const external = resolved.kind === "external";
+      const target = external
+        ? null
+        : matchProjectFile(fileSet, resolved.spec);
+      edges.push({
+        from: rel,
+        to: edge.to,
+        resolved: target,
+        kind: edge.kind,
+        line: edge.line,
+        external,
+      });
+      if (edges.length >= maxEdges) break;
+    }
+    if (edges.length >= maxEdges) break;
+  }
+
+  let focusOut = null;
+  if (focus) {
+    const focusNorm = focus.replace(/\\/g, "/").replace(/^\.\//, "");
+    const outbound = edges.filter((e) => e.from === focusNorm);
+    const inbound = edges.filter(
+      (e) => e.resolved === focusNorm || e.to === focusNorm,
+    );
+    focusOut = {
+      path: focusNorm,
+      imports: outbound.slice(0, 80),
+      importers: inbound.slice(0, 80),
+      importCount: outbound.length,
+      importerCount: inbound.length,
+    };
+  }
+
+  return {
+    path: startRel,
+    files: sources.size,
+    edges: focus ? (focusOut?.imports ?? []).concat(focusOut?.importers ?? []) : edges.slice(0, maxEdges),
+    edgeCount: edges.length,
+    truncated: edges.length >= maxEdges,
+    focus: focusOut,
+  };
+}
+
 async function handleDelete(body) {
   const filePath = String(body?.path ?? "").trim();
   if (!filePath || filePath === ".") {
@@ -1847,6 +1927,10 @@ async function handler(req, res) {
     if (req.method === "POST" && pathname === "/fs/find_references") {
       const body = await readBody(req);
       return sendJson(res, 200, await handleFindReferences(body));
+    }
+    if (req.method === "POST" && pathname === "/fs/dependency_graph") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await handleDependencyGraph(body));
     }
     if (req.method === "POST" && pathname === "/fs/delete") {
       const body = await readBody(req);
