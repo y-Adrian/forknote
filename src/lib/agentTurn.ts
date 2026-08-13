@@ -24,6 +24,7 @@ import {
   isReadOnlyAgentTool,
   usesInlineToolApproval,
   limitPlanForApproval,
+  isChatOnlyDiagramAsk,
   looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
   multiStepFollowUpHint,
@@ -261,6 +262,8 @@ export async function runAgentTurn(
   } = options;
 
   const trimmed = userText.trim();
+  /** Mermaid/画图 etc.: answer in chat; do not continue old project memory/tools. */
+  const chatOnlyDiagramAsk = isChatOnlyDiagramAsk(trimmed);
 
   const planLlm = withAgentPhaseModel(llm, "plan");
   const codeLlm = withAgentPhaseModel(llm, "code");
@@ -286,6 +289,7 @@ export async function runAgentTurn(
     sidecarUrl,
     signal,
     includeFiles: options.includeFiles,
+    omitProjectPack: chatOnlyDiagramAsk,
   });
 
   if (signal.aborted || !isOwned()) {
@@ -304,6 +308,16 @@ export async function runAgentTurn(
 
   if (extraMessages?.length) {
     apiMessages.push(...extraMessages);
+  }
+
+  if (memoryAddendum) {
+    apiMessages.push({
+      role: "system",
+      content:
+        locale === "zh"
+          ? "上方记忆包仅为背景参考。本轮目标必须依据用户【最新一条】消息；除非用户明确要求继续，否则禁止自动续做记忆/历史中的旧构建、验证或未完成计划。"
+          : "Memory above is background only. Ground this turn in the user's LATEST message; do not auto-continue old build/verify/unfinished plans from memory or history unless the user explicitly asks to continue.",
+    });
   }
 
   /**
@@ -356,13 +370,21 @@ export async function runAgentTurn(
     multiStepPlan.length < 2 &&
     (looksLikeAnswerOnlyRequest(trimmed) ||
       !looksLikeMutationRequest(trimmed));
-  if (softInformationalAsk) {
+  if (chatOnlyDiagramAsk) {
     apiMessages.push({
       role: "system",
       content:
         locale === "zh"
-          ? "根据实际情景判断：若用户只要示例/解释/概念问答，优先用 Markdown 直接回答（代码用围栏）；仅当为实现其目标确有必要（明确要求保存/创建到项目、改文件、跑命令，或上下文显然需要读仓库）时再调用工具。不要编造路径（如 hello.py）或擅自 write_file；也不要仅为「写一段代码」起草批准计划。"
-          : "Judge by situation and necessity: if the ask is informational/sample, prefer answering in Markdown (fenced code). Use write/edit/terminal only when needed for the user's goal (explicit save/create/path/run, or context clearly requires project access). Do not invent paths (e.g. hello.py) or write_file unprompted; do not invent an approval plan just for a sample snippet.",
+          ? "用户最新消息是聊天内绘图/示意图请求（如 Mermaid、PlantUML、「随便画个图」）。必须严格依据该条消息作答：直接用 Markdown 输出图（优先 ```mermaid 或 ```plantuml 围栏），禁止调用任何项目工具，禁止延续记忆包/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的「总结」卡片式长文。除非用户明确要求继续旧任务。"
+          : "The latest user message is a chat diagram request (Mermaid, PlantUML, draw a diagram). Answer that message only: emit the diagram in Markdown (prefer ```mermaid or ```plantuml fences). Do not call project tools, do not continue old build/verify/CMake/git tasks from memory or history, and do not dump an unrelated summary. Only continue prior work if the user explicitly asks.",
+    });
+  } else if (softInformationalAsk) {
+    apiMessages.push({
+      role: "system",
+      content:
+        locale === "zh"
+          ? "根据实际情景判断：若用户只要示例/解释/概念问答，优先用 Markdown 直接回答（代码用围栏）；仅当为实现其目标确有必要（明确要求保存/创建到项目、改文件、跑命令，或上下文显然需要读仓库）时再调用工具。不要编造路径（如 hello.py）或擅自 write_file；也不要仅为「写一段代码」起草批准计划。严格依据最新一条用户消息；勿把记忆中的旧任务当作本轮目标。"
+          : "Judge by situation and necessity: if the ask is informational/sample, prefer answering in Markdown (fenced code). Use write/edit/terminal only when needed for the user's goal (explicit save/create/path/run, or context clearly requires project access). Do not invent paths (e.g. hello.py) or write_file unprompted; do not invent an approval plan just for a sample snippet. Ground in the latest user message; do not treat older memory tasks as this turn's goal.",
     });
   }
   const explorePlaceholder =
@@ -441,7 +463,7 @@ export async function runAgentTurn(
 
   let visibleContent = "";
   let round = 0;
-  let useNativeTools = Boolean(projectRoot);
+  let useNativeTools = Boolean(projectRoot) && !chatOnlyDiagramAsk;
   let forcedWrite = Boolean(createPath && projectRoot);
   let forcedExploreTool =
     exploreIntent?.kind === "list"

@@ -739,6 +739,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 原则（必须遵守）：
 - 严格依据用户【最新一条】原话理解意图；忽略历史中未完成的旧计划/旧文件任务，除非用户明确要求继续。
+- 若最新消息是聊天内绘图（Mermaid/PlantUML/「画个图」等）且未要求基于本仓库：直接回答并输出图围栏，写明「无需工具」；禁止把记忆里的构建/验证当成本轮目标。
 - 根据情景判断：示例/解释/「写一段代码」类问答优先直接回答（Markdown 围栏）并写明「无需工具」；仅当目标确需改仓库或跑命令时再起草精简计划。不要编造路径（如 hello.py）或用 run_terminal / echo 代替贴代码。
 - 意图不清时：只输出简短澄清问题，并可给出编号选项供用户选择；不要写「执行计划」，不要编造文件操作，不要提「批准并执行」。
 - 意图明确且需要改磁盘或跑可能改系统的 shell 时：再输出精简计划；只包含必要步骤，禁止自行添加验证步骤（如写完再 list_dir）。
@@ -758,6 +759,7 @@ export function buildPlanningPhaseSystem(locale: Locale): string {
 
 Rules (must follow):
 - Ground everything in the user's LATEST message. Ignore unfinished older plans/file tasks in history unless the user explicitly asks to continue.
+- If the latest message is a chat diagram ask (Mermaid/PlantUML/draw a diagram) and not project-grounded: answer with a diagram fence and say no tools are required; do not treat memory build/verify work as this turn's goal.
 - Judge by situation: for sample/how-to/explanation asks, prefer answering directly (Markdown fences OK) and say no tools are required; only draft a plan when the goal truly needs repo changes or commands. Do not invent paths (e.g. hello.py) or use run_terminal / echo instead of pasting code.
 - If intent is unclear: ask a short clarifying question and/or numbered options only. Do NOT write an execution plan, invent file ops, or mention Approve & run.
 - If intent is clear and needs disk changes or potentially mutating shell: output a minimal plan with only necessary steps (no invented verification like list_dir after write).
@@ -2543,15 +2545,49 @@ export function isAnswerOnlySampleCodeRequest(userText: string): boolean {
 }
 
 /**
- * Soft signal: sample-code / conceptual Q&A — prefer chat (Markdown fence);
- * do not treat as create/write-to-disk heuristics. Overridden by
- * {@link hasExplicitRepoActionSignal}. Not a hard zero-tools gate.
+ * Soft signal: user wants a diagram drawn in chat (Mermaid/PlantUML/「画图」),
+ * not repo exploration. Overridden by {@link hasExplicitRepoActionSignal}.
+ * Project-grounded phrasing (「本项目架构图」) is excluded so tools can still run.
+ */
+export function looksLikeChatDiagramRequest(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (hasExplicitRepoActionSignal(t)) return false;
+  if (looksLikeProjectGroundedAsk(t)) return false;
+  return /mermaid|plantuml|\bpuml\b|流程图|时序图|序列图|类图|状态图|甘特图|思维导图|架构图|画(?:一)?(?:个|张)?(?:mermaid|plantuml)?(?:图|diagram)?|随便画|画一下|画个图|画张图|画图|diagram|flowchart|sequence\s*diagram|class\s*diagram|draw\s+(?:me\s+)?(?:a\s+)?(?:diagram|graph|chart|flowchart)|(?:generate|make|create)\s+(?:me\s+)?(?:a\s+)?(?:mermaid|plantuml|diagram|flowchart)/i.test(
+    t,
+  );
+}
+
+/** Asks that need the bound project (keep tools / memory available). */
+export function looksLikeProjectGroundedAsk(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  return /(?:本|此|该|当前)?项目(?:的|里|中)?|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)/i.test(
+    t,
+  );
+}
+
+/**
+ * Hard chat-only artifact: answer in Markdown (e.g. ```mermaid); runAgentTurn
+ * should disable native tools and omit project memory pack for this turn.
+ */
+export function isChatOnlyDiagramAsk(userText: string): boolean {
+  return looksLikeChatDiagramRequest(userText);
+}
+
+/**
+ * Soft signal: sample-code / conceptual Q&A / chat diagrams — prefer chat
+ * (Markdown fence); do not treat as create/write-to-disk heuristics. Overridden
+ * by {@link hasExplicitRepoActionSignal}. Chat-diagram asks additionally use a
+ * hard zero-tools gate via {@link isChatOnlyDiagramAsk}.
  */
 export function looksLikeAnswerOnlyRequest(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
   if (hasExplicitRepoActionSignal(t)) return false;
   if (isAnswerOnlySampleCodeRequest(t)) return true;
+  if (looksLikeChatDiagramRequest(t)) return true;
   return /写一段|写段(?:代码)?|写个(?:示例|例子|demo)|写点(?:代码)?|随便(?:给我)?写|给我一段|给一段|一段(?:代码|python|js|ts|tsx|javascript|typescript|go|rust|java)|示例(?:代码)?|代码示例|举例|怎么(?:写|实现)|如何(?:写|实现)|什么是|解释一下|sample\s+code|an?\s+example|code\s+snippet|show\s+me\s+(?:some\s+)?code|write\s+(?:me\s+)?(?:some\s+|a\s+)?(?:piece\s+of\s+|bit\s+of\s+)?code|\bhow\s+(?:do\s+i|to)\b|\bwhat\s+is\b|\bexplain\b/i.test(
     t,
   );
