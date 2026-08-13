@@ -421,6 +421,40 @@ export async function dependencyGraph(
   return parseJson(res);
 }
 
+
+export type SemanticHit = {
+  path: string;
+  startLine: number;
+  endLine: number;
+  title: string;
+  score: number;
+  preview: string;
+};
+
+export async function semanticSearch(
+  query: string,
+  opts: { path?: string; limit?: number } = {},
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+): Promise<{
+  query: string;
+  hits: SemanticHit[];
+  chunkCount: number;
+  truncated: boolean;
+}> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/semantic_search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query,
+      path: opts.path ?? ".",
+      limit: opts.limit,
+    }),
+    signal,
+  });
+  return parseJson(res);
+}
+
 export async function deleteFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,
