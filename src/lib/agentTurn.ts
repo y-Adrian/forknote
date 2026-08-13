@@ -273,9 +273,11 @@ export async function runAgentTurn(
   const allowTerminal = resolveAgentAllowTerminal(settings);
   const autoDiagnostics = resolveAgentAutoDiagnostics(settings);
   const projectTools = getProjectOpenAITools({ allowTerminal });
-  const codingToolsSystem = projectRoot
-    ? buildCodingToolsSystem(projectRoot, { allowTerminal })
-    : null;
+  /** Chat-only diagram asks must not see coding-tools system (avoids list_dir loops). */
+  const codingToolsSystem =
+    projectRoot && !chatOnlyDiagramAsk
+      ? buildCodingToolsSystem(projectRoot, { allowTerminal })
+      : null;
   const resolved = resolveConversationContext(session);
   if (resolved.repairedToLive) {
     onRepairContextToLive?.();
@@ -297,7 +299,7 @@ export async function runAgentTurn(
   }
 
   const apiMessages: ApiChatMessage[] = buildConversationMessages(thread, {
-    projectRoot,
+    projectRoot: chatOnlyDiagramAsk ? null : projectRoot,
     codingToolsSystem,
     contextMode: resolved.mode,
     activeArchive: resolved.archive,
@@ -317,6 +319,30 @@ export async function runAgentTurn(
         locale === "zh"
           ? "上方记忆包仅为背景参考。本轮目标必须依据用户【最新一条】消息；除非用户明确要求继续，否则禁止自动续做记忆/历史中的旧构建、验证或未完成计划。"
           : "Memory above is background only. Ground this turn in the user's LATEST message; do not auto-continue old build/verify/unfinished plans from memory or history unless the user explicitly asks to continue.",
+    });
+  }
+
+  /**
+   * Chat diagram / Mermaid / 「随便画个图」: plain Markdown answer only.
+   * Do not enter executeTools — even with tools disabled, PROJECT coding
+   * prompts + collectToolCalls still caused list_dir loops after a brief
+   * mermaid source flash.
+   */
+  if (chatOnlyDiagramAsk) {
+    apiMessages.push({
+      role: "system",
+      content:
+        locale === "zh"
+          ? "用户最新消息是聊天内绘图/示意图请求（如 Mermaid、PlantUML、「随便画个图」）。必须严格依据该条消息作答：直接用 Markdown 输出图（优先 ```mermaid 或 ```plantuml 围栏），可附一句极短说明。禁止调用或提及任何项目工具（list_dir/read_file/write_file/run_terminal 等），禁止探索仓库，禁止延续记忆/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的长「总结」。"
+          : "The latest user message is a chat diagram request (Mermaid, PlantUML, draw a diagram). Answer that message only: emit the diagram in Markdown (prefer ```mermaid or ```plantuml fences), optionally with one short sentence. Do not call or mention project tools (list_dir/read_file/write_file/run_terminal, etc.), do not explore the repo, do not continue old build/verify/CMake/git work from memory or history, and do not dump an unrelated summary.",
+    });
+    return streamPlainChatAnswer({
+      llm: summaryLlm,
+      apiMessages,
+      signal,
+      isOwned,
+      patchContent,
+      locale,
     });
   }
 
@@ -370,15 +396,7 @@ export async function runAgentTurn(
     multiStepPlan.length < 2 &&
     (looksLikeAnswerOnlyRequest(trimmed) ||
       !looksLikeMutationRequest(trimmed));
-  if (chatOnlyDiagramAsk) {
-    apiMessages.push({
-      role: "system",
-      content:
-        locale === "zh"
-          ? "用户最新消息是聊天内绘图/示意图请求（如 Mermaid、PlantUML、「随便画个图」）。必须严格依据该条消息作答：直接用 Markdown 输出图（优先 ```mermaid 或 ```plantuml 围栏），禁止调用任何项目工具，禁止延续记忆包/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的「总结」卡片式长文。除非用户明确要求继续旧任务。"
-          : "The latest user message is a chat diagram request (Mermaid, PlantUML, draw a diagram). Answer that message only: emit the diagram in Markdown (prefer ```mermaid or ```plantuml fences). Do not call project tools, do not continue old build/verify/CMake/git tasks from memory or history, and do not dump an unrelated summary. Only continue prior work if the user explicitly asks.",
-    });
-  } else if (softInformationalAsk) {
+  if (softInformationalAsk) {
     apiMessages.push({
       role: "system",
       content:
@@ -463,7 +481,7 @@ export async function runAgentTurn(
 
   let visibleContent = "";
   let round = 0;
-  let useNativeTools = Boolean(projectRoot) && !chatOnlyDiagramAsk;
+  let useNativeTools = Boolean(projectRoot);
   let forcedWrite = Boolean(createPath && projectRoot);
   let forcedExploreTool =
     exploreIntent?.kind === "list"
