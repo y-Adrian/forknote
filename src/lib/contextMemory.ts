@@ -32,6 +32,7 @@ import {
   formatToolPreferenceHint,
   formatUnsureCautionAddendum,
 } from "./decisionFeedback";
+import { formatSessionCorrectionAddendum } from "./sessionCorrection";
 import {
   buildUserModelFromFeedbackLog,
   formatUserModelForAgent,
@@ -578,6 +579,14 @@ export async function buildAgentMemoryAddendum(options: {
       });
       if (caution) layers.push({ kind: "working", text: caution });
     }
+  }
+  // Session-scoped immediate corrections (same-conversation rejects/flips).
+  {
+    const correction = formatSessionCorrectionAddendum(
+      session?.feedbackLog,
+      locale,
+    );
+    if (correction) layers.push({ kind: "working", text: correction });
   }
   if (isMemoryLayerProjectEnabled(settings) && !omitProjectPack) {
     const pack = await loadContextMemoryPack({
