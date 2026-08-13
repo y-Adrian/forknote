@@ -5804,6 +5804,51 @@ mark.branch-highlight:hover {
   align-self: stretch;
 }
 
+.fn-project-advanced {
+  margin: 4px 0 0;
+}
+
+.fn-project-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-dim);
+  font: inherit;
+  font-size: var(--fn-text-ui-sm);
+  cursor: pointer;
+}
+
+.fn-project-advanced-toggle:hover {
+  color: var(--ds-text);
+}
+
+.fn-project-advanced-chevron {
+  display: inline-flex;
+  transition: transform 0.15s ease;
+}
+
+.fn-project-advanced.is-open .fn-project-advanced-chevron {
+  transform: rotate(180deg);
+}
+
+.fn-project-advanced-body {
+  margin-top: 4px;
+}
+
+.fn-project-advanced-body label {
+  margin-top: 0;
+}
+
+.fn-project-advanced-hint {
+  margin: 6px 0 0;
+  font-size: var(--fn-text-ui-xs, 12px);
+  line-height: 1.45;
+  color: var(--ds-text-dim);
+}
+
 .project-modal input:focus {
   outline: none;
   border-color: var(--ds-brand);
