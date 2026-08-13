@@ -15,6 +15,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "sidecar": "node sidecar/index.js",
+    "test:electron-openai-proxy": "node scripts/test-electron-openai-proxy.cjs",
     "electron:dev": "ELECTRON_DEV=1 electron .",
     "electron:build:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir",
     "electron:release:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip"

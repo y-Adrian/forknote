@@ -8,6 +8,7 @@ const https = require("node:https");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
+const { assertSafeApiTarget } = require("../shared/apiTargetPolicy.cjs");
 
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
@@ -56,7 +57,7 @@ function sendJson(res, status, body) {
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} rewritePath
- * @param {{ kind?: 'sidecar' | 'openai', headers?: Record<string, string> }} [opts]
+ * @param {{ kind?: 'sidecar' | 'openai', headers?: Record<string, string>, lookup?: Function }} [opts]
  */
 function proxyTo(targetOrigin, req, res, rewritePath, opts = {}) {
   let dest;
@@ -82,6 +83,8 @@ function proxyTo(targetOrigin, req, res, rewritePath, opts = {}) {
       path: `${dest.pathname}${dest.search}`,
       method: req.method,
       headers,
+      ...(opts.lookup ? { lookup: opts.lookup } : {}),
+      ...(opts.lookup ? { agent: false } : {}),
     },
     (proxyRes) => {
       res.statusCode = proxyRes.statusCode || 502;
@@ -130,6 +133,54 @@ function resolveOpenAiRoot(header) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Validate the renderer-selected OpenAI root before copying or forwarding any
+ * request headers. DNS answers are pinned into the outgoing socket lookup.
+ * @param {string | undefined} header
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {{ apiTargetLookup?: Function }} opts
+ */
+async function forwardOpenAi(header, req, res, opts) {
+  const root = resolveOpenAiRoot(header);
+  if (!root) {
+    sendJson(res, 502, {
+      error: {
+        message:
+          "Desktop proxy: missing or invalid X-Forknote-Target. Set Base URL in Settings → API, keep “Use proxy” on, Save, then retry.",
+      },
+    });
+    return;
+  }
+
+  let approved;
+  try {
+    approved = await assertSafeApiTarget(header, {
+      ...(opts.apiTargetLookup ? { lookup: opts.apiTargetLookup } : {}),
+    });
+  } catch (err) {
+    sendJson(res, 403, {
+      error: {
+        message: `Desktop proxy blocked unsafe API target: ${
+          err instanceof Error ? err.message : "validation failed"
+        }`,
+      },
+    });
+    return;
+  }
+
+  const approvedRoot = `${approved.url.origin}${approved.url.pathname.replace(/\/$/, "")}`;
+  const prefix = approved.url.pathname.replace(/\/$/, "") || "";
+  const rest = (req.url || "/").replace(/^\/openai/, "") || "/";
+  proxyTo(
+    approvedRoot.endsWith("/") ? approvedRoot : `${approvedRoot}/`,
+    req,
+    res,
+    `${prefix}${rest}`,
+    { kind: "openai", lookup: approved.lookup },
+  );
 }
 
 function serveStatic(distDir, req, res) {
@@ -192,7 +243,7 @@ function serveStatic(distDir, req, res) {
 }
 
 /**
- * @param {{ distDir: string, host?: string, port?: number, sidecarToken: string }} opts
+ * @param {{ distDir: string, host?: string, port?: number, sidecarToken: string, apiTargetLookup?: Function }} opts
  * @returns {Promise<{ server: import('node:http').Server, origin: string }>}
  */
 function startUiServer(opts) {
@@ -218,24 +269,15 @@ function startUiServer(opts) {
           req.headers["x-forknote-target"] ||
           req.headers["x-branch-chat-target"];
         const header = Array.isArray(raw) ? raw[0] : raw;
-        const root = resolveOpenAiRoot(header);
-        if (!root) {
+        void forwardOpenAi(header, req, res, opts).catch((err) => {
+          if (res.headersSent) {
+            res.destroy(err);
+            return;
+          }
           sendJson(res, 502, {
-            error: {
-              message:
-                "Desktop proxy: missing or invalid X-Forknote-Target. Set Base URL in Settings → API, keep “Use proxy” on, Save, then retry.",
-            },
+            error: { message: "Desktop proxy target validation failed" },
           });
-          return;
-        }
-        let prefix = "";
-        try {
-          prefix = new URL(root).pathname.replace(/\/$/, "") || "";
-        } catch {
-          /* ignore */
-        }
-        const rest = url.replace(/^\/openai/, "") || "/";
-        proxyTo(root.endsWith("/") ? root : `${root}/`, req, res, `${prefix}${rest}`);
+        });
         return;
       }
       if (req.method !== "GET" && req.method !== "HEAD") {
@@ -273,4 +315,4 @@ function startUiServer(opts) {
   });
 }
 
-module.exports = { startUiServer };
+module.exports = { forwardOpenAi, resolveOpenAiRoot, startUiServer };
