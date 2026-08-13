@@ -19,9 +19,9 @@ const { startUiServer } = require("./uiServer.cjs");
  */
 const WINDOW_MIN_WIDTH = 360;
 const WINDOW_MIN_HEIGHT = 480;
-/** Pinch / trackpad visual zoom range (Electron disables this by default). */
+/** Keep pinch/page zoom disabled — chat uses CSS text zoom instead. */
 const VISUAL_ZOOM_MIN = 1;
-const VISUAL_ZOOM_MAX = 3;
+const VISUAL_ZOOM_MAX = 1;
 
 /** Prefer the brand mark exported into `build/` for Dock / window chrome. */
 function resolveAppIconPath() {
@@ -154,9 +154,15 @@ function stopSidecar() {
 }
 
 /**
- * Application menu with View → Zoom In / Out / Actual Size (Cmd+/−/0)
- * and standard Edit / Window roles. Keyboard zoom is driven by these roles.
+ * Application menu with View → Zoom In / Out / Actual Size.
+ * These adjust chat text size only (IPC → renderer), not page zoomFactor.
  */
+function sendTextZoom(action) {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send("text-zoom", action);
+}
+
 function buildAppMenu() {
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
@@ -196,9 +202,21 @@ function buildAppMenu() {
         { role: "reload" },
         { role: "forceReload" },
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        {
+          label: "Actual Size",
+          accelerator: "CommandOrControl+0",
+          click: () => sendTextZoom("reset"),
+        },
+        {
+          label: "Zoom In",
+          accelerator: "CommandOrControl+=",
+          click: () => sendTextZoom("in"),
+        },
+        {
+          label: "Zoom Out",
+          accelerator: "CommandOrControl+-",
+          click: () => sendTextZoom("out"),
+        },
         { type: "separator" },
         { role: "togglefullscreen" },
       ],
@@ -262,11 +280,18 @@ async function createWindow() {
 
   win.once("ready-to-show", () => win.show());
 
-  // Pinch-to-zoom is off by default (limits 1→1); open a reasonable range.
+  // Disable pinch/page zoom — main session uses CSS `--fn-text-zoom` instead.
   void win.webContents.setVisualZoomLevelLimits(
     VISUAL_ZOOM_MIN,
     VISUAL_ZOOM_MAX,
   );
+  win.webContents.setZoomFactor(1);
+  win.webContents.on("zoom-changed", () => {
+    if (win.isDestroyed()) return;
+    if (win.webContents.getZoomFactor() !== 1) {
+      win.webContents.setZoomFactor(1);
+    }
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);

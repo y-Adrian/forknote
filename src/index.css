@@ -118,9 +118,11 @@
   --fn-text-ui:         0.925rem;
   --fn-text-ui-lg:      1.05rem;
 
-  /* Chat conversation type (bubbles, answer markdown, composer input) */
-  --fn-text-chat:       1.05rem;
-  --fn-text-chat-sm:    1rem;
+  /* Chat conversation type (bubbles, answer markdown, composer input).
+     `--fn-text-zoom` scales these only — sidebar / chrome stay fixed. */
+  --fn-text-zoom:       1;
+  --fn-text-chat:       calc(1.05rem * var(--fn-text-zoom));
+  --fn-text-chat-sm:    calc(1rem * var(--fn-text-zoom));
 
   /* Typography — IBM Plex (docs/UI) + Dela Gothic (brand mark only) */
   --ds-font-ui:
