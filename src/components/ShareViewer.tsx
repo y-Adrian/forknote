@@ -102,7 +102,7 @@ export function ShareViewer({ token, onExit }: Props) {
                     : t("share.roleAssistant")}
                 </p>
                 {msg.role === "user" ? (
-                  <div className="ds-bubble ds-bubble-user">
+                  <div className="ds-bubble ds-bubble-user ds-bubble-user--manga">
                     <p>{msg.content}</p>
                   </div>
                 ) : (

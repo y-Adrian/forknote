@@ -66,7 +66,7 @@ function TurnBlock({
     >
       {questionText ? (
         <div className="fn-msg fn-msg-user float-branch-msg">
-          <div className="ds-bubble ds-bubble-user">
+          <div className="ds-bubble ds-bubble-user ds-bubble-user--manga">
             <p>{questionText}</p>
           </div>
         </div>
