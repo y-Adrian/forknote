@@ -281,11 +281,16 @@ export async function handleNetSearch(body) {
   }
 }
 
-/** Soft connectivity probe URLs (no SSRF gate — known public endpoints only). */
-const STATUS_PROBE_URLS = [
-  "https://www.google.com/generate_204",
-  "https://www.gstatic.com/generate_204",
+/**
+ * Soft connectivity probe URLs (no SSRF gate — known public endpoints only).
+ * Prefer Cloudflare / example.com over Google generate_204: some VPN / captive-
+ * portal helpers treat Google probes specially and may bounce the default
+ * browser (Chrome) in the Dock. ForkNote itself never launches a browser —
+ * probes and web_search / web_fetch use Node `fetch` only.
+ */
+export const STATUS_PROBE_URLS = [
   "https://cloudflare.com/cdn-cgi/trace",
+  "https://1.1.1.1/cdn-cgi/trace",
   "https://example.com/",
 ];
 

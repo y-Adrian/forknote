@@ -7,6 +7,7 @@ import {
   hasPublicResolvedAddress,
   htmlToText,
   isPrivateIp,
+  STATUS_PROBE_URLS,
 } from "../sidecar/network.mjs";
 import {
   formatNetworkStatusSystem,
@@ -212,6 +213,15 @@ function testWebComplexityBudget() {
   console.log("ok web complexity budget");
 }
 
+function testStatusProbesAreHeadlessFetchOnly() {
+  assert.ok(Array.isArray(STATUS_PROBE_URLS) && STATUS_PROBE_URLS.length >= 2);
+  for (const url of STATUS_PROBE_URLS) {
+    assert.match(url, /^https:\/\//);
+    assert.doesNotMatch(url, /google\.com|gstatic\.com/i);
+  }
+  console.log("ok /net/status probes are https-only and non-Google");
+}
+
 await testPrivateIpClassification();
 testHasPublicResolvedAddress();
 await testSsrfBlocksPrivate();
@@ -220,4 +230,5 @@ testToolsSchema();
 testSettingsToggle();
 testWhenToSearchPromptRules();
 testWebComplexityBudget();
+testStatusProbesAreHeadlessFetchOnly();
 console.log("all network-access tests passed");
