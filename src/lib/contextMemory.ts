@@ -506,16 +506,19 @@ export async function buildAgentMemoryAddendum(options: {
   sidecarUrl: string;
   signal?: AbortSignal;
   includeFiles?: string[];
+  /** Skip SUMMARY/TASKS/DECISIONS so chat-only asks are not drowned by old work. */
+  omitProjectPack?: boolean;
 }): Promise<string | null> {
   const {
     settings, query, session, projectRoot, sidecarUrl, signal, includeFiles = [],
+    omitProjectPack = false,
   } = options;
   const blocks: string[] = [];
   if (isMemoryLayerPreferencesEnabled(settings)) {
     const prefs = formatPreferencesAddendum(loadUserPreferences());
     if (prefs) blocks.push(prefs);
   }
-  if (isMemoryLayerProjectEnabled(settings)) {
+  if (isMemoryLayerProjectEnabled(settings) && !omitProjectPack) {
     const pack = await loadContextMemoryPack({
       settings, session, projectRoot, sidecarUrl, signal,
     });

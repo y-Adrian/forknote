@@ -12,8 +12,11 @@ import {
   inferExploreIntent,
   inferOfficeCreateIntent,
   isAnswerOnlySampleCodeRequest,
+  isChatOnlyDiagramAsk,
   looksLikeAnswerOnlyRequest,
+  looksLikeChatDiagramRequest,
   looksLikeMutationRequest,
+  looksLikeProjectGroundedAsk,
   resolveShellIntent,
 } from "../src/lib/agentTools.ts";
 
@@ -26,6 +29,20 @@ assert.ok(
     agentTurnSrc,
   ),
   "no hard isAnswerOnlySampleCodeRequest early-return in runAgentTurn",
+);
+assert.ok(
+  /isChatOnlyDiagramAsk\s*\(\s*trimmed\s*\)/.test(agentTurnSrc),
+  "runAgentTurn gates chat-only diagram asks",
+);
+assert.ok(
+  /omitProjectPack:\s*chatOnlyDiagramAsk/.test(agentTurnSrc),
+  "chat-only diagram omits project memory pack",
+);
+assert.ok(
+  /useNativeTools\s*=\s*Boolean\(\s*projectRoot\s*\)\s*&&\s*!chatOnlyDiagramAsk/.test(
+    agentTurnSrc,
+  ),
+  "chat-only diagram disables native tools",
 );
 
 function expectSampleCodeSoft(q: string) {
@@ -116,5 +133,30 @@ assert.deepEqual(inferExploreIntent("search for math.js"), {
   kind: "search",
   query: "math.js",
 });
+
+for (const q of [
+  "帮我随便画一个mermaid的图",
+  "随便画个流程图",
+  "画一个时序图",
+  "draw a mermaid flowchart",
+  "generate a plantuml sequence diagram",
+]) {
+  assert.ok(looksLikeChatDiagramRequest(q), `chat diagram: ${q}`);
+  assert.ok(isChatOnlyDiagramAsk(q), `chat-only diagram: ${q}`);
+  assert.ok(looksLikeAnswerOnlyRequest(q), `answer-only diagram: ${q}`);
+  assert.equal(looksLikeMutationRequest(q), false, `not mutation: ${q}`);
+}
+
+assert.equal(
+  looksLikeChatDiagramRequest("根据本项目画一个架构图"),
+  false,
+  "project-grounded diagram keeps tools path",
+);
+assert.ok(looksLikeProjectGroundedAsk("根据本项目画一个架构图"));
+assert.equal(
+  isChatOnlyDiagramAsk("根据本项目画一个架构图"),
+  false,
+  "not hard chat-only when project-grounded",
+);
 
 console.log("smoke-answer-only-intent: ok");
