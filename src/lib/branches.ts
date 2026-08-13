@@ -20,6 +20,24 @@ export function countBranchesInThread(thread: ThreadRoot): number {
   );
 }
 
+/** Deepest fork nesting under a node list (0 = no branches). */
+export function maxBranchDepth(nodes: BranchNode[], depth = 0): number {
+  let max = depth;
+  for (const node of nodes) {
+    max = Math.max(max, maxBranchDepth(node.children, depth + 1));
+  }
+  return max;
+}
+
+export function maxBranchDepthInThread(thread: ThreadRoot): number {
+  let max = 0;
+  for (const m of thread.messages) {
+    if (m.role !== "assistant") continue;
+    max = Math.max(max, maxBranchDepth(m.children));
+  }
+  return max;
+}
+
 export function allBranchesInThread(thread: ThreadRoot): BranchNode[] {
   const list: BranchNode[] = [];
   const walk = (nodes: BranchNode[]) => {

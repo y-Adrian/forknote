@@ -1196,12 +1196,13 @@ body {
 
 .ds-branch-rail {
   flex-shrink: 0;
-  width: 160px;
+  /* Fallback; BranchRail sets an inline width from fork depth. */
+  width: 28px;
   position: relative;
   overflow: hidden;
   pointer-events: none;
   border-left: 1px solid var(--ds-border);
-  background: linear-gradient(90deg, var(--ds-accent-soft) 0%, transparent 60%);
+  background: linear-gradient(90deg, var(--ds-accent-soft) 0%, transparent 85%);
 }
 
 .ds-branch-rail svg {

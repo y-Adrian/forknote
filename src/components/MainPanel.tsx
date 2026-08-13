@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { messagesAfterArchive } from "../lib/archive";
-import { countBranchesInThread } from "../lib/branches";
+import { countBranchesInThread, maxBranchDepthInThread } from "../lib/branches";
 import {
   resolveConversationContext,
   resolveThreadView,
@@ -17,7 +17,7 @@ import { copyTextToClipboard } from "../lib/clipboard";
 import { useAppStore } from "../store/useAppStore";
 import type { ArchiveSnapshot, ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
-import { BranchRail } from "./BranchRail";
+import { BranchRail, branchRailWidthPx } from "./BranchRail";
 import { ForkHistoryMap } from "./ForkHistoryMap";
 import { AgentPlanReview } from "./AgentPlanReview";
 import {
@@ -226,6 +226,10 @@ export function MainPanel({
 
   const forkCount = useMemo(
     () => (thread ? countBranchesInThread(thread) : 0),
+    [thread],
+  );
+  const branchRailWidth = useMemo(
+    () => (thread ? branchRailWidthPx(maxBranchDepthInThread(thread)) : 0),
     [thread],
   );
 
@@ -1115,7 +1119,11 @@ export function MainPanel({
           </footer>
         </div>
         {showArchiveDoc ? (
-          <div className="ds-branch-rail" aria-hidden />
+          <div
+            className="ds-branch-rail"
+            style={{ width: branchRailWidth }}
+            aria-hidden
+          />
         ) : (
           <BranchRail thread={thread} scrollRef={scrollRef} />
         )}

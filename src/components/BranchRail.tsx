@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { maxBranchDepthInThread } from "../lib/branches";
 import type { BranchNode, ThreadRoot } from "../types";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
@@ -21,13 +22,25 @@ interface Props {
 }
 
 // ── Layout constants ───────────────────────────────────────
-const RAIL_W  = 160;
 const TRUNK_X = 12;   // trunk line x (left side)
 const X_STEP  = 32;   // horizontal shift per depth level
 const Y_START = 22;   // first branch offset below forkY
 const Y_GAP   = 28;   // vertical gap between DFS-ordered nodes
 const TRUNK_R = 5.5;
 const NODE_R  = 4.5;
+const RAIL_PAD = 10;
+/** Room for the short 10-char label drawn beside a leaf. */
+const LABEL_W = 62;
+const RAIL_W_MAX = 160;
+
+/** Compact when trunk-only; grow with fork depth + label, never past RAIL_W_MAX. */
+export function branchRailWidthPx(maxDepth: number): number {
+  if (maxDepth <= 0) return Math.ceil(TRUNK_X + TRUNK_R + RAIL_PAD);
+  return Math.min(
+    RAIL_W_MAX,
+    Math.ceil(TRUNK_X + maxDepth * X_STEP + NODE_R + 5 + LABEL_W + RAIL_PAD),
+  );
+}
 
 // ── Colors (muted lavender / amethyst) ─────────────────────
 const C_TRUNK_LINE  = "rgba(168,152,200,0.20)";
@@ -149,13 +162,22 @@ export function BranchRail({ thread, scrollRef }: Props) {
     openBranchFloat(branch.id, rect, null);
   };
 
+  const railW = useMemo(
+    () => branchRailWidthPx(maxBranchDepthInThread(thread)),
+    [thread],
+  );
+
   if (msgs.length === 0) return null;
 
   return (
-    <div className="ds-branch-rail" aria-label={t("fork.railAria")}>
+    <div
+      className="ds-branch-rail"
+      style={{ width: railW }}
+      aria-label={t("fork.railAria")}
+    >
       <svg
         ref={svgRef}
-        width={RAIL_W}
+        width={railW}
         height={totalH}
         style={{ transform: `translateY(${-scrollTop}px)` }}
         overflow="visible"
