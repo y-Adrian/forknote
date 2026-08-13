@@ -17,6 +17,7 @@ import {
   usePendingInlineApproval,
 } from "./InlineToolApproval";
 import { AgentActivityPanels } from "./ProjectStatusBar";
+import { MangaCloudBubble } from "./MangaCloudBubble";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -70,9 +71,9 @@ function TurnBlock({
     >
       {questionText ? (
         <div className="fn-msg fn-msg-user float-branch-msg">
-          <div className="ds-bubble ds-bubble-user ds-bubble-user--manga">
+          <MangaCloudBubble>
             <p>{questionText}</p>
-          </div>
+          </MangaCloudBubble>
         </div>
       ) : null}
       {showAssistant ? (
