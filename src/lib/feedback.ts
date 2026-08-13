@@ -267,6 +267,9 @@ export function describePointFeedbackForAgent(input: {
 /**
  * Remove feedback-policy parentheticals the model sometimes copies into
  * user-visible point text (from agent-context annotations).
+ *
+ * Only strip horizontal indent — never `\s` with `/m`, or blank lines collapse
+ * and a following `---` becomes a CommonMark setext heading (oversized h2).
  */
 export function stripLeakedFeedbackMeta(text: string): string {
   return text
@@ -279,7 +282,7 @@ export function stripLeakedFeedbackMeta(text: string): string {
       "",
     )
     .replace(/[ \t]{2,}/g, " ")
-    .replace(/^\s+/gm, "")
+    .replace(/^[ \t]+/gm, "")
     .trim();
 }
 
