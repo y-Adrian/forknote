@@ -4,6 +4,9 @@ import remarkGfm from "remark-gfm";
 import { splitAdoptedSegments } from "../lib/adoptBranch";
 import { useLocale } from "../lib/i18n";
 import {
+  createContext,
+  memo,
+  useContext,
   useState,
   type HTMLAttributes,
   type ImgHTMLAttributes,
@@ -22,6 +25,13 @@ interface Props {
    */
   streaming?: boolean;
 }
+
+/**
+ * Streaming flag for fenced diagram code. Must live outside the per-render
+ * `components` map — inline `code`/`pre` lambdas remount Mermaid/images on
+ * every parent state change (header clicks, network toggle, verdicts, etc.).
+ */
+const MarkdownStreamingContext = createContext(false);
 
 function languageFromClass(className?: string): string | null {
   if (!className) return null;
@@ -154,12 +164,51 @@ function MarkdownImage({
   );
 }
 
+/** Stable across MarkdownBody renders — identity must not change. */
+function MarkdownPre({ children }: { children?: ReactNode }) {
+  return <>{children}</>;
+}
+
+function MarkdownCode({
+  className,
+  children,
+  node: _node,
+  ...props
+}: HTMLAttributes<HTMLElement> & ExtraProps) {
+  const streaming = useContext(MarkdownStreamingContext);
+  const text = String(children).replace(/\n$/, "");
+  const isFenced =
+    Boolean(languageFromClass(className)) || text.includes("\n");
+  if (isFenced) {
+    if (isDiagramFenceClass(className)) {
+      return (
+        <DiagramFence className={className} streaming={streaming}>
+          {children}
+        </DiagramFence>
+      );
+    }
+    return <FencedCodeBlock className={className}>{children}</FencedCodeBlock>;
+  }
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+}
+
+/** Module-stable map so react-markdown never remounts fences/images on parent churn. */
+const MARKDOWN_COMPONENTS: Components = {
+  pre: MarkdownPre,
+  img: MarkdownImage,
+  code: MarkdownCode,
+};
+
 /**
  * Markdown updates in place. While `streaming`, diagram fences defer render
  * (see DiagramFence) so we must not remount on every token — and we also avoid
  * remounting when streaming ends, which used to collapse layout and yank chat scroll.
  */
-export function MarkdownBody({
+export const MarkdownBody = memo(function MarkdownBody({
   content,
   skipAdoptedSplit = false,
   streaming = false,
@@ -199,42 +248,16 @@ export function MarkdownBody({
     if (only?.type === "markdown") markdown = only.text;
   }
 
-  const components: Components = {
-    // Custom fenced UI is a <div>; unwrap the wrapping <pre> so lists /
-    // point cards do not nest an extra pre around the code chrome.
-    pre({ children }) {
-      return <>{children}</>;
-    },
-    img({ src, alt, title }) {
-      return <MarkdownImage src={src} alt={alt} title={title} />;
-    },
-    code({ className, children, node: _node, ...props }: HTMLAttributes<HTMLElement> & ExtraProps) {
-      const text = String(children).replace(/\n$/, "");
-      const isFenced =
-        Boolean(languageFromClass(className)) || text.includes("\n");
-      if (isFenced) {
-        if (isDiagramFenceClass(className)) {
-          return (
-            <DiagramFence className={className} streaming={streaming}>
-              {children}
-            </DiagramFence>
-          );
-        }
-        return <FencedCodeBlock className={className}>{children}</FencedCodeBlock>;
-      }
-      return (
-        <code className={className} {...props}>
-          {children}
-        </code>
-      );
-    },
-  };
-
   return (
-    <div className="fn-markdown-mount">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {markdown}
-      </ReactMarkdown>
-    </div>
+    <MarkdownStreamingContext.Provider value={streaming}>
+      <div className="fn-markdown-mount">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={MARKDOWN_COMPONENTS}
+        >
+          {markdown}
+        </ReactMarkdown>
+      </div>
+    </MarkdownStreamingContext.Provider>
   );
-}
+});

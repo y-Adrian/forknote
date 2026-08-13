@@ -38,8 +38,22 @@ assert.ok(
   "copy source action must be wired",
 );
 assert.ok(
-  /MarkdownImage/.test(mdSrc) && /img\(\{/.test(mdSrc),
-  "markdown images must use MarkdownImage chrome",
+  /MarkdownImage/.test(mdSrc) && /img: MarkdownImage/.test(mdSrc),
+  "markdown images must use stable MarkdownImage component ref",
+);
+assert.ok(
+  /MARKDOWN_COMPONENTS/.test(mdSrc) &&
+    /MarkdownStreamingContext/.test(mdSrc) &&
+    /memo\(function MarkdownBody/.test(mdSrc),
+  "MarkdownBody must use a module-stable components map + streaming context (avoids Mermaid remount jitter)",
+);
+assert.ok(
+  !/const components: Components = \{/.test(mdSrc),
+  "must not rebuild react-markdown components inline each render",
+);
+assert.ok(
+  /memo\(function MermaidDiagram/.test(fenceSrc),
+  "MermaidDiagram should be memoized",
 );
 assert.ok(
   /chat\.image\.copyMarkdown/.test(i18nSrc) &&
@@ -54,6 +68,18 @@ assert.ok(
 assert.ok(
   /kind === "mermaid"/.test(fenceSrc) && /kind === "plantuml"/.test(fenceSrc),
   "DiagramFence still branches mermaid render vs plantuml source",
+);
+
+const cssSrc = readFileSync(join(root, "src/index.css"), "utf8");
+assert.ok(
+  /\.fn-network-toggle\.is-on\s*\{[^}]*background:\s*var\(--ds-link/s.test(
+    cssSrc,
+  ),
+  "network toggle ON state must use clear --ds-link blue background",
+);
+assert.ok(
+  !/\.fn-network-toggle\.is-on\s*\{[^}]*--ds-accent/s.test(cssSrc),
+  "network ON must not tint with --ds-accent (red)",
 );
 
 console.log("test-mermaid-diagram-fence: ok");
