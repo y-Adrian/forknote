@@ -120,27 +120,126 @@ export const GOAL_FOCUS_RULE = `目标与篇幅（重要）：
 - 回答尽可能凝练：先给结论或结果，必要处再补少量要点；信息过多会降低效率，避免长篇复述与堆砌背景。`;
 
 /** Point / step format shared by main chat and Clarify floats. */
-export const POINT_ANSWER_FORMAT = `回答格式要求（重要）：
-1. 将回答拆分为若干个可独立判断的观点或步骤，每个观点/步骤以「【N】」开头（N 为从 1 开始的编号），且【N】必须位于行首（不要写成 **【N】** 或夹在句中）。
-2. 每个分点应自成一体：一个结论、一个步骤或一个判断，便于用户逐点反馈。
-3. 分点前可以有 1～2 句简短引导；不要在分点之外添加大段结论。
-4. 分点数量按内容定：简单问题 1～3 个即可；较复杂问题一般不超过 5～6 个。不要为凑数而拆分。若用户主要只要一段示例代码，可先给代码再 1～2 个短分点，或仅用 1 个分点。
-5. 用户分点反馈是结构化校准信号（**未拒绝 = 默认采纳**）。目标不是最大化满意度，而是逼近该用户真正需要的决策方式：
-   - 「主动采纳」(权重高)：用户点了采纳 → 后续同类问题优先沿用。
-   - 「默认采纳」(同权)：用户未点拒绝 → 按已采纳处理，勿再当作未确认。
-   - 「被动使用」(如复制回答，权重高)：零成本强正信号，勿要求用户再点采纳。
-   - 「存疑」：降低该主题置信度并触发验证（补证据 / 列出假设 / 标明不确定）；用户点存疑后 UI 会以追问形式给出 Agent 假设，用户只需「对/不对」确认归因。
-   - 「不采纳」：强负信号；用户点不采纳后同样用 Agent 假设 + 二元确认收集归因。无确认归因时勿在当轮自我合理化，优先依据用户后续行为推断。该点之后未裁决的步骤视为已截断，勿再当作可行方案。
-6. **禁止**在对用户可见的回答里写反馈策略/权重元数据（如「默认采纳」「权重 1」「用户未拒绝，按已采纳处理」等括号说明）。【N】后直接写给用户看的内容；这些标注只属于系统内部上下文。
+export const POINT_ANSWER_FORMAT = `回答结构（重要 — 先判断问题类型，再决定是否用【N】分点）：
 
-示例格式：
-下面从三个方面分析这个问题。
+A. 偏事实 / 客观陈述（定义、含义、对错、数据、是什么、发生了什么、概念解释、查资料式问答）
+   → **不要**使用「【N】」分点，也不要提供采纳/不采纳结构。
+   → 用连贯段落或普通 Markdown（标题/列表仅用于阅读，不写成可裁决分点）直接给出准确答案即可。
 
-【1】第一个观点……
+B. 偏求助 / 指导 / 决策（怎么做、如何实现、求建议、求方案、步骤指导、该选哪条路线、帮我改进）
+   → 将可独立取舍的建议或步骤拆成「【N】」分点（N 从 1 起，且【N】必须在行首；不要写成 **【N】** 或夹在句中）。
+   → 每个分点自成一体：一个可采纳的结论、步骤或判断，便于用户逐点采纳/存疑/不采纳。
+   → 分点前可有 1～2 句引导；分点外不要再堆大段总结。
+   → 数量按需要：通常 2～5 个；不要为凑数而拆。示例代码可先贴代码，再附少量可裁决建议分点（若只需代码则可纯答、不用分点）。
 
-【2】第二个观点……
+C. 拿不准类型时：若答案主要是「告知事实」→ 走 A；若主要是「请用户选择/执行建议」→ 走 B。
 
-【3】第三个观点……`;
+分点反馈语义（仅当使用了【N】时生效；**未拒绝 = 默认采纳**）：
+- 主动采纳 / 默认采纳 / 被动使用（如复制）：正信号，后续可沿用。
+- 存疑：待验证；UI 会追问归因（对/不对）。
+- 不采纳：强负信号；其后未裁决步骤视为截断。
+- **禁止**在对用户可见回答里写「默认采纳」「权重」等元数据；【N】后直接写用户可读内容。
+
+指导类示例：
+可按下面几步做。
+
+【1】第一步……
+
+【2】第二步……
+
+事实类示例（不要用【N】）：
+\`useEffect\` 用于在函数组件中同步处理副作用。它在渲染之后运行，依赖数组决定何时重新执行。`;
+
+/**
+ * Heuristic: user is seeking advice / steps / a decision (eligible for 【N】 verdicts).
+ */
+export function looksLikeGuidanceRequest(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (
+    /怎么(?:办|做|写|改|用|实现|配置|部署)|如何(?:办|做|写|改|用|实现)|怎样(?:办|做)|帮我|求助|请指导|给(?:个|些)?建议|有没有建议|推荐|应该(?:怎么|如何)|该怎么|求方案|实施步骤|改进一下|优化一下|怎么选|选哪个|哪一种更好/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(how (?:do|to|should|can) (?:i|we|you)|help me|advise|advice|recommend|suggestion|what should i|best (?:way|practice)|guide me|please (?:fix|improve|optimize)|which (?:should|one|option))\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (/(?:还是|或者).{0,24}(?:好|合适|选)|vs\.?|versus/i.test(t) && t.length > 10) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Heuristic: user wants an objective / factual answer (no adopt/reject structure).
+ */
+export function looksLikeFactualRequest(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (looksLikeGuidanceRequest(t)) return false;
+  if (
+    /^(?:什么是|啥是|是什么|何为|定义一下|解释一下(?:什么是)?|what(?:'s| is| are)\b|define\b|explain what\b)/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /(?:是什么意思|什么意思|是啥意思|meaning of|what does .+ mean)/i.test(t)
+  ) {
+    return true;
+  }
+  if (
+    /^(?:谁|何时|哪里|多少|是否|有没有|对吗|对不对|是不是|true or false|when\b|where\b|who\b|how many\b|how much\b)/i.test(
+      t,
+    ) &&
+    t.length < 160
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:difference between|区别是什么|对比一下|和.+有什么区别)\b/i.test(t) &&
+    !/该选|应该用|推荐/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export type AnswerStructureMode = "guidance" | "factual" | "neutral";
+
+export function answerStructureModeForQuery(text: string): AnswerStructureMode {
+  if (looksLikeGuidanceRequest(text)) return "guidance";
+  if (looksLikeFactualRequest(text)) return "factual";
+  return "neutral";
+}
+
+/** Per-turn override appended to system prompt from the latest user message. */
+export function answerStructureHintForLatestUser(
+  text: string,
+  locale: Locale = getLocale(),
+): string | null {
+  const mode = answerStructureModeForQuery(text);
+  if (mode === "guidance") {
+    return locale === "zh"
+      ? "【本轮结构】用户在求助/求指导：请用【N】分点给出可独立采纳的建议或步骤，便于逐点反馈。"
+      : "[This turn] The user is asking for guidance: use 【N】 points for adoptable steps/options so they can accept or reject each one.";
+  }
+  if (mode === "factual") {
+    return locale === "zh"
+      ? "【本轮结构】用户在问偏事实/客观问题：直接连贯作答，禁止使用【N】分点与采纳结构。"
+      : "[This turn] The user asked a factual/objective question: answer in plain prose — do NOT use 【N】 adopt/reject points.";
+  }
+  return locale === "zh"
+    ? "【本轮结构】若主要是告知事实→不要用【N】；若主要是给可执行建议/步骤→再用【N】分点。"
+    : "[This turn] If you are mainly stating facts, skip 【N】 points; only use 【N】 when offering adoptable advice or steps.";
+}
 
 export const CHAT_SYSTEM = `你是友好、准确的对话助手（无本地项目工具）。使用 Markdown。
 
@@ -170,7 +269,7 @@ ${GOAL_FOCUS_RULE}
 5. 只把代码贴在 Markdown 里不会写入磁盘；用户若只要片段，贴代码即可。
 6. 路径用相对项目根的相对路径（如 soft/hello.c），不要用绝对路径（shell 命令里的绝对路径除外）。
 7. 新建纯文本用 write_file（结果含 diff）；修改已有文件优先 search_replace / apply_patch；删除/重命名用 delete_file / rename_file；Word 用 write_docx / read_docx；Excel 用 write_xlsx / read_xlsx / patch_xlsx；TypeScript 可用 run_diagnostics；提交用 git_commit（必须指定 paths，禁止 add -A / push）；跑测试/构建/shell 用 run_terminal。
-8. 工具执行完后再用凝练回复对准用户目标；可用【N】分点，但不要用分点代替工具调用，也不要写成冗长「总结报告」。
+8. 工具执行完后再用凝练回复对准用户目标。收束时同样遵守「事实纯答 / 求助用【N】分点」：不要用分点代替工具调用，也不要写成冗长「总结报告」。
 9. 禁止在未调用工具、未收到工具结果前声称文件已创建或已写入磁盘。
 10. 复杂任务分多轮：先工具、看结果、再工具；全部完成后再简短收束，不要第一轮只描述计划就结束。
 11. 只服务用户最新一条消息的意图；不要自动继续历史里未完成的旧计划，除非用户明确要求继续。若用户追问「结果呢 / what is the result」，应基于上一轮命令的真实工具输出作答，或重新调用 run_terminal，禁止编造无关操作（如删除 node_modules）。`;
@@ -321,8 +420,18 @@ export function buildConversationMessages(
   thread: ThreadRoot,
   options?: ConversationOptions,
 ): ApiChatMessage[] {
-  const system = conversationBaseSystem(options);
+  let system = conversationBaseSystem(options);
   const locale = options?.locale ?? getLocale();
+  const lastUser = [...thread.messages]
+    .reverse()
+    .find((m) => m.role === "user" && m.content.trim());
+  const structureHint = answerStructureHintForLatestUser(
+    lastUser?.content ?? "",
+    locale,
+  );
+  if (structureHint) {
+    system = `${system.trimEnd()}\n\n${structureHint}`;
+  }
 
   // Archive only when a concrete snapshot is supplied (same rule as resolveConversationContext)
   if (options?.contextMode === "archive" && options.activeArchive) {
@@ -420,7 +529,9 @@ export function buildClarifyAddendumMessages(
 - 纯概念澄清时保持简洁；项目任务则按任务需要完成（含计划批准后的多轮工具调用）。
 - 上下文里的用户分点反馈是结构化校准信号（未拒绝 = 默认采纳；不采纳看已确认归因；存疑要验证）：目标是逼近该用户真正需要的决策方式，而非讨好。归因来自 Agent 假设 + 用户「对/不对」确认，不是多选表单。
 
-${POINT_ANSWER_FORMAT}`,
+${POINT_ANSWER_FORMAT}
+
+${answerStructureHintForLatestUser(userQuestion, locale) ?? ""}`,
     locale,
   );
 
@@ -490,7 +601,9 @@ export function buildClarifyContinueAddendumMessages(
 - 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度。
 - 纯概念澄清时保持简洁；项目任务则按任务需要完成。
 
-${POINT_ANSWER_FORMAT}`,
+${POINT_ANSWER_FORMAT}
+
+${answerStructureHintForLatestUser(userQuestion, locale) ?? ""}`,
     locale,
   );
 
