@@ -45,6 +45,14 @@ ok(
   stripLeakedFeedbackMeta(leaked) === "写一篇博文大纲",
 );
 
+const lyricSep =
+  "好的，给你写一首原创的歌词。\n\n---\n\n《晚风经过的街角》\n\n主歌 A";
+ok(
+  "strip preserves blank lines around thematic breaks",
+  stripLeakedFeedbackMeta(lyricSep) === lyricSep,
+  JSON.stringify(stripLeakedFeedbackMeta(lyricSep)),
+);
+
 const cp = formatCheckpointForArchive(content, { 2: "reject", 1: "accept" });
 ok(
   "checkpoint lists default-adopt semantics",

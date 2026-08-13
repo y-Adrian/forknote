@@ -8,7 +8,10 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { MARKDOWN_REMARK_PLUGINS } from "../src/lib/markdownRemark.ts";
+import {
+  MARKDOWN_REMARK_PLUGINS,
+  remarkDisableSetext,
+} from "../src/lib/markdownRemark.ts";
 
 const SAMPLE_LYRICS = `好的，给你写一首原创的歌词。
 
@@ -31,12 +34,19 @@ const SAMPLE_LYRICS = `好的，给你写一首原创的歌词。
 
 想调整风格都可以继续说。`;
 
-function countBreaks(plugins: typeof MARKDOWN_REMARK_PLUGINS): number {
+function parseWithPlugins(
+  content: string,
+  plugins: typeof MARKDOWN_REMARK_PLUGINS,
+) {
   const processor = unified().use(remarkParse);
   for (const plugin of plugins) {
     processor.use(plugin as never);
   }
-  const tree = processor.runSync(processor.parse(SAMPLE_LYRICS));
+  return processor.runSync(processor.parse(content));
+}
+
+function countBreaks(plugins: typeof MARKDOWN_REMARK_PLUGINS): number {
+  const tree = parseWithPlugins(SAMPLE_LYRICS, plugins);
   let breaks = 0;
   visit(tree, "break", () => {
     breaks += 1;
@@ -47,11 +57,7 @@ function countBreaks(plugins: typeof MARKDOWN_REMARK_PLUGINS): number {
 function stanzaChildTypes(
   plugins: typeof MARKDOWN_REMARK_PLUGINS,
 ): string[] | null {
-  const processor = unified().use(remarkParse);
-  for (const plugin of plugins) {
-    processor.use(plugin as never);
-  }
-  const tree = processor.runSync(processor.parse(SAMPLE_LYRICS));
+  const tree = parseWithPlugins(SAMPLE_LYRICS, plugins);
   let types: string[] | null = null;
   visit(tree, "paragraph", (node) => {
     if (types) return;
@@ -65,6 +71,11 @@ function stanzaChildTypes(
   return types;
 }
 
+assert.equal(
+  MARKDOWN_REMARK_PLUGINS[0],
+  remarkDisableSetext,
+  "MARKDOWN_REMARK_PLUGINS must disable setext first",
+);
 assert.ok(
   MARKDOWN_REMARK_PLUGINS.includes(remarkGfm),
   "MARKDOWN_REMARK_PLUGINS must include remark-gfm",
@@ -80,7 +91,7 @@ assert.ok(
   `expected soft breaks for lyric lines, got ${withBreaks}`,
 );
 
-const withoutBreaks = countBreaks([remarkGfm]);
+const withoutBreaks = countBreaks([remarkDisableSetext, remarkGfm]);
 assert.equal(
   withoutBreaks,
   0,
@@ -94,19 +105,40 @@ assert.ok(
   `verse paragraph should interleave break nodes, got ${types!.join(",")}`,
 );
 
+// Intro + --- must stay paragraph + hr (not setext h2), even without blank lines.
+const setextTrap = `好的，给你写一首原创的歌词。\n---\n\n《晚风经过的街角》`;
+const setextTree = parseWithPlugins(setextTrap, MARKDOWN_REMARK_PLUGINS);
+const setextTypes = (setextTree.children ?? []).map((c) => c.type);
+assert.deepEqual(
+  setextTypes,
+  ["paragraph", "thematicBreak", "paragraph"],
+  `--- after intro must not become setext h2, got ${setextTypes.join(",")}`,
+);
+const lyricTree = parseWithPlugins(SAMPLE_LYRICS, MARKDOWN_REMARK_PLUGINS);
+assert.equal(
+  lyricTree.children?.[0]?.type,
+  "paragraph",
+  "lyric intro must be paragraph, not heading",
+);
+
 // GFM table still parses (remark-breaks must not wreck pipe tables).
 const tableMd = `| a | b |
 | - | - |
 | 1 | 2 |`;
-const tableProcessor = unified().use(remarkParse);
-for (const plugin of MARKDOWN_REMARK_PLUGINS) {
-  tableProcessor.use(plugin as never);
-}
-const tableTree = tableProcessor.runSync(tableProcessor.parse(tableMd));
+const tableTree = parseWithPlugins(tableMd, MARKDOWN_REMARK_PLUGINS);
 let sawTable = false;
 visit(tableTree, "table", () => {
   sawTable = true;
 });
 assert.ok(sawTable, "GFM tables must still parse with remark-breaks wired");
+
+// ATX headings still work without setext.
+const atxTree = parseWithPlugins("## Title\n\nbody", MARKDOWN_REMARK_PLUGINS);
+assert.equal(atxTree.children?.[0]?.type, "heading");
+assert.equal(
+  // @ts-expect-error depth on heading
+  atxTree.children?.[0]?.depth,
+  2,
+);
 
 console.log("test-markdown-soft-breaks: ok");
