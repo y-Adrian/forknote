@@ -305,7 +305,7 @@ const en = {
   "projectPanel.connecting": "Connecting…",
   "projectSettings.agentMaxRounds": "Agent tool rounds (per message)",
   "projectSettings.agentMaxRoundsHint":
-    "Hard cap on model↔tool loops per send (1–128, default 50), including Network-only web_search/web_fetch turns. Network-only tasks also use a soft complexity budget (simple ≈8, multi ≈16) that never exceeds this value — raise this if you still hit the tool-round limit. Ends early when the task is done.",
+    "Hard cap on model↔tool loops per send (1–128, default 50), including Network-only web_search/web_fetch turns. This value is always the effective hard stop — Network complexity only guides how eagerly the agent searches (via Reflect), and never lowers this cap. Ends early when the task is done.",
   "projectSettings.agentRequireApproval": "Require plan approval before tools",
   "projectSettings.agentRequireApprovalHint":
     "When a project is connected, the agent drafts a plan first. Tools run only after you approve.",
@@ -1012,7 +1012,7 @@ const zh: Record<MessageKey, string> = {
   "projectPanel.connecting": "连接中…",
   "projectSettings.agentMaxRounds": "Agent 工具循环轮数（每条消息）",
   "projectSettings.agentMaxRoundsHint":
-    "单次发送的模型↔工具硬上限（1–128，默认 50），含仅联网的 web_search/web_fetch 回合。联网问答还会套一层复杂度软预算（简单约 8、复杂约 16），且不会超过本值——若仍看到工具轮数上限提示，可在此调高。任务完成会提前结束。",
+    "单次发送的模型↔工具硬上限（1–128，默认 50），含仅联网的 web_search/web_fetch 回合。此值始终是生效的硬上限——联网复杂度只影响检索意愿（经 Reflect 引导），不会把上限压低。任务完成会提前结束。",
   "projectSettings.agentRequireApproval": "执行工具前需批准计划",
   "projectSettings.agentRequireApprovalHint":
     "连接项目后，Agent 会先输出计划；你点击「批准并执行」后才会读写文件。",

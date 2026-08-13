@@ -104,8 +104,8 @@ export async function resolveNetworkReachability(args: {
 }
 
 /**
- * Soft web-tool round budget by task complexity (network-only turns).
- * Prefer Reflect for "search again" — this is a ceiling, not "search once".
+ * Web-task complexity for prompt / Reflect guidance (not a hard round cap).
+ * Prefer Reflect for "search again" — scale eagerness with complexity.
  */
 export type WebTaskComplexity = "simple" | "multi";
 
@@ -125,14 +125,19 @@ export function estimateWebTaskComplexity(userText: string): WebTaskComplexity {
 }
 
 /**
- * Soft ceilings for network-only turns (web_search / web_fetch loops).
- * Always min'd with Settings → Project `agentMaxRounds` (never raises above it).
- * 3 was too tight for search → fetch → Reflect → answer; keep a usable floor.
+ * Advisory soft guidance for network-only search depth (prompt / Reflect hints).
+ * NOT a hard stop — `runAgentTurn` always uses Settings → Project `agentMaxRounds`.
+ * These numbers are suggestions for "prefer fewer searches on simple asks"; they must
+ * never silently override a higher user setting.
  */
 export const WEB_TOOL_ROUND_BUDGET_SIMPLE = 8;
 export const WEB_TOOL_ROUND_BUDGET_MULTI = 16;
 
-/** Soft cap for web tool batches; never raises above agentMaxRounds. */
+/**
+ * Advisory soft suggestion only (min of soft default and settings).
+ * Callers must not use this as the tool-loop hard limit — that is
+ * always `resolveAgentMaxRounds(settings)`.
+ */
 export function resolveWebToolRoundBudget(
   complexity: WebTaskComplexity,
   agentMaxRounds: number,
