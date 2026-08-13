@@ -6,9 +6,11 @@ import {
   applyUiFontPreference,
   resolveInitialUiFontPreference,
 } from "./lib/uiFont";
+import { initTextZoom } from "./lib/textZoom";
 import "./index.css";
 
 applyUiFontPreference(resolveInitialUiFontPreference(), false);
+initTextZoom();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

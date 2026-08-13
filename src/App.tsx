@@ -12,6 +12,7 @@ import {
   SIDEBAR_NARROW_MQ,
 } from "./lib/layout";
 import { parseShareHash } from "./lib/sessionShare";
+import { useTextZoomShortcuts } from "./lib/useTextZoomShortcuts";
 import { useAppStore } from "./store/useAppStore";
 
 function readShareToken(): string | null {
@@ -21,6 +22,7 @@ function readShareToken(): string | null {
 
 export default function App() {
   const { t } = useLocale();
+  useTextZoomShortcuts();
   const init = useAppStore((s) => s.init);
   const settings = useAppStore((s) => s.settings);
   const settingsOpen = useAppStore((s) => s.settingsOpen);
