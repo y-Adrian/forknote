@@ -131,10 +131,12 @@ export function anchorForAnswerPoint(
   }
 
   const slice = content.slice(start, end).trim();
+  // Prefer point body (no 【N】) — matches PointizedAnswer DOM for reopen highlights.
+  const quoted = point.content.trim() || slice;
   return {
     startOffset: start,
     endOffset: end,
-    quotedText: slice || point.content,
+    quotedText: quoted,
     pointIndex,
   };
 }
