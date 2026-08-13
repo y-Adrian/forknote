@@ -454,10 +454,10 @@ const en = {
     "Screen shows the clarification history; sends still use the archive log as the base",
   "main.contextModeAria": "Prior conversation view",
   "main.switchContextAria": "Switch how prior conversation is shown",
-  "main.archiveContext": "Archive log",
+  "main.archiveContext": "Archive",
   "main.archiveContextTitle":
     "Show the archive document; follow-up chat uses it as the base",
-  "main.liveConversation": "Full conversation",
+  "main.liveConversation": "Live",
   "main.liveConversationTitle":
     "Leave archive mode and show the original full thread",
   "main.fullThread": "Evolution",
@@ -465,13 +465,13 @@ const en = {
     "Show the clarification history; sends still use the archive log",
   "main.archiveBaseKicker": "Archive base",
   "main.archivesCount": "{count} archives",
-  "main.archiveHistory": "Archive history",
+  "main.archiveHistory": "History",
   "main.archivesViewTitle": "Switch among past archives",
   "main.archive": "Archive",
   "main.archiving": "Archiving…",
   "main.archiveTitle":
     "Archive: turn the main thread into a development-log snapshot (for reading / continuing). Not the same as Compress memory pack.",
-  "main.compress": "Compress context",
+  "main.compress": "Compress",
   "main.compressing": "Compressing…",
   "main.compressTitle":
     "Compress: write SUMMARY.md, TASKS.md, and DECISIONS.md for next-turn restore. Separate from Archive.",

@@ -5630,25 +5630,23 @@ mark.branch-highlight:hover {
   gap: 6px;
 }
 
-/* Primary controls stay on one row; scroll horizontally if the viewport is tight.
-   Do not shrink controls below content width — that caused labels to paint over neighbors. */
+/* Fit all controls on one row without a horizontal scrollbar.
+   Prefer compact type + padding; do not shrink labels under their text
+   (that caused overlap). */
 .fn-composer-toolbar-row {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px 8px;
+  gap: 4px;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
 
 .fn-composer-toolbar-sep {
   flex-shrink: 0;
   color: var(--ds-muted);
-  font-size: var(--fn-text-ui-xs);
+  font-size: 0.7rem;
   line-height: 1;
   user-select: none;
 }
@@ -5659,9 +5657,9 @@ mark.branch-highlight:hover {
 }
 
 .fn-composer-toolbar-row .fn-project-chip {
-  max-width: 108px;
-  padding: 2px 8px;
-  font-size: var(--fn-text-ui-xs);
+  max-width: none;
+  padding: 2px 7px;
+  font-size: 0.7rem;
   font-weight: 600;
 }
 
@@ -5671,8 +5669,8 @@ mark.branch-highlight:hover {
 }
 
 .fn-composer-toolbar-row .btn.ghost.sm {
-  padding: 2px 8px;
-  font-size: var(--fn-text-ui-xs);
+  padding: 2px 6px;
+  font-size: 0.7rem;
   white-space: nowrap;
 }
 
@@ -5680,24 +5678,24 @@ mark.branch-highlight:hover {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: max-content;
 }
 
 .fn-composer-toolbar-row .fn-context-segment {
   flex: 0 0 auto;
-  padding: 2px;
+  padding: 1px;
   min-width: max-content;
 }
 
 .fn-composer-toolbar-row .fn-context-seg {
-  padding: 3px 8px;
-  font-size: 0.72rem;
+  padding: 2px 7px;
+  font-size: 0.7rem;
 }
 
 .fn-composer-toolbar-row .fn-archive-btn {
-  padding: 2px 8px;
-  font-size: var(--fn-text-ui-xs);
+  padding: 2px 6px;
+  font-size: 0.7rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -5729,12 +5727,21 @@ mark.branch-highlight:hover {
     display: none;
   }
 
-  .fn-composer-toolbar-row .fn-composer-memory-actions {
-    margin-left: 4px;
+  .fn-composer-toolbar-row {
+    gap: 3px;
   }
 
+  .fn-composer-toolbar-row .fn-composer-memory-actions {
+    margin-left: 2px;
+  }
+
+  .fn-composer-toolbar-row .fn-context-seg,
+  .fn-composer-toolbar-row .fn-archive-btn,
+  .fn-composer-toolbar-row .btn.ghost.sm,
   .fn-composer-toolbar-row .fn-project-chip {
-    max-width: 88px;
+    padding-left: 5px;
+    padding-right: 5px;
+    font-size: 0.66rem;
   }
 }
 

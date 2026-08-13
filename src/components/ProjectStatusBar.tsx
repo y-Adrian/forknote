@@ -28,9 +28,16 @@ export function ProjectStatusBar({
     return false;
   });
 
-  const shortRoot = projectRoot
-    ? projectRoot.split(/[/\\]/).filter(Boolean).slice(-2).join("/")
-    : null;
+  const pathParts = projectRoot
+    ? projectRoot.split(/[/\\]/).filter(Boolean)
+    : [];
+  /** Toolbar row prefers a single folder name so the chip can show in full. */
+  const shortRoot =
+    pathParts.length === 0
+      ? null
+      : part === "row"
+        ? pathParts[pathParts.length - 1]
+        : pathParts.slice(-2).join("/");
 
   const showActivityPanel =
     agentExecuting && (agentActivity.length > 0 || agentChanges.length > 0);

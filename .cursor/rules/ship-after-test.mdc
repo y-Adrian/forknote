@@ -1,0 +1,15 @@
+---
+description: After a completed change with sufficient tests, open a PR and merge without asking
+alwaysApply: true
+---
+
+# Ship completed work without asking
+
+When a discrete task is finished and testing is sufficient:
+
+1. **Do not ask** whether to open a PR or merge.
+2. **Open a PR against `leading`**, follow the repo PR checklist (Issue link, single commit, unchecked Test plan on open, then check boxes + Test report).
+3. **Merge** once required checks pass (squash + delete branch unless the user said otherwise).
+4. Update local `leading` after merge.
+
+Still ask first only when: the user forbade push/PR, secrets/shared-state writes need explicit approval beyond this rule, or merge would be destructive/force-push to `leading`/`main`/`master`.
