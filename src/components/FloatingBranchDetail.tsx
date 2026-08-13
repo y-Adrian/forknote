@@ -20,7 +20,7 @@ import {
 import { AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
-import { AnimeLineBubble } from "./AnimeLineBubble";
+import { GlassMessageBubble } from "./GlassMessageBubble";
 import { TurnBusyIndicator } from "./TurnBusyIndicator";
 
 interface Props {
@@ -74,9 +74,9 @@ function TurnBlock({
     >
       {questionText ? (
         <div className="fn-msg fn-msg-user float-branch-msg">
-          <AnimeLineBubble>
+          <GlassMessageBubble>
             <p>{questionText}</p>
-          </AnimeLineBubble>
+          </GlassMessageBubble>
         </div>
       ) : null}
       {showAssistant ? (
