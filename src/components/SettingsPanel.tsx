@@ -669,6 +669,9 @@ function ProjectSettingsPanel() {
   const [terminalDraft, setTerminalDraft] = useState(
     settings.agentAllowTerminal ?? true,
   );
+  const [autoDiagDraft, setAutoDiagDraft] = useState(
+    settings.agentAutoDiagnostics ?? true,
+  );
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -677,12 +680,14 @@ function ProjectSettingsPanel() {
     setRoundsDraft(settings.agentMaxRounds ?? DEFAULT_AGENT_MAX_ROUNDS);
     setApprovalDraft(settings.agentRequireApproval ?? true);
     setTerminalDraft(settings.agentAllowTerminal ?? true);
+    setAutoDiagDraft(settings.agentAutoDiagnostics ?? true);
     setSaved(false);
   }, [
     sidecarUrl,
     settings.agentMaxRounds,
     settings.agentRequireApproval,
     settings.agentAllowTerminal,
+    settings.agentAutoDiagnostics,
   ]);
 
   const save = () => {
@@ -701,6 +706,7 @@ function ProjectSettingsPanel() {
       agentMaxRounds: clamped,
       agentRequireApproval: approvalDraft,
       agentAllowTerminal: terminalDraft,
+      agentAutoDiagnostics: autoDiagDraft,
     });
     saveSettings(nextSettings);
     setSettings(nextSettings);
@@ -771,6 +777,21 @@ function ProjectSettingsPanel() {
       </label>
       <p className="hint local-hint">
         {t("projectSettings.agentAllowTerminalHint")}
+      </p>
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={autoDiagDraft}
+          onChange={(e) => {
+            setAutoDiagDraft(e.target.checked);
+            setSaved(false);
+          }}
+        />
+        <span>{t("projectSettings.agentAutoDiagnostics")}</span>
+      </label>
+      <p className="hint local-hint">
+        {t("projectSettings.agentAutoDiagnosticsHint")}
       </p>
 
       {projectRoot ? (

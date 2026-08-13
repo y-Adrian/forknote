@@ -65,9 +65,15 @@ import {
 import { mergeReasoningChannels } from "./reasoning";
 import {
   resolveAgentAllowTerminal,
+  resolveAgentAutoDiagnostics,
   resolveAgentMaxRounds,
   resolveAgentRequireApproval,
 } from "./settings";
+import {
+  batchNeedsAutoDiagnostics,
+  formatAutoDiagnosticsFeedback,
+} from "./agentExecFeedback";
+import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, ThreadRoot } from "../types";
 
 export type AgentContentPatch = {
@@ -257,6 +263,7 @@ export async function runAgentTurn(
 
   const agentMaxRounds = resolveAgentMaxRounds(settings);
   const allowTerminal = resolveAgentAllowTerminal(settings);
+  const autoDiagnostics = resolveAgentAutoDiagnostics(settings);
   const projectTools = getProjectOpenAITools({ allowTerminal });
   const codingToolsSystem = projectRoot
     ? buildCodingToolsSystem(projectRoot, { allowTerminal })
@@ -1082,6 +1089,12 @@ export async function runAgentTurn(
       let wroteTarget = false;
       let batchHadTools = pending.length > 0;
       let batchHadSuccess = false;
+      /** Successful code-edit outcomes in this batch (for auto-diagnostics). */
+      const batchEditOutcomes: Array<{
+        tool: PendingCall["agent"]["tool"];
+        path?: string;
+        ok: boolean;
+      }> = [];
 
       const applyExecuted = (
         item: PendingCall,
@@ -1099,6 +1112,11 @@ export async function runAgentTurn(
             lastMutatingToolSuccesses += 1;
           }
         }
+        batchEditOutcomes.push({
+          tool: item.agent.tool,
+          path: item.agent.path,
+          ok: executed.ok,
+        });
         if (
           item.agent.tool === "write_file" &&
           executed.ok &&
@@ -1183,6 +1201,41 @@ export async function runAgentTurn(
           const executed = await runOne(item);
           if (signal.aborted) break;
           applyExecuted(item, executed);
+        }
+      }
+
+      if (
+        !signal.aborted &&
+        autoDiagnostics &&
+        projectRoot &&
+        batchNeedsAutoDiagnostics(batchEditOutcomes)
+      ) {
+        try {
+          const diag = await abortable(
+            runDiagnostics(sidecarUrl, signal),
+            signal,
+          );
+          const feedback = formatAutoDiagnosticsFeedback({
+            ok: diag.ok,
+            skipped: diag.skipped,
+            output: diag.output,
+          });
+          apiMessages.push({ role: "user", content: feedback });
+          onAgentActivity({
+            id: createId(),
+            at: Date.now(),
+            kind: diag.ok ? "info" : "error",
+            message: diag.ok
+              ? "auto diagnostics ok"
+              : "auto diagnostics failed",
+          });
+        } catch (e) {
+          if (signal.aborted) break;
+          const msg = e instanceof Error ? e.message : String(e);
+          apiMessages.push({
+            role: "user",
+            content: `【自动诊断】运行失败：${msg}`,
+          });
         }
       }
 

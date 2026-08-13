@@ -39,6 +39,7 @@ const APP_DEFAULTS: ApiSettings = {
   agentMaxRounds: DEFAULT_AGENT_MAX_ROUNDS,
   agentRequireApproval: true,
   agentAllowTerminal: true,
+  agentAutoDiagnostics: true,
 };
 
 export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
@@ -47,6 +48,10 @@ export function resolveAgentRequireApproval(settings: ApiSettings): boolean {
 
 export function resolveAgentAllowTerminal(settings: ApiSettings): boolean {
   return settings.agentAllowTerminal ?? true;
+}
+
+export function resolveAgentAutoDiagnostics(settings: ApiSettings): boolean {
+  return settings.agentAutoDiagnostics ?? true;
 }
 
 export function resolveAgentMaxRounds(settings: ApiSettings): number {
@@ -152,6 +157,8 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
       raw.agentRequireApproval ?? APP_DEFAULTS.agentRequireApproval,
     agentAllowTerminal:
       raw.agentAllowTerminal ?? APP_DEFAULTS.agentAllowTerminal,
+    agentAutoDiagnostics:
+      raw.agentAutoDiagnostics ?? APP_DEFAULTS.agentAutoDiagnostics,
   };
 }
 
