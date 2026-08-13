@@ -5833,12 +5833,11 @@ mark.branch-highlight:hover {
   z-index: 1;
 }
 
-/* Agent strips sit under the control row (not mixed into the button line). */
-.fn-composer-toolbar > .fn-agent-activity,
-.fn-composer-toolbar > .fn-agent-changes {
-  flex: none;
+/* Agent strips sit in the assistant turn (below thinking, above answer). */
+.fn-msg-assistant > .fn-agent-activity,
+.fn-msg-assistant > .fn-agent-changes {
   width: 100%;
-  margin: 0;
+  margin: 6px 0;
 }
 
 .fn-composer-toolbar-row .fn-composer-memory-actions {

@@ -27,7 +27,7 @@ import {
 import { ChatComposer } from "./ChatComposer";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
-import { ProjectStatusBar } from "./ProjectStatusBar";
+import { ProjectStatusBar, AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
 import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
@@ -152,6 +152,13 @@ export function MainPanel({
       ? s.loadingBranchBySession[s.activeSessionId] ?? null
       : null,
   );
+  const showMainAgentActivity = useAppStore((s) => {
+    const sid = s.activeSessionId;
+    if (!sid) return false;
+    if (s.loadingMainBySession[sid]) return true;
+    const plan = s.agentPendingPlan;
+    return Boolean(plan && plan.sessionId === sid && !plan.branchId);
+  });
   const { pending: pendingInline, assistantId: pendingInlineAssistantId } =
     usePendingInlineApproval({ kind: "main" });
   const error = useAppStore((s) => s.error);
@@ -874,6 +881,10 @@ export function MainPanel({
                         }
                       />
                     ) : null}
+                    {showMainAgentActivity &&
+                    msg.id === lastThreadMessageId ? (
+                      <AgentActivityPanels />
+                    ) : null}
                     {msg.content ? (
                       <>
                         <div className="ds-bubble ds-bubble-assistant">
@@ -1172,8 +1183,6 @@ export function MainPanel({
                   </div>
                 )}
               </div>
-
-              <ProjectStatusBar onOpenProject={onOpenProject} part="panels" />
             </div>
 
             <AgentPlanReview scope={{ kind: "main" }} />

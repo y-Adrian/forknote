@@ -16,6 +16,7 @@ import {
   InlineToolApproval,
   usePendingInlineApproval,
 } from "./InlineToolApproval";
+import { AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -38,6 +39,7 @@ function TurnBlock({
   thinkingSeconds,
   isLoading,
   showAnswerChrome,
+  showAgentActivity = false,
   children,
 }: {
   question: string;
@@ -47,6 +49,8 @@ function TurnBlock({
   isLoading: boolean;
   /** Initial clarify turn vs nested same-window follow-up (visual separator only). */
   showAnswerChrome: boolean;
+  /** Live agent tool log for this turn (below thinking, above answer). */
+  showAgentActivity?: boolean;
   children?: ReactNode;
 }) {
   const { t } = useLocale();
@@ -80,6 +84,7 @@ function TurnBlock({
               streaming={isLoading}
             />
           ) : null}
+          {showAgentActivity ? <AgentActivityPanels /> : null}
           {isLoading && !hasAnswer ? (
             !hasReasoning ? (
               <div className="ds-typing" aria-label={t("chat.thinking")}>
@@ -357,6 +362,10 @@ export function FloatingBranchDetail({
           thinkingSeconds={branch.thinkingSeconds}
           isLoading={loadingInitial}
           showAnswerChrome
+          showAgentActivity={
+            (isLoadingThis && !loadingLatestReply) ||
+            (pendingPlanForThis && replies.length === 0)
+          }
         >
           <div ref={answerRef}>
             <SelectableMarkdown
@@ -432,6 +441,10 @@ export function FloatingBranchDetail({
             thinkingSeconds={activeReply.thinkingSeconds}
             isLoading={loadingLatestReply}
             showAnswerChrome={false}
+            showAgentActivity={
+              loadingLatestReply ||
+              (pendingPlanForThis && replies.length > 0)
+            }
           >
             <SelectableMarkdown
               content={activeReply.assistantMessage}

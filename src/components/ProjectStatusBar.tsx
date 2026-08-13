@@ -3,6 +3,57 @@ import { useLocale } from "../lib/i18n";
 
 type ProjectStatusPart = "all" | "row" | "panels";
 
+/** Mid-turn agent tool log + file changes (hidden when the session is idle). */
+export function AgentActivityPanels() {
+  const { t } = useLocale();
+  const agentActivity = useAppStore((s) => s.agentActivity);
+  const agentChanges = useAppStore((s) => s.agentChanges);
+  const agentExecuting = useAppStore((s) => {
+    const sid = s.activeSessionId;
+    if (!sid) return false;
+    if (s.loadingMainBySession[sid]) return true;
+    if (s.loadingBranchBySession[sid]) return true;
+    if (s.agentPendingPlan?.sessionId === sid) return true;
+    return false;
+  });
+
+  if (!agentExecuting || (agentActivity.length === 0 && agentChanges.length === 0)) {
+    return null;
+  }
+
+  return (
+    <>
+      {agentActivity.length > 0 && (
+        <ul className="fn-agent-activity" aria-label={t("projectBar.activityAria")}>
+          {agentActivity.slice(-6).map((a) => (
+            <li key={a.id} className={`is-${a.kind}`}>
+              {a.message}
+            </li>
+          ))}
+        </ul>
+      )}
+      {agentChanges.length > 0 && (
+        <div className="fn-agent-changes">
+          <div className="fn-agent-changes-title">{t("projectBar.changes")}</div>
+          <ul>
+            {agentChanges.map((c) => (
+              <li key={`${c.path}-${c.at}`}>
+                <div className="fn-agent-changes-row">
+                  <code>{c.path}</code>
+                  <span className="fn-agent-changes-meta">{c.size} B</span>
+                </div>
+                {c.diff ? (
+                  <pre className="fn-agent-changes-diff">{c.diff}</pre>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Compact chip + activity / changes for the connected local project. */
 export function ProjectStatusBar({
   onOpenProject,
@@ -14,19 +65,7 @@ export function ProjectStatusBar({
 }) {
   const { t } = useLocale();
   const projectRoot = useAppStore((s) => s.projectRoot);
-  const agentActivity = useAppStore((s) => s.agentActivity);
-  const agentChanges = useAppStore((s) => s.agentChanges);
-  const clearAgentLog = useAppStore((s) => s.clearAgentLog);
   const disconnectProject = useAppStore((s) => s.disconnectProject);
-  /** Tool / agent log is mid-turn only — hide the strip when the session is idle. */
-  const agentExecuting = useAppStore((s) => {
-    const sid = s.activeSessionId;
-    if (!sid) return false;
-    if (s.loadingMainBySession[sid]) return true;
-    if (s.loadingBranchBySession[sid]) return true;
-    if (s.agentPendingPlan?.sessionId === sid) return true;
-    return false;
-  });
 
   const pathParts = projectRoot
     ? projectRoot.split(/[/\\]/).filter(Boolean)
@@ -38,9 +77,6 @@ export function ProjectStatusBar({
       : part === "row"
         ? pathParts[pathParts.length - 1]
         : pathParts.slice(-2).join("/");
-
-  const showActivityPanel =
-    agentExecuting && (agentActivity.length > 0 || agentChanges.length > 0);
 
   const showRow = part === "all" || part === "row";
   const showPanels = part === "all" || part === "panels";
@@ -75,49 +111,10 @@ export function ProjectStatusBar({
           {t("common.disconnect")}
         </button>
       )}
-      {showActivityPanel && (
-        <button
-          type="button"
-          className="btn ghost sm"
-          onClick={() => clearAgentLog()}
-        >
-          {t("projectBar.clearLog")}
-        </button>
-      )}
     </div>
   ) : null;
 
-  const panels = showPanels && showActivityPanel ? (
-    <>
-      {agentActivity.length > 0 && (
-        <ul className="fn-agent-activity" aria-label={t("projectBar.activityAria")}>
-          {agentActivity.slice(-6).map((a) => (
-            <li key={a.id} className={`is-${a.kind}`}>
-              {a.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      {agentChanges.length > 0 && (
-        <div className="fn-agent-changes">
-          <div className="fn-agent-changes-title">{t("projectBar.changes")}</div>
-          <ul>
-            {agentChanges.map((c) => (
-              <li key={`${c.path}-${c.at}`}>
-                <div className="fn-agent-changes-row">
-                  <code>{c.path}</code>
-                  <span className="fn-agent-changes-meta">{c.size} B</span>
-                </div>
-                {c.diff ? (
-                  <pre className="fn-agent-changes-diff">{c.diff}</pre>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  ) : null;
+  const panels = showPanels ? <AgentActivityPanels /> : null;
 
   if (part === "row") return row;
   if (part === "panels") return panels;
