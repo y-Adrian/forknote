@@ -33,8 +33,13 @@ assert.ok(
   "point format must not push 3–8 points by default",
 );
 assert.ok(
-  /1～3/.test(POINT_ANSWER_FORMAT),
-  "simple asks prefer 1–3 points",
+  POINT_ANSWER_FORMAT.includes("偏事实") &&
+    POINT_ANSWER_FORMAT.includes("不要**使用「【N】」"),
+  "factual asks must skip 【N】 adopt structure",
+);
+assert.ok(
+  POINT_ANSWER_FORMAT.includes("偏求助") && /2～5/.test(POINT_ANSWER_FORMAT),
+  "guidance asks may use a few 【N】 points",
 );
 
 assert.ok(
