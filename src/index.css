@@ -3657,16 +3657,16 @@ mark.branch-highlight:hover {
   box-shadow: var(--ds-composer-shadow);
   transition:
     border-color var(--dur-base) ease,
-    box-shadow var(--dur-base) ease,
-    transform var(--dur-fast) ease;
+    box-shadow var(--dur-base) ease;
 }
 
 .fn-composer:focus-within {
   border-color: var(--ds-accent);
+  /* Prefer shadow lift over transform — transform makes position:fixed
+     descendants (e.g. Session API modal) bind to the composer instead of the viewport. */
   box-shadow:
     var(--ds-composer-shadow),
     0 0 0 3px var(--ds-focus-ring);
-  transform: translate(-1px, -1px);
 }
 
 .fn-composer.is-compact {
