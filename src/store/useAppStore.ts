@@ -20,6 +20,7 @@ import { createId } from "../lib/id";
 import {
   buildCompressSource,
   compressChatMessages,
+  formatArchiveDraftAsCompressSource,
   isCompressAfterArchiveEnabled,
   loadContextMemoryPack,
   packThroughMessageId,
@@ -167,8 +168,9 @@ interface AppState {
   /**
    * Compress thread → SUMMARY.md + TASKS.md + DECISIONS.md
    * (project disk when bound, else session localStorage).
+   * Pass `sourceOverride` to reuse an archive draft (e.g. after Archive).
    */
-  compressContext: () => Promise<void>;
+  compressContext: (opts?: { sourceOverride?: string }) => Promise<void>;
   setContextMode: (mode: ContextMode, archiveId?: NodeId | null) => void;
   setThreadView: (view: ThreadView) => void;
   setArchivePanelOpen: (open: boolean) => void;
@@ -1182,10 +1184,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       if (isCompressAfterArchiveEnabled(settings)) {
-        // Fire after archive UI settles; compress uses its own loading flag
-        if (get().activeSessionId === sessionId) {
-          void get().compressContext();
-        }
+        // Reuse archive draft — do not re-summarize the same raw thread.
+        // Defer until `finally` clears loadingArchiveSessionId (compress guards on it).
+        const packSource = formatArchiveDraftAsCompressSource(trimmed);
+        queueMicrotask(() => {
+          if (get().activeSessionId === sessionId) {
+            void get().compressContext({ sourceOverride: packSource });
+          }
+        });
       }
     } catch (e) {
       if (!isAbortError(e)) {
@@ -1206,7 +1212,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  compressContext: async () => {
+  compressContext: async (opts) => {
     const sessionId = get().activeSessionId;
     if (!sessionId) return;
     if (
@@ -1220,7 +1226,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { settings, thread, projectRoot, sidecarUrl } = get();
     if (!thread) return;
 
-    const hasContent = thread.messages.some((m) => m.content.trim());
+    const override = opts?.sourceOverride?.trim() ?? "";
+    const hasContent =
+      Boolean(override) || thread.messages.some((m) => m.content.trim());
     if (!hasContent) return;
 
     const llm = settingsForSession(settings, getActiveSession(get()));
@@ -1230,7 +1238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const source = buildCompressSource(thread);
+    const source = override || buildCompressSource(thread);
     if (!source.trim()) return;
 
     if (compressAbortSessionId === sessionId) {
