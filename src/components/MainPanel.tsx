@@ -8,10 +8,16 @@ import {
 import { useLocale } from "../lib/i18n";
 import { COMPRESS_SUGGEST_MESSAGE_THRESHOLD } from "../lib/settings";
 import { displaySessionTitle } from "../lib/storage";
+import {
+  archiveRelativePath,
+  joinProjectPath,
+} from "../lib/archiveFiles";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { useAppStore } from "../store/useAppStore";
-import type { ChatMessage, NodeId } from "../types";
+import type { ArchiveSnapshot, ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
+import { ForkHistoryMap } from "./ForkHistoryMap";
 import { AgentPlanReview } from "./AgentPlanReview";
 import {
   InlineToolApproval,
@@ -24,6 +30,49 @@ import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
 import { SessionApiSettings } from "./SessionApiSettings";
 import { ThinkingBlock } from "./ThinkingBlock";
+
+function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
+  const { t } = useLocale();
+  const projectRoot = useAppStore((s) => s.projectRoot);
+  const [copied, setCopied] = useState(false);
+  const rel = archive.filePath?.trim() || archiveRelativePath(archive);
+  const abs = projectRoot ? joinProjectPath(projectRoot, rel) : null;
+  const onDisk = archive.storage === "project" && Boolean(archive.filePath);
+
+  const copyPath = async () => {
+    const text = abs ?? rel;
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <div className="fn-archive-path-row">
+      {onDisk && abs ? (
+        <>
+          <code className="fn-archive-path" title={abs}>
+            {rel}
+          </code>
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={() => void copyPath()}
+            title={t("archive.copyPathTitle")}
+          >
+            {copied ? t("chat.copied") : t("archive.copyPath")}
+          </button>
+        </>
+      ) : (
+        <span className="fn-archive-path-hint">
+          {projectRoot
+            ? t("archive.pathPending")
+            : t("archive.pathNeedProject")}
+        </span>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   onOpenProject: () => void;
@@ -103,8 +152,8 @@ export function MainPanel({
   const stopGeneration = useAppStore((s) => s.stopGeneration);
   const archiveCurrent = useAppStore((s) => s.archiveCurrent);
   const compressContext = useAppStore((s) => s.compressContext);
-  const setArchivePanelOpen = useAppStore((s) => s.setArchivePanelOpen);
-  const setViewingArchiveId = useAppStore((s) => s.setViewingArchiveId);
+  const archiveDraft = useAppStore((s) => s.archiveDraft);
+  const archiveAlreadyCurrent = useAppStore((s) => s.archiveAlreadyCurrent);
   const setContextMode = useAppStore((s) => s.setContextMode);
   const setThreadView = useAppStore((s) => s.setThreadView);
 
@@ -117,8 +166,11 @@ export function MainPanel({
   /** Per-session dismiss for the long-thread compress suggestion. */
   const [compressSuggestDismissedFor, setCompressSuggestDismissedFor] =
     useState<NodeId | null>(null);
+  const [archiveHistoryOpen, setArchiveHistoryOpen] = useState(false);
+  const [forkMapOpen, setForkMapOpen] = useState(false);
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const archiveHistoryRef = useRef<HTMLDivElement>(null);
   /** When true, keep the chat pinned to the latest message as content grows. */
   const stickToBottomRef = useRef(true);
   const lastSentPromptRef = useRef("");
@@ -145,6 +197,7 @@ export function MainPanel({
   const threadView = resolveThreadView(activeSession, resolvedContext.mode);
   const showArchiveDoc =
     inArchiveMode && threadView === "archive" && Boolean(activeArchive);
+  const showArchiveDraft = loadingArchive;
 
   const forkCount = useMemo(
     () => (thread ? countBranchesInThread(thread) : 0),
@@ -195,6 +248,8 @@ export function MainPanel({
     setInput("");
     setOpenBranchId(null);
     setModeNotice(null);
+    setArchiveHistoryOpen(false);
+    setForkMapOpen(false);
     closeAllBranchFloats();
     const session = useAppStore
       .getState()
@@ -202,6 +257,25 @@ export function MainPanel({
     prevArchiveCountRef.current = session?.archives?.length ?? 0;
     prevLoadingArchiveRef.current = false;
   }, [activeSessionId, closeAllBranchFloats]);
+
+  useEffect(() => {
+    if (!archiveHistoryOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const el = archiveHistoryRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setArchiveHistoryOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setArchiveHistoryOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [archiveHistoryOpen]);
 
   useEffect(() => {
     return () => {
@@ -333,14 +407,14 @@ export function MainPanel({
     setOpenBranchId(branchId);
   };
 
-  const openArchivePanel = (archiveId?: NodeId | null) => {
-    setViewingArchiveId(
+  const openArchiveOnMain = (archiveId?: NodeId | null) => {
+    const targetId =
       archiveId ??
-        activeSession?.activeArchiveId ??
-        archives[archives.length - 1]?.id ??
-        null,
-    );
-    setArchivePanelOpen(true);
+      activeSession?.activeArchiveId ??
+      archives[archives.length - 1]?.id ??
+      null;
+    if (!targetId) return;
+    setContextMode("archive", targetId);
   };
 
   const dismissModeNotice = () => {
@@ -358,6 +432,11 @@ export function MainPanel({
       archives[archives.length - 1]?.id;
     if (!targetId) return;
     setContextMode("archive", targetId);
+  };
+
+  const switchToLiveConversation = () => {
+    setContextMode("live");
+    dismissModeNotice();
   };
 
   const submit = () => {
@@ -478,29 +557,82 @@ export function MainPanel({
         </div>
         {forkCount > 0 && (
           <div className="fn-chat-header-meta">
-            <span
+            <button
+              type="button"
               className="fn-fork-chip"
               title={t("main.forksTitle")}
+              aria-haspopup="dialog"
+              aria-expanded={forkMapOpen}
+              onClick={() => setForkMapOpen(true)}
             >
               {t("main.forks", { count: forkCount })}
-            </span>
+            </button>
           </div>
         )}
       </header>
+
+      {thread ? (
+        <ForkHistoryMap
+          thread={thread}
+          open={forkMapOpen}
+          onClose={() => setForkMapOpen(false)}
+          scrollRef={scrollRef}
+        />
+      ) : null}
 
       <div className="ds-chat-body">
         <div className="ds-chat-column">
           <div className="ds-chat-scroll" ref={scrollRef}>
             <div className="ds-messages">
-              {showArchiveDoc && activeArchive ? (
+              {showArchiveDraft ? (
                 <div className="fn-msg fn-msg-assistant">
-                  <article className="fn-archive-base">
+                  <article className="fn-archive-base" aria-busy="true">
                     <span className="fn-archive-base-kicker">
                       {t("main.archiveBaseKicker")}
                     </span>
                     <h2 className="fn-archive-base-title">
+                      {t("main.archiving")}
+                    </h2>
+                    {archiveDraft.trim() ? (
+                      <div className="answer-body">
+                        <MarkdownBody content={archiveDraft} />
+                      </div>
+                    ) : (
+                      <div className="fn-archive-loading" aria-busy="true">
+                        <div className="ds-typing" aria-label={t("archive.generatingAria")}>
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                        <p>{t("archive.generating")}</p>
+                      </div>
+                    )}
+                  </article>
+                </div>
+              ) : null}
+              {showArchiveDoc && activeArchive && !loadingArchive ? (
+                <div className="fn-msg fn-msg-assistant">
+                  <article className="fn-archive-base">
+                    <div className="fn-archive-base-toolbar">
+                      <span className="fn-archive-base-kicker">
+                        {t("main.archiveBaseKicker")}
+                        {archiveAlreadyCurrent
+                          ? ` · ${t("archive.hintUpToDateShort")}`
+                          : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        title={t("main.liveConversationTitle")}
+                        onClick={switchToLiveConversation}
+                      >
+                        {t("main.liveConversation")}
+                      </button>
+                    </div>
+                    <h2 className="fn-archive-base-title">
                       {activeArchive.title}
                     </h2>
+                    <ArchivePathRow archive={activeArchive} />
                     <div className="answer-body">
                       <MarkdownBody content={activeArchive.content} />
                     </div>
@@ -630,7 +762,10 @@ export function MainPanel({
                   <button
                     type="button"
                     className="fn-context-banner-btn"
-                    onClick={() => openArchivePanel(modeNotice.archiveId)}
+                    onClick={() => {
+                      openArchiveOnMain(modeNotice.archiveId);
+                      dismissModeNotice();
+                    }}
                   >
                     {t("main.viewArchive")}
                   </button>
@@ -711,6 +846,16 @@ export function MainPanel({
                   >
                     <button
                       type="button"
+                      className={`fn-context-seg${!inArchiveMode ? " is-active" : ""}`}
+                      aria-pressed={!inArchiveMode}
+                      disabled={composerBusy}
+                      title={t("main.liveConversationTitle")}
+                      onClick={switchToLiveConversation}
+                    >
+                      {t("main.liveConversation")}
+                    </button>
+                    <button
+                      type="button"
                       className={`fn-context-seg${inArchiveMode && threadView === "archive" ? " is-active" : ""}`}
                       aria-pressed={inArchiveMode && threadView === "archive"}
                       disabled={composerBusy}
@@ -723,7 +868,7 @@ export function MainPanel({
                       type="button"
                       className={`fn-context-seg${threadView === "evolution" ? " is-active" : ""}`}
                       aria-pressed={threadView === "evolution"}
-                      disabled={composerBusy}
+                      disabled={composerBusy || !inArchiveMode}
                       title={t("main.fullThreadTitle")}
                       onClick={() => setThreadView("evolution")}
                     >
@@ -731,15 +876,54 @@ export function MainPanel({
                     </button>
                   </div>
 
-                  {archives.length > 1 && (
-                    <button
-                      type="button"
-                      className="fn-archive-view-btn"
-                      title={t("main.archivesViewTitle")}
-                      onClick={() => openArchivePanel()}
+                  {archives.length > 0 && (
+                    <div
+                      className="fn-archive-history"
+                      ref={archiveHistoryRef}
                     >
-                      {t("main.archivesCount", { count: archives.length })}
-                    </button>
+                      <button
+                        type="button"
+                        className={`fn-archive-btn fn-archive-history-btn${archiveHistoryOpen ? " is-open" : ""}`}
+                        disabled={composerBusy}
+                        aria-expanded={archiveHistoryOpen}
+                        aria-haspopup="listbox"
+                        title={t("main.archivesViewTitle")}
+                        onClick={() => setArchiveHistoryOpen((open) => !open)}
+                      >
+                        {t("main.archiveHistory")}
+                        <span className="fn-archive-history-caret" aria-hidden>
+                          ▾
+                        </span>
+                      </button>
+                      {archiveHistoryOpen ? (
+                        <div
+                          className="fn-context-menu fn-archive-history-menu"
+                          role="listbox"
+                          aria-label={t("main.archiveHistory")}
+                        >
+                          {[...archives].reverse().map((a) => {
+                            const active = a.id === activeArchive?.id;
+                            return (
+                              <button
+                                key={a.id}
+                                type="button"
+                                role="option"
+                                aria-selected={active}
+                                className={`fn-context-menu-item${active ? " is-active" : ""}`}
+                                onClick={() => {
+                                  switchToArchive(a.id);
+                                  setArchiveHistoryOpen(false);
+                                }}
+                              >
+                                <span className="fn-context-menu-title">
+                                  {a.title}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   )}
                 </div>
               )}

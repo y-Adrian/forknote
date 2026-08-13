@@ -9,7 +9,10 @@ function isPinned(session: ChatSession): boolean {
   return typeof session.pinnedAt === "number" && session.pinnedAt > 0;
 }
 
-/** Pinned first (by pinnedAt desc), then unpinned (by updatedAt desc). Stable within each set. */
+/**
+ * Sidebar order is fixed by creation time (oldest → newest / top → bottom).
+ * Selecting a session must not reshuffle; pin still floats a separate group.
+ */
 export function sortSessionsForSidebar(sessions: ChatSession[]): ChatSession[] {
   const pinned: ChatSession[] = [];
   const unpinned: ChatSession[] = [];
@@ -17,12 +20,13 @@ export function sortSessionsForSidebar(sessions: ChatSession[]): ChatSession[] {
     if (isPinned(session)) pinned.push(session);
     else unpinned.push(session);
   }
-  pinned.sort((a, b) => {
-    const pinDiff = (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0);
-    if (pinDiff !== 0) return pinDiff;
-    return b.updatedAt - a.updatedAt;
-  });
-  unpinned.sort((a, b) => b.updatedAt - a.updatedAt);
+  const byCreatedAsc = (a: ChatSession, b: ChatSession) => {
+    const createdDiff = a.createdAt - b.createdAt;
+    if (createdDiff !== 0) return createdDiff;
+    return a.id.localeCompare(b.id);
+  };
+  pinned.sort(byCreatedAsc);
+  unpinned.sort(byCreatedAsc);
   return [...pinned, ...unpinned];
 }
 
@@ -50,12 +54,14 @@ export function groupSessionsByDate(
       pinned.push(session);
       continue;
     }
-    if (session.updatedAt >= startOfToday) {
+    // Bucket by creation day so activity / selection never moves a note between groups.
+    const at = session.createdAt;
+    if (at >= startOfToday) {
       today.push(session);
-    } else if (session.updatedAt >= sevenDaysAgo) {
+    } else if (at >= sevenDaysAgo) {
       week.push(session);
     } else {
-      const d = new Date(session.updatedAt);
+      const d = new Date(at);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const list = older.get(key) ?? [];
       list.push(session);

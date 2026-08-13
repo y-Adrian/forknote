@@ -5,12 +5,18 @@ import {
 } from "../lib/agentTools";
 import { runAgentTurn } from "../lib/agentTurn";
 import {
+  archiveHasNewMaterial,
   archiveSystemPrompt,
   archiveTitleFromContent,
   archiveUserPrompt,
   buildArchiveSource,
+  buildIncrementalArchiveSource,
+  incrementalArchiveSystemPrompt,
+  incrementalArchiveUserPrompt,
   lastNonEmptyMessageId,
+  resolveBaseArchive,
 } from "../lib/archive";
+import { saveArchiveMarkdownToProject } from "../lib/archiveFiles";
 import {
   buildClarifyAddendumMessages,
   buildClarifyContinueAddendumMessages,
@@ -132,6 +138,11 @@ interface AppState {
   viewingArchiveId: NodeId | null;
   /** Streaming draft while archiveCurrent runs */
   archiveDraft: string;
+  /**
+   * Set when Archive is clicked but the latest snapshot already covers
+   * the thread (no LLM). Cleared when the panel closes or a new archive starts.
+   */
+  archiveAlreadyCurrent: boolean;
   error: string | null;
   branchFloatStack: BranchFloatEntry[];
   /** 递增后关闭所有划选追问浮层 */
@@ -228,12 +239,14 @@ interface AppState {
   replaceSessionStore: (store: SessionStore) => void;
   /** 重命名笔记；空标题拒绝。成功后锁定标题，不再被自动覆盖 */
   renameSession: (sessionId: NodeId, title: string) => boolean;
-  /** Pin / unpin a note; pinned notes sort above unpinned in the sidebar. */
+  /** Pin / unpin a note; pinned notes appear in a separate group (order still by createdAt). */
   togglePinSession: (sessionId: NodeId) => void;
   /** Set the model for the active session (snapshotted; empty clears to inherit settings). */
   setSessionApi: (api: SessionApiOverride | null) => void;
   clearSessionApi: () => void;
   setSessionMemory: (summary: string) => void;
+  /** Whether the session shares the project memory pack with other sessions. */
+  setShareMemory: (sessionId: NodeId, share: boolean) => void;
   saveContextMemoryFields: (fields: {
     summary?: string;
     tasks?: string;
@@ -359,6 +372,7 @@ function patchActiveSessionMeta(
       | "threadView"
       | "contextMemory"
       | "sessionMemory"
+      | "shareMemory"
     >
   >,
 ): ChatSession[] {
@@ -752,6 +766,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivePanelOpen: false,
   viewingArchiveId: null,
   archiveDraft: "",
+  archiveAlreadyCurrent: false,
   error: null,
   branchFloatStack: [],
   floatOverlayDismissToken: 0,
@@ -996,6 +1011,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         : {
             archiveDraft:
               get().loadingArchiveSessionId != null ? get().archiveDraft : "",
+            archiveAlreadyCurrent: false,
           }),
     });
   },
@@ -1091,16 +1107,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     const throughMessageId = lastNonEmptyMessageId(thread);
     if (!throughMessageId) return;
 
-    const llm = settingsForSession(settings, getActiveSession(get()));
+    const session = getActiveSession(get());
+    const previous = resolveBaseArchive(
+      session?.archives,
+      session?.activeArchiveId,
+    );
+    const feedbackLog = session?.feedbackLog;
+
+    // Already archived with no new interactions → show existing log inline (no LLM).
+    if (previous && !archiveHasNewMaterial(thread, previous, feedbackLog)) {
+      const nextSessions = patchActiveSessionMeta(get().sessions, sessionId, {
+        contextMode: "archive",
+        activeArchiveId: previous.id,
+        threadView: "archive",
+      });
+      persistSessions(nextSessions, get().activeSessionId);
+      set({
+        sessions: nextSessions,
+        archivePanelOpen: false,
+        viewingArchiveId: previous.id,
+        archiveDraft: "",
+        loadingArchiveSessionId: null,
+        archiveAlreadyCurrent: true,
+        error: null,
+      });
+      return;
+    }
+
+    const llm = settingsForSession(settings, session);
     const authError = requireApiKey(llm);
     if (authError) {
       set({ error: authError, settingsOpen: true, settingsTab: "api" });
       return;
     }
 
-    const source = buildArchiveSource(thread, {
-      feedbackLog: getActiveSession(get())?.feedbackLog,
-    });
+    const incremental = Boolean(previous);
+    const source = incremental
+      ? buildIncrementalArchiveSource(previous!, thread, { feedbackLog })
+      : buildArchiveSource(thread, { feedbackLog });
     if (!source.trim()) return;
 
     if (archiveAbortSessionId === sessionId) {
@@ -1110,13 +1154,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     archiveAbortCtrl = ctrl;
     archiveAbortSessionId = sessionId;
 
+    // Stream draft inline on the main page (no modal).
     set({
       loadingArchiveSessionId: sessionId,
-      archivePanelOpen: true,
+      archivePanelOpen: false,
       archiveDraft: "",
       viewingArchiveId: null,
+      archiveAlreadyCurrent: false,
       error: null,
     });
+    // Switch main view to archive mode so the draft appears in-place.
+    {
+      const nextSessions = patchActiveSessionMeta(get().sessions, sessionId, {
+        contextMode: "archive",
+        threadView: "archive",
+      });
+      persistSessions(nextSessions, get().activeSessionId);
+      set({ sessions: nextSessions });
+    }
 
     try {
       let content = "";
@@ -1124,10 +1179,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       await streamChat(
         llm,
         [
-          { role: "system", content: archiveSystemPrompt(locale) },
+          {
+            role: "system",
+            content: incremental
+              ? incrementalArchiveSystemPrompt(locale)
+              : archiveSystemPrompt(locale),
+          },
           {
             role: "user",
-            content: archiveUserPrompt(source, locale),
+            content: incremental
+              ? incrementalArchiveUserPrompt(source, locale)
+              : archiveUserPrompt(source, locale),
           },
         ],
         (delta) => {
@@ -1160,11 +1222,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         title: archiveTitleFromContent(trimmed, t("archive.defaultTitle", undefined, getLocale())),
         content: trimmed,
         throughMessageId,
+        storage: "local",
       };
 
+      const { projectRoot, sidecarUrl } = get();
+      if (projectRoot) {
+        const filePath = await saveArchiveMarkdownToProject({
+          snapshot,
+          projectRoot,
+          sidecarUrl,
+        });
+        if (filePath) {
+          snapshot.filePath = filePath;
+          snapshot.storage = "project";
+        }
+      }
+
       const { sessions } = get();
-      const session = sessions.find((s) => s.id === sessionId);
-      const archives = [...(session?.archives ?? []), snapshot];
+      const current = sessions.find((s) => s.id === sessionId);
+      const archives = [...(current?.archives ?? []), snapshot];
       const nextSessions = patchActiveSessionMeta(sessions, sessionId, {
         archives,
         contextMode: "archive",
@@ -1178,7 +1254,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? {
               viewingArchiveId: snapshot.id,
               archiveDraft: "",
-              archivePanelOpen: true,
+              archivePanelOpen: false,
+              archiveAlreadyCurrent: false,
             }
           : {}),
       });
@@ -1301,6 +1378,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const saved = await saveContextMemoryPack({
         pack: draft,
         settings,
+        session: get().sessions.find((s) => s.id === sessionId) ?? session,
         projectRoot,
         sidecarUrl,
         signal: ctrl.signal,
@@ -2048,11 +2126,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       decisions: fields.decisions ?? existing.decisions,
       updatedAt: Date.now(),
     };
-    const saved = await saveContextMemoryPack({ pack, settings, projectRoot, sidecarUrl });
+    const saved = await saveContextMemoryPack({
+      pack,
+      settings,
+      session,
+      projectRoot,
+      sidecarUrl,
+    });
     const nextSessions = patchActiveSessionMeta(get().sessions, activeSessionId, {
       contextMemory: saved,
     });
     persistSessions(nextSessions, get().activeSessionId);
+    set({ sessions: nextSessions });
+  },
+
+  setShareMemory: (sessionId, share) => {
+    const { sessions, activeSessionId } = get();
+    if (!sessions.some((s) => s.id === sessionId)) return;
+    const nextSessions = sessions.map((s) =>
+      s.id === sessionId
+        ? { ...s, shareMemory: share, updatedAt: Date.now() }
+        : s,
+    );
+    persistSessions(nextSessions, activeSessionId);
     set({ sessions: nextSessions });
   },
 

@@ -6,6 +6,7 @@ import {
   loadContextMemoryPack,
   MEMORY_FILES,
   type MemoryFileName,
+  resolveMemoryDir,
 } from "../lib/contextMemory";
 import { useLocale } from "../lib/i18n";
 import {
@@ -195,6 +196,7 @@ function ProjectPackEditor({ reloadToken = 0 }: { reloadToken?: number }) {
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const saveContextMemoryFields = useAppStore((s) => s.saveContextMemoryFields);
+  const setShareMemory = useAppStore((s) => s.setShareMemory);
   const session = sessions.find((s) => s.id === activeSessionId);
   const [pack, setPack] = useState<ContextMemoryPack | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -240,12 +242,31 @@ function ProjectPackEditor({ reloadToken = 0 }: { reloadToken?: number }) {
   return (
     <div className="fn-memory-section">
       <h4 className="ss-subhead">{t("memory.projectTitle")}</h4>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={session?.shareMemory !== false}
+          disabled={!session}
+          onChange={(e) => {
+            if (!session) return;
+            setShareMemory(session.id, e.target.checked);
+          }}
+        />
+        <span>
+          {t("memory.shareToggle")}
+          <span className="hint">{t("memory.shareToggleHint")}</span>
+        </span>
+      </label>
       <p className="ss-panel-lead ss-panel-hint">
-        {projectRoot
-          ? t("memory.projectLeadBound", {
-              dir: settings.memoryDir || ".forknote/memory",
+        {session?.shareMemory === false
+          ? t("memory.projectLeadIsolated", {
+              dir: resolveMemoryDir(settings, session),
             })
-          : t("memory.projectLeadLocal")}
+          : projectRoot
+            ? t("memory.projectLeadBound", {
+                dir: settings.memoryDir || ".forknote/memory",
+              })
+            : t("memory.projectLeadLocal")}
       </p>
       {MEMORY_FILES.map((file) => (
         <label key={file} className="fn-memory-file-label">
