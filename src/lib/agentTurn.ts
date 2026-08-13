@@ -90,7 +90,6 @@ import {
   estimateWebTaskComplexity,
   formatNetworkStatusSystem,
   resolveNetworkReachability,
-  resolveWebToolRoundBudget,
 } from "./networkAccess";
 import { runDiagnostics } from "./sidecar";
 import type { ApiSettings, ChatSession, FeedbackEvent, ThreadRoot } from "../types";
@@ -436,19 +435,17 @@ export async function runAgentTurn(
   }
 
   const networkOnlyTurn = preferPlainChat && allowNetworkTools && !chatOnlyDiagramAsk;
-  /** Soft ceiling for network-only turns; Reflect still decides whether to search again. */
-  const agentMaxRounds = networkOnlyTurn
-    ? resolveWebToolRoundBudget(webTaskComplexity, agentMaxRoundsBase)
-    : agentMaxRoundsBase;
+  /** Hard stop always = Settings → Project agentMaxRounds (never soft-capped below it). */
+  const agentMaxRounds = agentMaxRoundsBase;
   if (networkOnlyTurn) {
     const complexityHint =
       locale === "zh"
         ? webTaskComplexity === "simple"
-          ? "任务偏简单：优先直接作答或一次高质量检索；仅当结果不足时再经 Reflect 换查询。"
-          : "任务偏复杂：可多角度检索；每轮 Reflect 判断是否够用，不够再换关键词/抓取权威页，禁止无意义连搜。"
+          ? "任务偏简单：优先直接作答或一次高质量检索；仅当结果不足时再经 Reflect 换查询。工具轮数硬上限以设置为准，勿因简单任务提前硬停。"
+          : "任务偏复杂：可多角度检索；每轮 Reflect 判断是否够用，不够再换关键词/抓取权威页，禁止无意义连搜。工具轮数硬上限以设置为准。"
         : webTaskComplexity === "simple"
-          ? "Simple task: prefer a direct answer or one solid search; only Reflect→new query if results are insufficient."
-          : "Multi-angle task: search as needed; after each batch Reflect whether enough, then new query/fetch — no pointless search loops.";
+          ? "Simple task: prefer a direct answer or one solid search; only Reflect→new query if results are insufficient. The settings tool-round value is the hard stop — do not hard-stop early just because the task looks simple."
+          : "Multi-angle task: search as needed; after each batch Reflect whether enough, then new query/fetch — no pointless search loops. The settings tool-round value is the hard stop.";
     apiMessages.push({
       role: "system",
       content:

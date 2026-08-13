@@ -209,6 +209,7 @@ function testWebComplexityBudget() {
     estimateWebTaskComplexity("对比 React 与 Vue 2024 生态并列出多方来源"),
     "multi",
   );
+  // Advisory soft suggestions only — never the hard stop in runAgentTurn.
   assert.equal(WEB_TOOL_ROUND_BUDGET_SIMPLE, 8);
   assert.equal(WEB_TOOL_ROUND_BUDGET_MULTI, 16);
   assert.equal(resolveWebToolRoundBudget("simple", 50), WEB_TOOL_ROUND_BUDGET_SIMPLE);
@@ -217,7 +218,11 @@ function testWebComplexityBudget() {
   assert.equal(resolveWebToolRoundBudget("multi", 12), 12);
   assert.equal(resolveWebToolRoundBudget("multi", 2), 2);
   assert.equal(resolveWebToolRoundBudget("simple", 4), 4);
-  console.log("ok web complexity budget");
+  // Raised settings still only affects the advisory helper's upper bound;
+  // hard stop is resolveAgentMaxRounds (see test-agent-max-rounds.mts).
+  assert.equal(resolveWebToolRoundBudget("simple", 128), WEB_TOOL_ROUND_BUDGET_SIMPLE);
+  assert.equal(resolveWebToolRoundBudget("multi", 128), WEB_TOOL_ROUND_BUDGET_MULTI);
+  console.log("ok web complexity budget (advisory)");
 }
 
 function testStatusProbesAreHeadlessFetchOnly() {
