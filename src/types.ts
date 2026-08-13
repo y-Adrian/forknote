@@ -201,6 +201,11 @@ export interface ContextMemoryPack {
   summary: string;
   tasks: string;
   decisions: string;
+  /**
+   * Coding-specific notes: conventions, failed patterns, agent lessons.
+   * Stored as CODING.md under the memory dir; not part of LLM compress triad.
+   */
+  coding?: string;
   updatedAt: number;
   throughMessageId?: NodeId;
   /** project = sidecar files; local = session localStorage */

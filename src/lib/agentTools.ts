@@ -29,11 +29,18 @@ import {
   writeXlsx,
   type SearchHit,
 } from "./sidecar";
+import {
+  appendCodingMemoryNote,
+  loadContextMemoryPack,
+  resolveMemoryDir,
+  CODING_MEMORY_FILE,
+} from "./contextMemory";
 import { isDeniedTerminalCommand } from "./terminalDenyList";
 import {
   DEFAULT_AGENT_MAX_ROUNDS,
   MAX_AGENT_MAX_ROUNDS,
   MIN_AGENT_MAX_ROUNDS,
+  loadSettings,
 } from "./settings";
 
 export {
@@ -64,6 +71,7 @@ export type AgentToolName =
   | "find_references"
   | "dependency_graph"
   | "semantic_search"
+  | "coding_memory"
   | "delete_file"
   | "rename_file"
   | "run_diagnostics"
@@ -87,6 +95,8 @@ export type AgentToolCall = {
   query?: string;
   name?: string;
   focus?: string;
+  action?: string;
+  note?: string;
   title?: string;
   paragraphs?: string[];
   sheet_name?: string;
@@ -151,6 +161,7 @@ const TOOL_NAMES = new Set<string>([
   "find_references",
   "dependency_graph",
   "semantic_search",
+  "coding_memory",
   "delete_file",
   "rename_file",
   "run_diagnostics",
@@ -518,6 +529,27 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
   {
     type: "function",
     function: {
+      name: "coding_memory",
+      description:
+        "Read or append project coding memory (CODING.md): conventions, failed patterns, lessons. Prefer append after discovering a durable coding constraint.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            description: '"read" (default) or "append"',
+          },
+          note: {
+            type: "string",
+            description: "Required for append: short durable coding note",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "delete_file",
       description:
         "Delete a file, or an empty directory, relative to the project root. Non-empty directories are rejected.",
@@ -820,7 +852,7 @@ export function buildExecutionPhaseSystem(locale: Locale): string {
 }
 
 const TOOL_MENTION_RE =
-  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|semantic_search|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
+  /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|semantic_search|coding_memory|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/i;
 
 /** Disk-mutating tools excluding run_terminal (terminal is classified by command). */
 const DISK_MUTATING_TOOL_RE =
@@ -1150,7 +1182,7 @@ export function isPrimarilyTerminalPlan(
 
   const mentioned = [
     ...blob.matchAll(
-      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|semantic_search|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
+      /\b(write_file|list_dir|read_file|search_replace|apply_patch|write_docx|write_xlsx|read_docx|read_xlsx|patch_xlsx|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|semantic_search|coding_memory|delete_file|rename_file|run_diagnostics|git_status|git_diff|git_commit|run_terminal)\b/gi,
     ),
   ].map((m) => m[1]!.toLowerCase());
   const nonTerminal = mentioned.filter(
@@ -1328,7 +1360,11 @@ export function isMutatingAgentTool(
   tool: AgentToolName,
   command?: string | null,
   projectRoot?: string | null,
+  action?: string | null,
 ): boolean {
+  if (tool === "coding_memory") {
+    return codingMemoryMutates(action ?? undefined);
+  }
   if (tool === "run_terminal") {
     if (command != null && command.trim()) {
       return !isReadOnlyTerminalCommand(command, projectRoot);
@@ -1432,12 +1468,20 @@ export function isWriteTool(tool: AgentToolName): boolean {
   );
 }
 
+function codingMemoryMutates(action?: string): boolean {
+  return (action ?? "read").trim().toLowerCase() === "append";
+}
+
 /** True when a tool cannot change the disk (safe to run in parallel). */
 export function isReadOnlyAgentTool(
   tool: AgentToolName,
   command?: string,
   projectRoot?: string | null,
+  action?: string,
 ): boolean {
+  if (tool === "coding_memory") {
+    return !codingMemoryMutates(action);
+  }
   if (tool === "run_terminal") {
     return isReadOnlyTerminalCommand(command ?? "", projectRoot);
   }
@@ -1448,12 +1492,14 @@ export function batchNeedsWriteApproval(
   calls: AgentToolCall[],
   projectRoot?: string | null,
 ): boolean {
-  return calls.some(
-    (c) =>
-      c.tool !== "run_terminal"
-        ? isWriteTool(c.tool)
-        : !isReadOnlyTerminalCommand(c.command ?? "", projectRoot),
-  );
+  return calls.some((c) => {
+    if (c.tool === "coding_memory") {
+      return codingMemoryMutates(c.action);
+    }
+    return c.tool !== "run_terminal"
+      ? isWriteTool(c.tool)
+      : !isReadOnlyTerminalCommand(c.command ?? "", projectRoot);
+  });
 }
 
 /** System prompt appendix when a local project is bound. */
@@ -1463,8 +1509,8 @@ export function buildCodingToolsSystem(
 ): string {
   const allowTerminal = options?.allowTerminal !== false;
   const toolNames = allowTerminal
-    ? "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、dependency_graph、semantic_search、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
-    : "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、dependency_graph、semantic_search、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
+    ? "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、dependency_graph、semantic_search、coding_memory、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit、run_terminal"
+    : "list_dir、read_file、glob_files、search_files、find_symbol、go_to_definition、find_references、dependency_graph、semantic_search、coding_memory、mkdir、write_file、search_replace、apply_patch、delete_file、rename_file、write_docx、write_xlsx、read_docx、read_xlsx、patch_xlsx、run_diagnostics、git_status、git_diff、git_commit";
   const terminalBlock = allowTerminal
     ? `
 终端：
@@ -1487,6 +1533,7 @@ export function buildCodingToolsSystem(
 - 按符号名导航 → find_symbol / go_to_definition / find_references（TS/JS）
 - 依赖/影响面 → dependency_graph（可传 focus=文件路径）
 - 不知道文件名时按题意找代码 → semantic_search
+- 读写编码约定/失败教训 → coding_memory（action=read|append）
 - 列出目录 → list_dir（项目根用 path="."）——仅当用户要看项目内目录且未要求 shell/run/绝对路径 ls 时
 - 用户要「执行 shell / 终端 / run 命令」或带绝对路径的 ls → run_terminal，不要用 list_dir 顶替
 - 全文搜索 → search_files（子串；正则设 regex=true；可用 glob 限文件）
@@ -1618,6 +1665,8 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
     query: typeof args.query === "string" ? args.query : undefined,
     name: typeof args.name === "string" ? args.name : undefined,
     focus: typeof args.focus === "string" ? args.focus : undefined,
+    action: typeof args.action === "string" ? args.action : undefined,
+    note: typeof args.note === "string" ? args.note : undefined,
     title: typeof args.title === "string" ? args.title : undefined,
     sheet_name:
       typeof args.sheet_name === "string" ? args.sheet_name : undefined,
@@ -2247,6 +2296,7 @@ function inferToolFromPartialObject(
     return "find_references";
   if (/dependency_graph\b/i.test(assistantText)) return "dependency_graph";
   if (/semantic_search\b/i.test(assistantText) && query) return "semantic_search";
+  if (/coding_memory\b/i.test(assistantText)) return "coding_memory";
   if (/delete_file\b/i.test(assistantText) && path) return "delete_file";
   if (/rename_file\b/i.test(assistantText) && path) return "rename_file";
   if (/read_docx\b/i.test(assistantText) && path) return "read_docx";
@@ -2312,6 +2362,8 @@ function agentCallFromPartialObject(
     call.name = obj.name.trim();
   }
   if (typeof obj.focus === "string") call.focus = obj.focus.trim();
+  if (typeof obj.action === "string") call.action = obj.action.trim();
+  if (typeof obj.note === "string") call.note = obj.note;
   if (typeof obj.title === "string") call.title = obj.title;
   if (typeof obj.content === "string") call.content = obj.content;
   if (typeof obj.old_string === "string") call.old_string = obj.old_string;
@@ -3233,7 +3285,7 @@ export function stripToolCalls(text: string): string {
       const obj = JSON.parse(inner);
       if (looksLikeToolObject(obj) || looksLikeToolArgsObject(obj)) return "";
     } catch {
-      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|semantic_search|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
+      if (/"(?:name|tool)"\s*:\s*"(?:write_xlsx|write_docx|write_file|search_replace|apply_patch|list_dir|read_file|mkdir|search_files|glob_files|find_symbol|go_to_definition|find_references|dependency_graph|semantic_search|coding_memory|delete_file|rename_file|read_docx|read_xlsx|patch_xlsx|run_diagnostics|git_status|git_diff|git_commit|run_terminal)"/.test(inner)) {
         return "";
       }
     }
@@ -3921,6 +3973,55 @@ export async function executeToolCall(
           },
         };
       }
+      case "coding_memory": {
+        const action = (call.action ?? "read").trim().toLowerCase() || "read";
+        const settings = loadSettings();
+        if (action === "append") {
+          const note = (call.note ?? call.content ?? call.query ?? "").trim();
+          if (!note) {
+            return {
+              ok: false,
+              resultText: "Error: note is required for coding_memory append",
+              activity: {
+                kind: "error",
+                message: t("agent.activity.codingMemoryMissingNote", undefined, locale),
+              },
+            };
+          }
+          const { path, coding } = await appendCodingMemoryNote({
+            note,
+            settings,
+            projectRoot,
+            sidecarUrl,
+            signal,
+          });
+          return {
+            ok: true,
+            resultText: `Appended to ${path}\n\n${coding}`,
+            activity: {
+              kind: "write",
+              message: t("agent.activity.codingMemoryAppend", undefined, locale),
+            },
+            change: { path, size: coding.length },
+          };
+        }
+        const pack = await loadContextMemoryPack({
+          settings,
+          projectRoot,
+          sidecarUrl,
+          signal,
+        });
+        const body = pack?.coding?.trim() || "(empty CODING.md)";
+        const dir = resolveMemoryDir(settings);
+        return {
+          ok: true,
+          resultText: `${dir}/${CODING_MEMORY_FILE}\n\n${body}`,
+          activity: {
+            kind: "read",
+            message: t("agent.activity.codingMemoryRead", undefined, locale),
+          },
+        };
+      }
       case "delete_file": {
         const path = normalizeRelPath(call.path?.trim() || "", projectRoot);
         if (!path || path === ".") {
@@ -4345,6 +4446,8 @@ export function toolResultMessage(
           ? `dependency_graph focus=${JSON.stringify(call.focus ?? call.query ?? call.path ?? ".")}`
         : call.tool === "semantic_search"
           ? `semantic_search query=${JSON.stringify(call.query ?? "")}`
+        : call.tool === "coding_memory"
+          ? `coding_memory action=${JSON.stringify(call.action ?? "read")}`
         : call.tool === "run_terminal"
           ? `run_terminal command=${JSON.stringify(call.command ?? "")}`
           : call.tool === "git_commit"
