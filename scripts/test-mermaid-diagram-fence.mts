@@ -38,6 +38,11 @@ assert.ok(
   "copy source action must be wired",
 );
 assert.ok(
+  /chat\.diagram\.copyImage/.test(fenceSrc) &&
+    /copyDiagramImage/.test(fenceSrc),
+  "copy image action must be wired for rendered diagrams",
+);
+assert.ok(
   /MarkdownImage/.test(mdSrc) && /img: MarkdownImage/.test(mdSrc),
   "markdown images must use stable MarkdownImage component ref",
 );

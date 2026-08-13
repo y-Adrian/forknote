@@ -5,6 +5,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  copyDiagramImage,
+  type CopyDiagramImageResult,
+} from "../lib/copyDiagramImage";
 import { diagramKindFromLanguage } from "../lib/diagramFence";
 import { useLocale } from "../lib/i18n";
 import {
@@ -16,6 +20,8 @@ import {
 import { renderPlantuml } from "../lib/sidecar";
 import { useTheme, type Theme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
+
+type CopyImageFeedback = "idle" | CopyDiagramImageResult;
 
 function languageFromClass(className?: string): string | null {
   if (!className) return null;
@@ -140,6 +146,9 @@ function DiagramToolbar({
   onCopy,
   copied,
   canToggle,
+  onCopyImage,
+  copyImageFeedback = "idle",
+  canCopyImage = false,
 }: {
   language: string;
   showSource: boolean;
@@ -147,8 +156,19 @@ function DiagramToolbar({
   onCopy: () => void;
   copied: boolean;
   canToggle: boolean;
+  onCopyImage?: () => void;
+  copyImageFeedback?: CopyImageFeedback;
+  canCopyImage?: boolean;
 }) {
   const { t } = useLocale();
+  const imageLabel =
+    copyImageFeedback === "copied"
+      ? t("chat.diagram.imageCopied")
+      : copyImageFeedback === "downloaded"
+        ? t("chat.diagram.imageDownloaded")
+        : copyImageFeedback === "failed"
+          ? t("chat.diagram.copyImageFailed")
+          : t("chat.diagram.copyImage");
   return (
     <div className="fn-code-toolbar">
       <span className="fn-code-lang">{language}</span>
@@ -168,6 +188,17 @@ function DiagramToolbar({
             {showSource
               ? t("chat.diagram.viewDiagram")
               : t("chat.diagram.viewSource")}
+          </button>
+        ) : null}
+        {canCopyImage && onCopyImage ? (
+          <button
+            type="button"
+            className="fn-code-copy"
+            onClick={onCopyImage}
+            aria-label={imageLabel}
+            title={imageLabel}
+          >
+            {imageLabel}
           </button>
         ) : null}
         <button
@@ -197,7 +228,11 @@ const MermaidDiagram = memo(function MermaidDiagram({
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyImageFeedback, setCopyImageFeedback] =
+    useState<CopyImageFeedback>("idle");
   const renderGenRef = useRef(0);
+  const svgHostRef = useRef<HTMLDivElement>(null);
+  const copyImageTimerRef = useRef<number | null>(null);
 
   const copySource = async () => {
     try {
@@ -208,6 +243,32 @@ const MermaidDiagram = memo(function MermaidDiagram({
       // ignore
     }
   };
+
+  const handleCopyImage = () => {
+    void (async () => {
+      const svgEl = svgHostRef.current?.querySelector("svg");
+      const result = await copyDiagramImage({
+        svgElement: svgEl ?? null,
+        downloadName: "mermaid-diagram.png",
+      });
+      setCopyImageFeedback(result);
+      if (copyImageTimerRef.current != null) {
+        window.clearTimeout(copyImageTimerRef.current);
+      }
+      copyImageTimerRef.current = window.setTimeout(() => {
+        setCopyImageFeedback("idle");
+        copyImageTimerRef.current = null;
+      }, 1600);
+    })();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyImageTimerRef.current != null) {
+        window.clearTimeout(copyImageTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (streaming) {
@@ -364,8 +425,12 @@ const MermaidDiagram = memo(function MermaidDiagram({
         onCopy={() => void copySource()}
         copied={copied}
         canToggle
+        canCopyImage
+        onCopyImage={handleCopyImage}
+        copyImageFeedback={copyImageFeedback}
       />
       <div
+        ref={svgHostRef}
         className="fn-diagram-svg"
         // Mermaid SVG is sanitized under securityLevel: "strict"
         dangerouslySetInnerHTML={{ __html: svg }}
@@ -393,7 +458,11 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyImageFeedback, setCopyImageFeedback] =
+    useState<CopyImageFeedback>("idle");
   const renderGenRef = useRef(0);
+  const visualHostRef = useRef<HTMLDivElement>(null);
+  const copyImageTimerRef = useRef<number | null>(null);
 
   const copySource = async () => {
     try {
@@ -404,6 +473,38 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
       // ignore
     }
   };
+
+  const handleCopyImage = () => {
+    void (async () => {
+      const host = visualHostRef.current;
+      const svgEl = host?.querySelector("svg") ?? null;
+      const imgEl = host?.querySelector("img") ?? null;
+      const pngDataUrl =
+        visual?.kind === "png" ? visual.src : imgEl?.src ?? null;
+      const result = await copyDiagramImage({
+        svgElement: svgEl,
+        imageElement: svgEl ? null : imgEl,
+        pngDataUrl: svgEl ? null : pngDataUrl,
+        downloadName: "plantuml-diagram.png",
+      });
+      setCopyImageFeedback(result);
+      if (copyImageTimerRef.current != null) {
+        window.clearTimeout(copyImageTimerRef.current);
+      }
+      copyImageTimerRef.current = window.setTimeout(() => {
+        setCopyImageFeedback("idle");
+        copyImageTimerRef.current = null;
+      }, 1600);
+    })();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyImageTimerRef.current != null) {
+        window.clearTimeout(copyImageTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (mode === "off") {
@@ -545,14 +646,18 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
         onCopy={() => void copySource()}
         copied={copied}
         canToggle
+        canCopyImage
+        onCopyImage={handleCopyImage}
+        copyImageFeedback={copyImageFeedback}
       />
       {visual.kind === "svg" ? (
         <div
+          ref={visualHostRef}
           className="fn-diagram-svg"
           dangerouslySetInnerHTML={{ __html: visual.svg }}
         />
       ) : (
-        <div className="fn-diagram-svg">
+        <div ref={visualHostRef} className="fn-diagram-svg">
           <img src={visual.src} alt="PlantUML diagram" />
         </div>
       )}
