@@ -144,7 +144,7 @@ const en = {
 
   "api.title": "Default API",
   "api.lead":
-    "System-wide default connection used by new notes and any note that has not set its own API.",
+    "System-wide default connection used by new sessions and any session that has not set its own API.",
   "api.sessionRemarkTitle": "Per-session override",
   "api.sessionRemark":
     "You can change the API for a specific note from the composer — open Session API settings next to the input to override Base URL, key, model, or proxy for that note only.",
@@ -156,7 +156,7 @@ const en = {
   "api.model": "Default model",
   "api.modelPlaceholder": "Must match a locally loaded model name",
   "api.modelHint":
-    "Used by new notes and any note that has not set its own API settings. Override per note from the composer.",
+    "Used by new sessions and any session that has not set its own API settings. Override per session from the composer.",
   "api.useProxy":
     "Use local proxy in development (recommended for local models)",
   "api.hint":
@@ -347,7 +347,7 @@ const en = {
   "about.privacyBody2":
     "When you chat, messages are sent to the API endpoint you configure (cloud or local). We do not receive a copy of that traffic.",
 
-  "sidebar.notesAria": "Notes",
+  "sidebar.notesAria": "Sessions",
   "sidebar.expand": "Expand sidebar",
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.openList": "Open session list",
@@ -356,21 +356,21 @@ const en = {
   "sidebar.darkMode": "Dark mode",
   "sidebar.toLight": "Switch to light mode",
   "sidebar.toDark": "Switch to dark mode",
-  "sidebar.newNote": "New note",
-  "sidebar.empty": "No notes yet — ask a question on the right.",
+  "sidebar.newNote": "New session",
+  "sidebar.empty": "No sessions yet — ask a question on the right.",
   "sidebar.today": "Today",
   "sidebar.previous7": "Previous 7 days",
   "sidebar.rename": "Rename",
   "sidebar.pin": "Pin to top",
   "sidebar.unpin": "Unpin",
   "sidebar.share": "Share",
-  "sidebar.shareCopied": "Copied note to clipboard",
+  "sidebar.shareCopied": "Copied session to clipboard",
   "sidebar.shareFailed": "Could not copy to clipboard",
   "sidebar.pinned": "Pinned",
   "sidebar.delete": "Delete",
-  "sidebar.deleteConfirm": "Delete this note? This cannot be undone.",
+  "sidebar.deleteConfirm": "Delete this session? This cannot be undone.",
   "sidebar.deleteDontAskAgain": "Don't ask again",
-  "sidebar.renameAria": "Rename note",
+  "sidebar.renameAria": "Rename session",
   "sidebar.more": "More",
   "sidebar.moreAria": "More actions",
   "sidebar.renameHint": "{title} (double-click to rename)",
@@ -415,7 +415,7 @@ const en = {
   "main.step2": "Select unfamiliar text and clarify instantly",
   "main.step3": "Verdict each point — what works, what needs trust, what doesn't fit",
   "main.untitled": "Untitled",
-  "main.notesKicker": "notes",
+  "main.notesKicker": "",
   "main.forks": "{count} forks",
   "main.forksTitle": "Open fork nodes from the graph on the right",
   "main.thinking": "Thinking",
@@ -765,10 +765,10 @@ const zh: Record<MessageKey, string> = {
 
   "api.title": "默认 API",
   "api.lead":
-    "系统级默认连接，用于新建笔记以及尚未单独配置 API 的笔记。",
+    "系统级默认连接，用于新建会话以及尚未单独配置 API 的会话。",
   "api.sessionRemarkTitle": "按会话覆盖",
   "api.sessionRemark":
-    "每条笔记可使用不同的 API。在输入框旁打开「会话 API 设置」，即可仅覆盖该笔记的 Base URL、密钥、模型或代理。",
+    "每条会话可使用不同的 API。在输入框旁打开「会话 API 设置」，即可仅覆盖该会话的 Base URL、密钥、模型或代理。",
   "api.group.cloud": "云端 / 聚合",
   "api.group.china": "国内服务商",
   "api.group.local": "本地",
@@ -777,7 +777,7 @@ const zh: Record<MessageKey, string> = {
   "api.model": "默认模型",
   "api.modelPlaceholder": "须与本地已加载的模型名一致",
   "api.modelHint":
-    "用于新建笔记，以及尚未单独设置 API 的笔记。可在输入框旁按笔记覆盖。",
+    "用于新建会话，以及尚未单独设置 API 的会话。可在输入框旁按会话覆盖。",
   "api.useProxy": "开发环境使用本地代理（推荐用于本地模型）",
   "api.hint":
     "请先启动本地服务。Ollama 可运行 ollama list；模型名须与列表一致（如 qwen2.5:7b）。",
@@ -962,7 +962,7 @@ const zh: Record<MessageKey, string> = {
   "about.privacyBody2":
     "对话时，消息会发送到你配置的 API 端点（云端或本地）。我们不会收到该流量的副本。",
 
-  "sidebar.notesAria": "笔记",
+  "sidebar.notesAria": "会话",
   "sidebar.expand": "展开侧栏",
   "sidebar.collapse": "收起侧栏",
   "sidebar.openList": "打开会话列表",
@@ -971,8 +971,8 @@ const zh: Record<MessageKey, string> = {
   "sidebar.darkMode": "深色模式",
   "sidebar.toLight": "切换到浅色模式",
   "sidebar.toDark": "切换到深色模式",
-  "sidebar.newNote": "新建笔记",
-  "sidebar.empty": "还没有笔记 —— 在右侧提问即可。",
+  "sidebar.newNote": "新建会话",
+  "sidebar.empty": "还没有会话 —— 在右侧提问即可。",
   "sidebar.today": "今天",
   "sidebar.previous7": "近 7 天",
   "sidebar.rename": "重命名",
@@ -983,9 +983,9 @@ const zh: Record<MessageKey, string> = {
   "sidebar.shareFailed": "无法复制到剪贴板",
   "sidebar.pinned": "置顶",
   "sidebar.delete": "删除",
-  "sidebar.deleteConfirm": "删除这条笔记？此操作不可撤销。",
+  "sidebar.deleteConfirm": "删除这条会话？此操作不可撤销。",
   "sidebar.deleteDontAskAgain": "不再提示",
-  "sidebar.renameAria": "重命名笔记",
+  "sidebar.renameAria": "重命名会话",
   "sidebar.more": "更多",
   "sidebar.moreAria": "更多操作",
   "sidebar.renameHint": "{title}（双击重命名）",
@@ -1029,7 +1029,7 @@ const zh: Record<MessageKey, string> = {
   "main.step2": "选中不懂的文字，立刻澄清",
   "main.step3": "逐点裁决 —— 什么有效、哪里欠可信、什么不适合你",
   "main.untitled": "未命名",
-  "main.notesKicker": "笔记",
+  "main.notesKicker": "",
   "main.forks": "{count} 个分支",
   "main.forksTitle": "从右侧图谱打开分支节点",
   "main.thinking": "思考中",
