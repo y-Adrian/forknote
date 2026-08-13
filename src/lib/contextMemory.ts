@@ -558,6 +558,20 @@ export function buildCompressSource(thread: ThreadRoot): string {
   return buildArchiveSource(thread);
 }
 
+/**
+ * When Compress runs immediately after Archive, feed the archive draft instead of
+ * re-scanning the same raw thread (avoids a second full-thread summarization pass).
+ */
+export function formatArchiveDraftAsCompressSource(archiveMarkdown: string): string {
+  const body = archiveMarkdown.trim();
+  if (!body) return "";
+  return [
+    "【材料说明】以下为已生成的开发日志归档草稿（非原始聊天记录）。请据此更新 SUMMARY / TASKS / DECISIONS，勿假设还有更完整的原始对话。",
+    "",
+    body,
+  ].join("\n");
+}
+
 export function packThroughMessageId(thread: ThreadRoot): string | null {
   return lastNonEmptyMessageId(thread);
 }

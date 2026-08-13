@@ -170,13 +170,13 @@ const en = {
     "Add an API Key in settings for your configured endpoint, or switch to a local model such as Ollama.",
   "api.memoryPack.title": "Context memory pack",
   "api.memoryPack.lead":
-    "Chat → LLM compress → SUMMARY.md + TASKS.md + DECISIONS.md → inject on next ask. Prefer writing into the bound project; otherwise keep a draft on the note.",
+    "Compress context → SUMMARY.md + TASKS.md + DECISIONS.md → inject on next ask. Prefer writing into the bound project; otherwise keep a draft on the session. Separate from Archive (dev-log snapshot for reading/continuing).",
   "api.memoryPack.inject": "Inject project memory pack into main chat",
   "api.memoryPack.layersHint":
     "Preferences / session layers and the editable Memory UI live under Settings → Memory.",
   "api.memoryPack.afterArchive": "Also compress after Archive",
   "api.memoryPack.afterArchiveHint":
-    "Off by default — turn on here so Archive also runs Compress. Or use the Compress button when a long thread suggestion appears.",
+    "Off by default. When on, Archive success then Compress once using the archive draft (not a second full-thread pass). Or click Compress alone anytime.",
   "api.memoryPack.dir": "Memory folder (relative to project)",
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
   "api.memoryPack.windowTurns": "Live sliding window (turns)",
@@ -448,17 +448,17 @@ const en = {
   "main.archive": "Archive",
   "main.archiving": "Archiving…",
   "main.archiveTitle":
-    "Summarize the main thread and point verdicts into a development log draft",
+    "Archive: turn the main thread into a development-log snapshot (for reading / continuing). Not the same as Compress memory pack.",
   "main.compress": "Compress context",
   "main.compressing": "Compressing…",
   "main.compressTitle":
-    "Summarize this thread into SUMMARY.md, TASKS.md, and DECISIONS.md for next-turn restore",
+    "Compress: write SUMMARY.md, TASKS.md, and DECISIONS.md for next-turn restore. Separate from Archive.",
   "main.memory": "Memory",
   "main.memoryTitle": "Open Memory settings (layers, preferences, pack)",
   "main.compressDoneProject":
-    "Memory written under the project memory folder and saved on this note",
+    "Memory written under the project memory folder and saved on this session",
   "main.compressDoneSession":
-    "Memory saved on this note (bind a project to also write SUMMARY/TASKS/DECISIONS.md)",
+    "Memory saved on this session (bind a project to also write SUMMARY/TASKS/DECISIONS.md)",
   "main.compressSuggestText":
     "This thread is getting long — Compress into SUMMARY / TASKS / DECISIONS to keep later turns cheaper and clearer.",
   "main.compressSuggestAction": "Compress now",
@@ -790,12 +790,12 @@ const zh: Record<MessageKey, string> = {
     "请在设置中为当前端点填写 API Key，或改用 Ollama 等本地模型。",
   "api.memoryPack.title": "上下文记忆包",
   "api.memoryPack.lead":
-    "聊天 → LLM 压缩 → SUMMARY.md + TASKS.md + DECISIONS.md → 下次提问注入。优先写入已绑定项目；否则保存在本笔记草稿中。",
+    "压缩上下文 → SUMMARY.md + TASKS.md + DECISIONS.md → 下次提问注入。优先写入已绑定项目；否则保存在本会话草稿中。与「归档」（开发日志快照，用于阅读/续聊）是不同能力。",
   "api.memoryPack.inject": "主对话注入项目记忆包",
   "api.memoryPack.layersHint": "偏好 / 会话层与可编辑记忆界面在「设置 → 记忆」。",
   "api.memoryPack.afterArchive": "归档后自动压缩",
   "api.memoryPack.afterArchiveHint":
-    "默认关闭。可在此开启，使「归档」成功后同时压缩；或在长对话提示出现时点「压缩上下文」。",
+    "默认关闭。开启后：归档成功再用归档草稿跑一次压缩写入记忆包（不会用同一份原始对话再打一遍）。也可随时单独点「压缩上下文」。",
   "api.memoryPack.dir": "记忆目录（相对项目根）",
   "api.memoryPack.dirPlaceholder": ".forknote/memory",
   "api.memoryPack.windowTurns": "实时滑动窗口（轮数）",
@@ -1057,17 +1057,18 @@ const zh: Record<MessageKey, string> = {
   "main.archivesViewTitle": "打开归档面板以查看或切换归档",
   "main.archive": "归档",
   "main.archiving": "归档中…",
-  "main.archiveTitle": "将主线与分点裁决归纳为开发日志草稿",
+  "main.archiveTitle":
+    "归档：将主线归纳为开发日志快照（阅读/续聊）。与「压缩上下文」记忆包不同。",
   "main.compress": "压缩上下文",
   "main.compressing": "压缩中…",
   "main.compressTitle":
-    "将本线程总结为 SUMMARY.md、TASKS.md、DECISIONS.md，供下次自动恢复",
+    "压缩：写入 SUMMARY.md、TASKS.md、DECISIONS.md 供下次恢复。与「归档」不同。",
   "main.memory": "记忆",
   "main.memoryTitle": "打开记忆设置（注入层、偏好、记忆包）",
   "main.compressDoneProject":
-    "记忆已写入项目记忆目录，并保存在本笔记中",
+    "记忆已写入项目记忆目录，并保存在本会话中",
   "main.compressDoneSession":
-    "记忆已保存在本笔记中（绑定项目后还会写入 SUMMARY/TASKS/DECISIONS.md）",
+    "记忆已保存在本会话中（绑定项目后还会写入 SUMMARY/TASKS/DECISIONS.md）",
   "main.compressSuggestText":
     "对话已经较长 — 建议压缩为 SUMMARY / TASKS / DECISIONS，让后续轮次更省、更清晰。",
   "main.compressSuggestAction": "立即压缩",
