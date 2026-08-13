@@ -174,6 +174,7 @@ export const LOCAL_STORAGE_KEYS = {
   userModel: "forknote-user-model-v1",
   recentFiles: "forknote-recent-files",
   skipSessionDeleteConfirm: SKIP_SESSION_DELETE_CONFIRM_KEY,
+  mainThreadViewMode: "forknote-main-thread-view-mode",
 } as const;
 
 export function getSkipSessionDeleteConfirm(): boolean {

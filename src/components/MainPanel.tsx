@@ -7,6 +7,11 @@ import {
   resolveThreadView,
 } from "../lib/conversationContext";
 import { useLocale } from "../lib/i18n";
+import {
+  initMainThreadViewMode,
+  setMainThreadViewMode,
+  type MainThreadViewMode,
+} from "../lib/mainThreadViewMode";
 import { COMPRESS_SUGGEST_MESSAGE_THRESHOLD } from "../lib/settings";
 import { displaySessionTitle } from "../lib/storage";
 import {
@@ -32,6 +37,40 @@ import { SelectableAnswer } from "./SelectableAnswer";
 import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
 import { ThinkingBlock } from "./ThinkingBlock";
+
+function SourceBody({ content }: { content: string }) {
+  return (
+    <pre className="fn-source-body" tabIndex={0}>
+      {content}
+    </pre>
+  );
+}
+
+function ViewModeIcon({ mode }: { mode: MainThreadViewMode }) {
+  if (mode === "source") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M8 7L3 12l5 5M16 7l5 5-5 5M13.5 4l-3 16"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 5.5h16M4 12h16M4 18.5h10"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
   const { t } = useLocale();
@@ -197,6 +236,10 @@ export function MainPanel({
     useState<NodeId | null>(null);
   const [archiveHistoryOpen, setArchiveHistoryOpen] = useState(false);
   const [forkMapOpen, setForkMapOpen] = useState(false);
+  const [threadViewMode, setThreadViewMode] = useState<MainThreadViewMode>(() =>
+    initMainThreadViewMode(),
+  );
+  const sourceMode = threadViewMode === "source";
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
@@ -772,6 +815,28 @@ export function MainPanel({
             >
               {t("main.forks", { count: forkCount })}
             </button>
+            <button
+              type="button"
+              className={`fn-view-mode-chip${sourceMode ? " is-source" : ""}`}
+              title={
+                sourceMode
+                  ? t("main.viewMode.toReadingTitle")
+                  : t("main.viewMode.toSourceTitle")
+              }
+              aria-label={t("main.viewMode.aria")}
+              aria-pressed={sourceMode}
+              onClick={() => {
+                const next = sourceMode ? "reading" : "source";
+                setThreadViewMode(setMainThreadViewMode(next));
+              }}
+            >
+              <ViewModeIcon mode={threadViewMode} />
+              <span>
+                {sourceMode
+                  ? t("main.viewMode.source")
+                  : t("main.viewMode.reading")}
+              </span>
+            </button>
           </div>
         ) : null}
       </header>
@@ -802,7 +867,11 @@ export function MainPanel({
                     </h2>
                     {archiveDraft.trim() ? (
                       <div className="answer-body">
-                        <MarkdownBody content={archiveDraft} />
+                        {sourceMode ? (
+                          <SourceBody content={archiveDraft} />
+                        ) : (
+                          <MarkdownBody content={archiveDraft} />
+                        )}
                       </div>
                     ) : (
                       <div className="fn-archive-loading" aria-busy="true">
@@ -841,7 +910,11 @@ export function MainPanel({
                     </h2>
                     <ArchivePathRow archive={activeArchive} />
                     <div className="answer-body">
-                      <MarkdownBody content={activeArchive.content} />
+                      {sourceMode ? (
+                        <SourceBody content={activeArchive.content} />
+                      ) : (
+                        <MarkdownBody content={activeArchive.content} />
+                      )}
                     </div>
                   </article>
                   <MessageActions
@@ -888,26 +961,30 @@ export function MainPanel({
                     {msg.content ? (
                       <>
                         <div className="ds-bubble ds-bubble-assistant">
-                          <SelectableAnswer
-                            parentId={msg.id}
-                            parentContent={msg.content}
-                            content={msg.content}
-                            branches={msg.children}
-                            onAskBranch={askBranch}
-                            branchLoading={
-                              loadingBranchId !== null ||
-                              (loadingMain && msg.id === lastThreadMessageId)
-                            }
-                            contentStreaming={
-                              loadingMain && msg.id === lastThreadMessageId
-                            }
-                            activeBranchId={openBranchId}
-                            onToggleBranch={toggleBranch}
-                            compact
-                            pointVerdicts={msg.pointVerdicts}
-                            pointDoubts={msg.pointDoubts}
-                            pointAttributions={msg.pointAttributions}
-                          />
+                          {sourceMode ? (
+                            <SourceBody content={msg.content} />
+                          ) : (
+                            <SelectableAnswer
+                              parentId={msg.id}
+                              parentContent={msg.content}
+                              content={msg.content}
+                              branches={msg.children}
+                              onAskBranch={askBranch}
+                              branchLoading={
+                                loadingBranchId !== null ||
+                                (loadingMain && msg.id === lastThreadMessageId)
+                              }
+                              contentStreaming={
+                                loadingMain && msg.id === lastThreadMessageId
+                              }
+                              activeBranchId={openBranchId}
+                              onToggleBranch={toggleBranch}
+                              compact
+                              pointVerdicts={msg.pointVerdicts}
+                              pointDoubts={msg.pointDoubts}
+                              pointAttributions={msg.pointAttributions}
+                            />
+                          )}
                         </div>
                         <MessageActions
                           text={msg.content}
