@@ -150,6 +150,8 @@ export async function readFile(
   path: string;
   content: string;
   size: number;
+  /** Filesystem mtime in ms (from sidecar `stat`). */
+  mtimeMs?: number;
   totalLines?: number;
   startLine?: number;
   endLine?: number;
