@@ -777,15 +777,12 @@ export function SessionSidebar({
               )
             : null}
 
-          {shareSessionId
-            ? createPortal(
-                <ShareSessionDialog
-                  sessionId={shareSessionId}
-                  onClose={() => setShareSessionId(null)}
-                />,
-                document.body,
-              )
-            : null}
+          {shareSessionId ? (
+            <ShareSessionDialog
+              sessionId={shareSessionId}
+              onClose={() => setShareSessionId(null)}
+            />
+          ) : null}
 
           <div className="ds-sidebar-footer">
             <div className="ds-footer-bar">
