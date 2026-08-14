@@ -299,7 +299,7 @@ interface AppState {
   removeFileInclude: (path: string) => void;
   clearFileIncludes: () => void;
 
-  askMain: (question: string) => Promise<"started" | "rejected" | "rolled_back">;
+  askMain: (question: string) => Promise<"started" | "rejected">;
   askBranch: (
     parentId: NodeId,
     parentContent: string,
@@ -2732,7 +2732,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (includeFiles.length > 0) {
         set({ pendingFileIncludes: [] });
       }
-      const outcome = await runAgentTurn({
+      await runAgentTurn({
         llm,
         settings,
         locale: getLocale(),
@@ -2786,20 +2786,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           });
         },
       });
-
-      if (outcome === "need_project") {
-        setSessionMainLoading(set, sessionId, false);
-        set({
-          error:
-            t("agent.error.needProject", undefined, getLocale()),
-        });
-        rollbackMainTurn(get, set, { userId, assistantId, sessionId });
-        const owned = mainTurnsBySession.get(sessionId);
-        if (owned?.ctrl === ctrl) {
-          mainTurnsBySession.delete(sessionId);
-        }
-        return "rolled_back";
-      }
     } catch (e) {
       if (!isAbortError(e)) {
         set({ error: e instanceof Error ? e.message : t("chat.error.answer", undefined, getLocale()) });
@@ -3001,7 +2987,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       try {
         const { projectRoot, sidecarUrl } = get();
-        const outcome = await runAgentTurn({
+        await runAgentTurn({
           llm,
           settings,
           locale,
@@ -3054,17 +3040,6 @@ export const useAppStore = create<AppState>((set, get) => ({
             });
           },
         });
-
-        if (outcome === "need_project") {
-          set({
-            error:
-              t("agent.error.needProject", undefined, getLocale()),
-          });
-          patchBranchState({
-            content:
-              t("clarify.error.needProject", undefined, getLocale()),
-          });
-        }
       } catch (e) {
         if (!isAbortError(e)) {
           set({
@@ -3225,7 +3200,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
 
-        const outcome = await runAgentTurn({
+        await runAgentTurn({
           llm,
           settings,
           locale,
@@ -3278,17 +3253,6 @@ export const useAppStore = create<AppState>((set, get) => ({
             });
           },
         });
-
-        if (outcome === "need_project") {
-          set({
-            error:
-              t("agent.error.needProject", undefined, getLocale()),
-          });
-          patchReplyState({
-            content:
-              t("clarify.error.needProject", undefined, getLocale()),
-          });
-        }
       } catch (e) {
         if (!isAbortError(e)) {
           set({
