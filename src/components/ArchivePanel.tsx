@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { resolveConversationContext } from "../lib/conversationContext";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
@@ -57,7 +58,7 @@ export function ArchivePanel() {
 
   const onClose = () => setArchivePanelOpen(false);
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal fn-archive-modal"
@@ -177,6 +178,7 @@ export function ArchivePanel() {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
