@@ -231,6 +231,17 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
   };
 }
 
+/** Compare settings after normalization (draft vs saved). */
+export function apiSettingsEqual(
+  a: Partial<ApiSettings>,
+  b: Partial<ApiSettings>,
+): boolean {
+  return (
+    JSON.stringify(normalizeApiSettings(a)) ===
+    JSON.stringify(normalizeApiSettings(b))
+  );
+}
+
 function readStoredSettingsRaw(): string | null {
   const current = localStorage.getItem(STORAGE_KEY);
   if (current) return current;

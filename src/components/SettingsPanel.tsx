@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { applyLocale, useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
@@ -8,6 +8,7 @@ import {
   MAX_CONTEXT_WINDOW_TURNS,
   MIN_AGENT_MAX_ROUNDS,
   MIN_CONTEXT_WINDOW_TURNS,
+  apiSettingsEqual,
   normalizeApiSettings,
   saveSettings,
 } from "../lib/settings";
@@ -1181,6 +1182,7 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
   const settingsTab = useAppStore((s) => s.settingsTab);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const [draft, setDraft] = useState(settings);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [aboutPage, setAboutPage] = useState<"main" | "terms" | "privacy">(
     "main",
   );
@@ -1199,15 +1201,30 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
     if (open) {
       setDraft(settings);
       setAboutPage("main");
+      setDiscardOpen(false);
     }
   }, [open, settings]);
+
+  const requestClose = useCallback(() => {
+    if (!apiSettingsEqual(draft, settings)) {
+      setDiscardOpen(true);
+      return;
+    }
+    onClose();
+  }, [draft, settings, onClose]);
+
+  const confirmDiscard = useCallback(() => {
+    setDiscardOpen(false);
+    setDraft(settings);
+    onClose();
+  }, [onClose, settings]);
 
   if (!open) return null;
 
   return (
     <AccessibleModal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       labelledBy="settings-title"
       className="modal settings-modal system-settings-modal"
     >
@@ -1216,7 +1233,7 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
           <button
             type="button"
             className="ss-close"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label={t("settings.closeAria")}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -1261,7 +1278,7 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
                 draft={draft}
                 setDraft={setDraft}
                 onSave={onSave}
-                onClose={onClose}
+                onClose={requestClose}
               />
             )}
             {settingsTab === "memory" && (
@@ -1274,6 +1291,37 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
             )}
           </div>
         </div>
+
+      {discardOpen ? (
+        <AccessibleModal
+          open
+          onClose={() => setDiscardOpen(false)}
+          ariaLabel={t("settings.discardConfirmAria")}
+          className="modal fn-lang-confirm-modal"
+          backdropClassName="modal-backdrop fn-lang-confirm-backdrop"
+        >
+          <h3>{t("settings.discardConfirmTitle")}</h3>
+          <p className="fn-lang-confirm-body">
+            {t("settings.discardConfirmBody")}
+          </p>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setDiscardOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={confirmDiscard}
+            >
+              {t("common.discard")}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
     </AccessibleModal>
   );
 }
