@@ -39,6 +39,7 @@ import {
   planMentionsOutsideProject,
   planNeedsToolApproval,
   commandLeavesProject,
+  terminalCallNeedsOutsideApproval,
   resolveShellIntent,
   synthesizeExploreToolCall,
   synthesizeOfficeFromIntent,
@@ -610,7 +611,7 @@ export async function runAgentTurn(
       steps: string[];
       commands?: string[] | null;
     };
-  }): Promise<string> => {
+  }): Promise<{ status: "done"; content: string } | { status: "waiting_plan" }> => {
     const requireToolBatch = Boolean(opts?.requireToolBatch);
     const allowOutsideProject = Boolean(opts?.allowOutsideProject);
     /** One plan-synthesis inject per approve/execute phase. */
@@ -1255,6 +1256,63 @@ export async function runAgentTurn(
         result: ReturnType<typeof toToolResult>;
       }> = [];
 
+      // Mid-loop gate: model (or plan synthesis) asked for outside-project
+      // terminal without prior Allow — pause for InlineToolApproval instead of
+      // only emitting the dead-end "已拦截项目外终端" activity row.
+      if (!allowOutsideProject && projectRoot && pending.length > 0) {
+        const outsideItems = pending.filter((p) =>
+          terminalCallNeedsOutsideApproval(p.agent, projectRoot),
+        );
+        if (outsideItems.length > 0) {
+          const cmds = outsideItems
+            .map((p) => p.agent.command?.trim())
+            .filter((c): c is string => Boolean(c));
+          const uniqueCmds = [...new Set(cmds)];
+          if (uniqueCmds.length === 0) {
+            // cwd-only escapes without a command string — keep hard deny path.
+          } else {
+            const displayPlan = uniqueCmds
+              .map((c) => `run_terminal: ${c}`)
+              .join("\n");
+            const steps = uniqueCmds.map((c) => `run_terminal: ${c}`);
+            patchAssistantContent(
+              locale === "zh"
+                ? "需要批准后才能运行："
+                : "Needs approval to run:",
+            );
+            onAwaitPlanApproval({
+              planText: displayPlan,
+              steps,
+              commands: uniqueCmds,
+              totalStepCount: uniqueCmds.length,
+              continueExecution: async () => {
+                apiMessages.push({
+                  role: "system",
+                  content: buildExecutionPhaseSystem(locale),
+                });
+                apiMessages.push({
+                  role: "user",
+                  content:
+                    locale === "zh"
+                      ? `用户已批准在项目外执行终端命令。请立即调用 run_terminal（command 为已批准命令之一）。不要用 list_dir 代替。\n批准的命令：${uniqueCmds.map((c) => JSON.stringify(c)).join(", ")}`
+                      : `User approved outside-project terminal access. Call run_terminal now with one of the approved commands. Do not use list_dir.\nApproved: ${uniqueCmds.map((c) => JSON.stringify(c)).join(", ")}`,
+                });
+                await executeTools({
+                  requireToolBatch: true,
+                  allowOutsideProject: true,
+                  fallbackFromPlan: {
+                    planText: displayPlan,
+                    steps,
+                    commands: uniqueCmds,
+                  },
+                });
+              },
+            });
+            return { status: "waiting_plan" };
+          }
+        }
+      }
+
       const applyExecuted = (
         item: PendingCall,
         executed: Awaited<ReturnType<typeof executeToolCall>>,
@@ -1599,7 +1657,7 @@ export async function runAgentTurn(
       patchAssistantContent(visibleContent);
     }
 
-    return visibleContent;
+    return { status: "done", content: visibleContent };
   };
 
   // Clear shell intents: Terminal 权限 / Approve card with the exact command —
@@ -1772,7 +1830,7 @@ export async function runAgentTurn(
             drafted.steps,
             projectRoot,
           );
-          await executeTools({
+          const execResult = await executeTools({
             requireToolBatch: true,
             allowOutsideProject: needsOutside,
             fallbackFromPlan: {
@@ -1782,6 +1840,7 @@ export async function runAgentTurn(
             },
           });
           forcedPlanTool = null;
+          if (execResult.status === "waiting_plan") return;
 
           // Approve → run → plan next chunk when steps were deferred.
           if (deferredSteps.length === 0 || signal.aborted) return;
@@ -1832,7 +1891,9 @@ export async function runAgentTurn(
       shellIntent,
     });
     if (noToolsAction === "force_execute") {
-      visibleContent = await executeTools({ requireToolBatch: true });
+      const execResult = await executeTools({ requireToolBatch: true });
+      if (execResult.status === "waiting_plan") return "waiting_plan";
+      visibleContent = execResult.content;
       return signal.aborted ? "aborted" : "completed";
     }
     if (noToolsAction === "replan_or_execute") {
@@ -1848,7 +1909,9 @@ export async function runAgentTurn(
         return signal.aborted ? "aborted" : "completed";
       }
       if (!planNeedsToolApproval(retry.displayPlan, retry.steps)) {
-        visibleContent = await executeTools({ requireToolBatch: true });
+        const execResult = await executeTools({ requireToolBatch: true });
+        if (execResult.status === "waiting_plan") return "waiting_plan";
+        visibleContent = execResult.content;
         return signal.aborted ? "aborted" : "completed";
       }
       presentPlanForApproval(retry);
@@ -1862,6 +1925,10 @@ export async function runAgentTurn(
     return "waiting_plan";
   }
 
-  visibleContent = await executeTools();
+  {
+    const execResult = await executeTools();
+    if (execResult.status === "waiting_plan") return "waiting_plan";
+    visibleContent = execResult.content;
+  }
   return signal.aborted ? "aborted" : "completed";
 }

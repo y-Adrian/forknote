@@ -227,7 +227,6 @@ export interface MainChatMessageListProps {
   showMainAgentActivity: boolean;
   visibleMessages: ChatMessage[];
   lastThreadMessageId: NodeId | undefined;
-  threadMessageIds: NodeId[];
   openBranchId: NodeId | null;
   onToggleBranch: (branchId: NodeId | null) => void;
   onAskBranch: AskBranch;
@@ -255,7 +254,6 @@ export const MainChatMessageList = memo(function MainChatMessageList({
   showMainAgentActivity,
   visibleMessages,
   lastThreadMessageId,
-  threadMessageIds,
   openBranchId,
   onToggleBranch,
   onAskBranch,
@@ -362,7 +360,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
         )}
         {pendingInline &&
         pendingInlineAssistantId &&
-        !threadMessageIds.includes(pendingInlineAssistantId) ? (
+        !visibleMessages.some((m) => m.id === pendingInlineAssistantId) ? (
           <InlineToolApproval scope={{ kind: "main" }} />
         ) : null}
       </div>

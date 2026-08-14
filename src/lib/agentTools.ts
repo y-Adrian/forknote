@@ -962,7 +962,7 @@ function normalizePathForCompare(p: string): string {
 }
 
 /** True when `candidate` is absolute and not under `projectRoot` (when known). */
-function isAbsoluteOutsideProject(
+export function isAbsoluteOutsideProject(
   candidate: string,
   projectRoot?: string | null,
 ): boolean {
@@ -1026,6 +1026,22 @@ export function commandLeavesProject(
   }
 
   return false;
+}
+
+/**
+ * True when a `run_terminal` call targets paths / cwd outside the bound project
+ * and therefore needs an explicit outside-project Allow before execution.
+ */
+export function terminalCallNeedsOutsideApproval(
+  call: { tool: string; command?: string | null; cwd?: string | null },
+  projectRoot?: string | null,
+): boolean {
+  if (call.tool !== "run_terminal") return false;
+  if (!projectRoot?.trim()) return false;
+  const command = call.command?.trim();
+  if (command && commandLeavesProject(command, projectRoot)) return true;
+  const cwdRaw = call.cwd?.trim() || ".";
+  return isAbsoluteOutsideProject(cwdRaw, projectRoot);
 }
 
 /** True when a shell command is obviously inspect-only (ls/pwd/git status/…). */
@@ -3133,6 +3149,27 @@ export function inferShellIntent(
       `ls${lsWithPath[1]} ${lsWithPath[2]}`,
       projectRoot,
     );
+  }
+  // Chinese / prose shell asks that name an absolute path without a leading `ls`:
+  // "执行shell命令，查看 /tmp" / "在终端里列出 /Users/foo"
+  const absInspect = t.match(
+    /(?:查看|看看|列出|浏览|list|show|see|inspect)\s*(?:一下)?\s*([\/~][^\s;|&，,。．]*)/i,
+  );
+  if (absInspect?.[1]) {
+    const path = absInspect[1].replace(/[，,。．]+$/u, "");
+    if (path && isAbsoluteOutsideProject(path, projectRoot)) {
+      return shellIntentFromCommand(`ls ${path}`, projectRoot);
+    }
+  }
+  // "用终端跑一下 cat /etc/hosts" — verb buried after 终端 wording
+  const buriedCmd = t.match(
+    /(?:终端|shell|bash|zsh)\S{0,12}?(?:跑|执行|运行)(?:一下)?\s+((?:cat|ls|head|tail|pwd|echo|npm|git|node|python3?|npx|yarn|pnpm)\b[^\n]*)/i,
+  );
+  if (buriedCmd?.[1]?.trim()) {
+    const rest = buriedCmd[1].trim();
+    if (looksLikeShellCommand(rest) && !/[\u4e00-\u9fff]/.test(rest)) {
+      return shellIntentFromCommand(rest, projectRoot);
+    }
   }
   if (
     /(?:当前目录|目录下|文件夹|有什么|有哪些|列出|list|files?|folder)/i.test(t) ||
