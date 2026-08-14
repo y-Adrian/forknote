@@ -71,8 +71,19 @@ npm run dev                 # Vite :5173 + sidecar
 npm run electron:dev        # Electron 加载 http://127.0.0.1:5173
 ```
 
-构建未签名：`CSC_IDENTITY_AUTO_DISCOVERY=false` 且 `mac.identity: null`。Gatekeeper 可能拦截首次打开，可在「系统设置 → 隐私与安全性」允许，或：`xattr -cr release/mac-arm64/ForkNote.app`。
+构建未签名：本地脚本设置 `CSC_IDENTITY_AUTO_DISCOVERY=false`（不提供 `CSC_LINK`）。Gatekeeper 可能拦截首次打开，可在「系统设置 → 隐私与安全性」允许，或：`xattr -cr release/mac-arm64/ForkNote.app`。
 
+macOS **签名 / 公证（可选）**：在 GitHub 仓库 Secrets 配齐下列项后，[release-electron-mac.yml](.github/workflows/release-electron-mac.yml) 会自动改为签名并公证；缺任一 secret 时仍走未签名路径并打出 notice（不失败）：
+
+| Secret | 用途 |
+|--------|------|
+| `MACOS_CERTIFICATE` | Developer ID Application 证书 `.p12` 的 base64 |
+| `MACOS_CERTIFICATE_PASSWORD` | 该 `.p12` 密码 |
+| `APPLE_ID` | Apple ID（公证） |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App 专用密码 |
+| `APPLE_TEAM_ID` | Team ID |
+
+本地 `afterSign` 钩子为 [`scripts/macos-notarize.cjs`](scripts/macos-notarize.cjs)：未配置 Apple 公证环境变量时直接跳过。
 本地打安装包（仍未签名）：
 
 ```bash
@@ -113,7 +124,7 @@ git push origin v0.1.0
 
 **验证管道（非 release）：** [verify-desktop-builds.yml](.github/workflows/verify-desktop-builds.yml) 在打包相关路径变更或手动触发时，于 **windows-latest** / **ubuntu-latest** 上跑 `--dir` 解压包冒烟，并执行 `npm run test:desktop-build-pipelines`。
 
-macOS 仍未签名 / 未公证；用户首次打开可能需在「隐私与安全性」允许，或 `xattr -cr` 去掉隔离属性。Windows / Linux 产物同样未代码签名。
+macOS 在未配置签名 Secrets 时仍未签名 / 未公证；用户首次打开可能需在「隐私与安全性」允许，或 `xattr -cr` 去掉隔离属性。Windows / Linux 产物同样未代码签名。
 
 
 若启动失败（常见原因：端口被占用）：
