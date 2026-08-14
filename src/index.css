@@ -5959,17 +5959,18 @@ mark.branch-highlight:focus-visible {
   gap: 6px;
 }
 
-/* Fit all controls on one row without a horizontal scrollbar.
-   Prefer compact type + padding; do not shrink labels under their text
-   (that caused overlap). */
+/* Keep every control reachable on narrow screens: wrap first, then scroll. */
 .fn-composer-toolbar-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .fn-composer-toolbar-sep {
@@ -6055,6 +6056,24 @@ mark.branch-highlight:focus-visible {
   flex: 0 0 auto;
 }
 
+@media (max-width: 720px) {
+  .fn-composer-toolbar-row .fn-composer-memory-actions {
+    margin-left: 0;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  .fn-composer-toolbar-row .fn-context-mode {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .fn-composer-toolbar-row .fn-context-segment {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 @media (max-width: 560px) {
   .fn-composer-toolbar-sep {
     display: none;
@@ -6065,7 +6084,7 @@ mark.branch-highlight:focus-visible {
   }
 
   .fn-composer-toolbar-row .fn-composer-memory-actions {
-    margin-left: 2px;
+    margin-left: 0;
   }
 
   .fn-composer-toolbar-row .fn-context-seg,
