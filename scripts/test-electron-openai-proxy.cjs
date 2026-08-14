@@ -8,6 +8,7 @@ const appRoot = process.env.FORKNOTE_PACKAGED_ROOT
   : path.resolve(__dirname, "..");
 const {
   assertSafeApiTarget,
+  isPrivateLanIp,
   parseApiTarget,
 } = require(path.join(appRoot, "shared", "apiTargetPolicy.cjs"));
 const { startUiServer } = require(path.join(appRoot, "electron", "uiServer.cjs"));
@@ -21,6 +22,18 @@ function listen(server, host = "127.0.0.1") {
 
 function close(server) {
   return new Promise((resolve) => server.close(resolve));
+}
+
+function firstPrivateLanIpv4() {
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries || []) {
+      const family = entry.family === "IPv4" || entry.family === 4;
+      if (family && !entry.internal && isPrivateLanIp(entry.address)) {
+        return entry.address;
+      }
+    }
+  }
+  return null;
 }
 
 async function post(origin, target, apiKey = "secret-test-key") {
@@ -48,18 +61,32 @@ async function main() {
     { address: "93.184.216.34", family: 4 },
   ]);
 
+  for (const allowed of [
+    "http://127.0.0.1:11434/v1",
+    "http://localhost:11434/v1",
+    "http://[::1]:11434/v1",
+    "http://192.168.1.20:1234/v1",
+    "http://10.0.0.7:1234/v1",
+    "http://172.16.4.8:1234/v1",
+    "http://[fd12:3456:789a::1]:1234/v1",
+  ]) {
+    const result = await assertSafeApiTarget(allowed, {
+      lookup: async () => [{ address: "127.0.0.1", family: 4 }],
+    });
+    assert.ok(result.addresses.length > 0, allowed);
+  }
+
   for (const blocked of [
     "http://169.254.169.254/latest/meta-data",
     "http://metadata.google.internal/computeMetadata/v1",
     "http://metadata/latest",
-    "http://192.168.1.20/v1",
-    "http://10.0.0.7/v1",
     "http://0.0.0.0/v1",
     "http://224.0.0.1/v1",
     "http://2130706433/v1",
     "http://0x7f000001/v1",
     "http://0177.0.0.1/v1",
     "http://[::ffff:127.0.0.1]/v1",
+    "http://[::ffff:192.168.1.20]/v1",
     "http://user:pass@api.example.com/v1",
   ]) {
     await assert.rejects(
@@ -68,6 +95,18 @@ async function main() {
       blocked,
     );
   }
+
+  await assert.rejects(
+    () =>
+      assertSafeApiTarget("http://rebinding.example/v1", {
+        lookup: async () => [{ address: "192.168.1.20", family: 4 }],
+      }),
+    (err) =>
+      err?.code === "ERR_UNSAFE_API_TARGET" &&
+      /private or special-use/i.test(err.message),
+    "hostname resolving to private LAN must stay blocked",
+  );
+
   assert.throws(
     () => parseApiTarget("file:///tmp/model.sock"),
     /HTTP\(S\)/i,
@@ -89,6 +128,27 @@ async function main() {
   });
   const upstreamPort = await listen(upstream);
 
+  let lanRequest;
+  const lanIp = firstPrivateLanIpv4();
+  let lanUpstream;
+  let lanPort;
+  if (lanIp) {
+    lanUpstream = http.createServer((req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        lanRequest = {
+          path: req.url,
+          authorization: req.headers.authorization,
+          body: Buffer.concat(chunks).toString("utf8"),
+        };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end('{"ok":true,"source":"private-lan"}');
+      });
+    });
+    lanPort = await listen(lanUpstream, lanIp);
+  }
+
   let blockedUpstreamHit = false;
   const blockedUpstream = http.createServer((_req, res) => {
     blockedUpstreamHit = true;
@@ -108,6 +168,9 @@ async function main() {
       if (hostname === "blocked.example") {
         return [{ address: "127.0.0.1", family: 4 }];
       }
+      if (hostname === "lan-rebinding.example") {
+        return [{ address: "192.168.1.20", family: 4 }];
+      }
       throw new Error(`unexpected lookup: ${hostname}`);
     },
   });
@@ -124,12 +187,28 @@ async function main() {
     assert.equal(allowedRequest.authorization, "Bearer local-model-key");
     assert.match(allowedRequest.body, /"local-test"/);
 
+    if (lanIp && lanPort) {
+      const lan = await post(
+        origin,
+        `http://${lanIp}:${lanPort}/models/lab/v1`,
+        "lan-model-key",
+      );
+      assert.equal(lan.status, 200, lan.body);
+      assert.match(lan.body, /"source":"private-lan"/);
+      assert.equal(lanRequest.path, "/models/lab/v1/chat/completions");
+      assert.equal(lanRequest.authorization, "Bearer lan-model-key");
+    } else {
+      console.log(
+        "test-electron-openai-proxy: skipping live private-LAN proxy hop (no RFC1918 iface)",
+      );
+    }
+
     for (const blocked of [
       "http://169.254.169.254/latest/meta-data",
       "http://metadata.google.internal/v1",
-      "http://192.168.1.20/v1",
       "http://2130706433/v1",
       `http://blocked.example:${blockedPort}/v1`,
+      `http://lan-rebinding.example:${blockedPort}/v1`,
     ]) {
       const result = await post(origin, blocked, "must-not-leak");
       assert.equal(result.status, 403, `${blocked}: ${result.body}`);
@@ -142,7 +221,14 @@ async function main() {
       "Authorization header reached a DNS-resolved blocked upstream",
     );
   } finally {
-    await Promise.all([close(uiServer), close(upstream), close(blockedUpstream)]);
+    await Promise.all(
+      [
+        close(uiServer),
+        close(upstream),
+        close(blockedUpstream),
+        lanUpstream ? close(lanUpstream) : Promise.resolve(),
+      ],
+    );
     await fs.rm(distDir, { recursive: true, force: true });
   }
 

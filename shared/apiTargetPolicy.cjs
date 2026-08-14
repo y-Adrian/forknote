@@ -1,9 +1,11 @@
 /**
  * DNS-aware policy for user-configured API upstreams.
  *
- * Public HTTP(S) endpoints are allowed. Local model servers are allowed only
- * when the URL explicitly names localhost or a loopback IP. Private, special,
- * metadata, and DNS-rebound addresses are never handed to the HTTP client.
+ * Public HTTP(S) endpoints are allowed. Local model servers are allowed when
+ * the URL explicitly names localhost, a loopback IP, or a private LAN IP
+ * literal (RFC1918 / IPv6 ULA) for home-lab hosts. Hostnames that resolve to
+ * private, special, metadata, or DNS-rebound addresses are never handed to the
+ * HTTP client.
  */
 const dns = require("node:dns/promises");
 const net = require("node:net");
@@ -40,6 +42,17 @@ const BLOCKED_V6 = new net.BlockList();
   ["3fff::", 20],
 ].forEach(([network, prefix]) => BLOCKED_V6.addSubnet(network, prefix, "ipv6"));
 
+/** Home-lab model servers: RFC1918 (+ IPv6 ULA). Not link-local / metadata. */
+const PRIVATE_LAN_V4 = new net.BlockList();
+[
+  ["10.0.0.0", 8],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+].forEach(([network, prefix]) => PRIVATE_LAN_V4.addSubnet(network, prefix, "ipv4"));
+
+const PRIVATE_LAN_V6 = new net.BlockList();
+PRIVATE_LAN_V6.addSubnet("fc00::", 7, "ipv6");
+
 const METADATA_HOSTS = new Set([
   "metadata",
   "metadata.google.internal",
@@ -57,6 +70,21 @@ function isLoopbackIp(address) {
   const ip = withoutIpv6Brackets(String(address || "").toLowerCase());
   if (net.isIP(ip) === 4) return ip.startsWith("127.");
   if (net.isIP(ip) === 6) return ip === "::1" || ip === "0:0:0:0:0:0:0:1";
+  return false;
+}
+
+/**
+ * True for RFC1918 / IPv6 ULA addresses only. IPv4-mapped forms are rejected so
+ * callers must use a canonical dotted IPv4 or real ULA literal.
+ */
+function isPrivateLanIp(address) {
+  const ip = withoutIpv6Brackets(String(address || "").toLowerCase());
+  const family = net.isIP(ip);
+  if (family === 4) return PRIVATE_LAN_V4.check(ip, "ipv4");
+  if (family === 6) {
+    if (/^::ffff:/i.test(ip)) return false;
+    return PRIVATE_LAN_V6.check(ip, "ipv6");
+  }
   return false;
 }
 
@@ -131,6 +159,8 @@ function parseApiTarget(rawUrl) {
 
   const explicitLoopback =
     rawHost.toLowerCase() === "localhost" || isLoopbackIp(host);
+  // Only canonical IP literals — never hostnames that happen to resolve private.
+  const explicitPrivateLan = !explicitLoopback && isPrivateLanIp(host);
   if (
     METADATA_HOSTS.has(host) ||
     host.endsWith(".internal") ||
@@ -140,7 +170,7 @@ function parseApiTarget(rawUrl) {
     throw policyError("Metadata, local, and single-label API hosts are blocked");
   }
 
-  return { parsed, host, explicitLoopback };
+  return { parsed, host, explicitLoopback, explicitPrivateLan };
 }
 
 function normalizeRecords(records) {
@@ -184,7 +214,8 @@ function createPinnedLookup(records) {
  * @param {{ lookup?: typeof dns.lookup }} [options]
  */
 async function assertSafeApiTarget(rawUrl, options = {}) {
-  const { parsed, host, explicitLoopback } = parseApiTarget(rawUrl);
+  const { parsed, host, explicitLoopback, explicitPrivateLan } =
+    parseApiTarget(rawUrl);
   let records;
 
   if (net.isIP(host)) {
@@ -201,16 +232,18 @@ async function assertSafeApiTarget(rawUrl, options = {}) {
   }
 
   const resolved = normalizeRecords(Array.isArray(records) ? records : [records]);
-  const approved = resolved.filter((record) =>
-    explicitLoopback
-      ? isLoopbackIp(record.address)
-      : !isLoopbackIp(record.address) && !isBlockedIp(record.address),
-  );
+  const approved = resolved.filter((record) => {
+    if (explicitLoopback) return isLoopbackIp(record.address);
+    if (explicitPrivateLan) return isPrivateLanIp(record.address);
+    return !isLoopbackIp(record.address) && !isBlockedIp(record.address);
+  });
   if (!resolved.length || !approved.length) {
     throw policyError(
       explicitLoopback
         ? "Local API target did not resolve to loopback"
-        : "API target resolves only to private or special-use addresses",
+        : explicitPrivateLan
+          ? "Private LAN API target is not a usable private address"
+          : "API target resolves only to private or special-use addresses",
     );
   }
 
@@ -219,6 +252,7 @@ async function assertSafeApiTarget(rawUrl, options = {}) {
     addresses: approved,
     lookup: createPinnedLookup(approved),
     isLoopback: explicitLoopback,
+    isPrivateLan: explicitPrivateLan,
   };
 }
 
@@ -227,5 +261,6 @@ module.exports = {
   createPinnedLookup,
   isBlockedIp,
   isLoopbackIp,
+  isPrivateLanIp,
   parseApiTarget,
 };

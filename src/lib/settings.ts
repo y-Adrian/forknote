@@ -287,7 +287,27 @@ export function proxyTargetFromBaseUrl(baseUrl: string): string | null {
 }
 
 export function isLikelyLocalEndpoint(baseUrl: string): boolean {
-  return /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?/i.test(baseUrl.trim());
+  const trimmed = baseUrl.trim();
+  if (/^(https?:\/\/)?(127\.0\.0\.1|localhost|\[::1\])(:\d+)?/i.test(trimmed)) {
+    return true;
+  }
+  try {
+    const host = new URL(coerceApiBaseUrl(trimmed)).hostname.toLowerCase();
+    if (/^127\.\d+\.\d+\.\d+$/.test(host) || host === "::1") return true;
+    const parts = host.split(".").map((n) => Number(n));
+    if (
+      parts.length === 4 &&
+      parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)
+    ) {
+      const [a, b] = parts;
+      if (a === 10) return true;
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 export function resolveApiUrl(settings: ApiSettings): string {
