@@ -77,7 +77,6 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.blockmap
-            release/latest-mac.yml
           if-no-files-found: error
 
       - name: Publish GitHub Release (tag push)
@@ -103,7 +102,6 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.blockmap
-            release/latest-mac.yml
 
       - name: Publish GitHub Release (manual tag input)
         if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
@@ -128,4 +126,3 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.blockmap
-            release/latest-mac.yml

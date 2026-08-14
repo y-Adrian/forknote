@@ -95,7 +95,7 @@ npm run electron:release:linux   # AppImage + deb（Linux）
 
 | 工作流 | Runner | 产物 |
 |--------|--------|------|
-| [release-electron-mac.yml](.github/workflows/release-electron-mac.yml) | macos-14 | arm64 + x64 **DMG / ZIP**（含 `latest-mac.yml`） |
+| [release-electron-mac.yml](.github/workflows/release-electron-mac.yml) | macos-14 | arm64 + x64 **DMG / ZIP** |
 | [release-electron-win.yml](.github/workflows/release-electron-win.yml) | windows-latest | x64 **NSIS / ZIP** |
 | [release-electron-linux.yml](.github/workflows/release-electron-linux.yml) | ubuntu-latest | x64 **AppImage / deb** |
 
