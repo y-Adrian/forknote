@@ -4,6 +4,8 @@ import {
   type AgentFileChange,
 } from "../lib/agentTools";
 import {
+  EMPTY_AGENT_ACTIVITY,
+  EMPTY_AGENT_CHANGES,
   appendSessionAgentActivity,
   appendSessionAgentChange,
   clearSessionAgentUiMaps,
@@ -844,7 +846,10 @@ function clearSessionAgentUi(
     return {
       ...maps,
       ...(state.activeSessionId === sessionId
-        ? { agentActivity: [], agentChanges: [] }
+        ? {
+            agentActivity: EMPTY_AGENT_ACTIVITY,
+            agentChanges: EMPTY_AGENT_CHANGES,
+          }
         : {}),
     };
   });
@@ -869,7 +874,7 @@ function pushSessionAgentActivity(
       agentActivityBySession,
       ...(state.activeSessionId === sessionId
         ? {
-            agentActivity: agentActivityBySession[sessionId] ?? [],
+            agentActivity: agentActivityBySession[sessionId] ?? EMPTY_AGENT_ACTIVITY,
           }
         : {}),
     };
@@ -895,7 +900,7 @@ function pushSessionAgentChange(
       agentChangesBySession,
       ...(state.activeSessionId === sessionId
         ? {
-            agentChanges: agentChangesBySession[sessionId] ?? [],
+            agentChanges: agentChangesBySession[sessionId] ?? EMPTY_AGENT_CHANGES,
           }
         : {}),
     };
@@ -948,8 +953,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   projectError: null,
   agentActivityBySession: {},
   agentChangesBySession: {},
-  agentActivity: [],
-  agentChanges: [],
+  agentActivity: EMPTY_AGENT_ACTIVITY,
+  agentChanges: EMPTY_AGENT_CHANGES,
   agentPendingPlan: null,
   pendingFileIncludes: [],
 
@@ -974,8 +979,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       projectError: null,
       agentActivityBySession: {},
       agentChangesBySession: {},
-      agentActivity: [],
-      agentChanges: [],
+      agentActivity: EMPTY_AGENT_ACTIVITY,
+      agentChanges: EMPTY_AGENT_CHANGES,
     });
     if (active?.id) {
       restoreSessionProject(
@@ -1031,8 +1036,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             projectRoot: root,
             projectError: null,
             ...maps,
-            agentActivity: [],
-            agentChanges: [],
+            agentActivity: EMPTY_AGENT_ACTIVITY,
+            agentChanges: EMPTY_AGENT_CHANGES,
           };
         });
       } else {
@@ -1082,8 +1087,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         projectRoot: null,
         projectError: null,
         ...maps,
-        agentActivity: [],
-        agentChanges: [],
+        agentActivity: EMPTY_AGENT_ACTIVITY,
+        agentChanges: EMPTY_AGENT_CHANGES,
       };
     });
   },
@@ -2200,8 +2205,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       loadingCompressSessionId: null,
       projectRoot: null,
       projectError: null,
-      agentActivity: [],
-      agentChanges: [],
+      agentActivity: EMPTY_AGENT_ACTIVITY,
+      agentChanges: EMPTY_AGENT_CHANGES,
     });
     restoreSessionProject(get, set, session.id, null, sidecarUrl);
   },
@@ -2296,8 +2301,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         projectError: null,
         agentActivityBySession: {},
         agentChangesBySession: {},
-        agentActivity: [],
-        agentChanges: [],
+        agentActivity: EMPTY_AGENT_ACTIVITY,
+        agentChanges: EMPTY_AGENT_CHANGES,
         loadingMainBySession: {},
         loadingBranchBySession: {},
         pendingClarifyBySession: {},
@@ -2388,8 +2393,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       archiveDraft: "",
       agentActivityBySession: {},
       agentChangesBySession: {},
-      agentActivity: [],
-      agentChanges: [],
+      agentActivity: EMPTY_AGENT_ACTIVITY,
+      agentChanges: EMPTY_AGENT_CHANGES,
       projectRoot: null,
       projectError: null,
       loadingMainBySession: {},
@@ -2433,8 +2438,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       archiveDraft: "",
       agentActivityBySession: {},
       agentChangesBySession: {},
-      agentActivity: [],
-      agentChanges: [],
+      agentActivity: EMPTY_AGENT_ACTIVITY,
+      agentChanges: EMPTY_AGENT_CHANGES,
       projectRoot: nextProject,
       projectError: null,
       loadingMainBySession: {},
