@@ -1,0 +1,15 @@
+/**
+ * Self-hosted UI fonts (replaces Google Fonts CDN links in index.html).
+ * Latin subsets only — CJK UI falls back to the system stack in index.css.
+ * Weights match the previous fonts.googleapis.com stylesheet.
+ */
+@import "@fontsource/dela-gothic-one/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-400-italic.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-sans/latin-700.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-400-italic.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";
+@import "@fontsource/jetbrains-mono/latin-600.css";
