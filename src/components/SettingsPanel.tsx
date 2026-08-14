@@ -281,6 +281,8 @@ function GeneralPanel({
               key={opt.value}
               type="button"
               className={`ss-segment${preference === opt.value ? " is-active" : ""}`}
+              aria-pressed={preference === opt.value}
+              aria-label={t(opt.labelKey)}
               onClick={() => setThemePreference(opt.value)}
             >
               {t(opt.labelKey)}

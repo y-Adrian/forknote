@@ -869,7 +869,11 @@ export function MainPanel({
                   ? t("main.viewMode.toReadingTitle")
                   : t("main.viewMode.toSourceTitle")
               }
-              aria-label={t("main.viewMode.aria")}
+              aria-label={
+                sourceMode
+                  ? t("main.viewMode.toReadingTitle")
+                  : t("main.viewMode.toSourceTitle")
+              }
               aria-pressed={sourceMode}
               onClick={() => {
                 const next = sourceMode ? "reading" : "source";

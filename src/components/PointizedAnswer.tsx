@@ -332,6 +332,7 @@ export function PointizedAnswer({
                     type="button"
                     className={`point-verdict-btn v-${opt.value}${verdict === opt.value ? " active" : ""}`}
                     title={t(opt.titleKey)}
+                    aria-label={t(opt.titleKey)}
                     aria-pressed={verdict === opt.value}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {
@@ -339,7 +340,7 @@ export function PointizedAnswer({
                       onVerdict(point.index, opt.value);
                     }}
                   >
-                    {opt.icon}
+                    <span aria-hidden>{opt.icon}</span>
                   </button>
                 ))}
               </div>

@@ -51,6 +51,12 @@ export function NetworkAccessToggle({ disabled = false }: Props) {
       ? t("network.toggleTitleOn")
       : t("network.toggleTitleOffline");
 
+  const stateLabel = !wanted
+    ? t("network.toggleOff")
+    : online
+      ? t("network.toggleOn")
+      : t("network.toggleOffline");
+
   return (
     <button
       type="button"
@@ -59,7 +65,7 @@ export function NetworkAccessToggle({ disabled = false }: Props) {
       onClick={onToggle}
       title={title}
       aria-pressed={wanted}
-      aria-label={t("network.toggleAria")}
+      aria-label={`${t("network.toggleAria")} (${stateLabel})`}
     >
       <svg
         className="fn-network-toggle-icon"

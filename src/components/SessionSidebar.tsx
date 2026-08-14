@@ -142,20 +142,25 @@ function MenuItem({
   onClick,
   icon,
   children,
+  ariaLabel,
 }: {
   danger?: boolean;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
   icon: ReactNode;
   children: ReactNode;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
       className={danger ? "is-danger" : undefined}
+      aria-label={ariaLabel}
       onClick={onClick}
     >
-      <span className="fn-session-menu-icon">{icon}</span>
+      <span className="fn-session-menu-icon" aria-hidden>
+        {icon}
+      </span>
       <span className="fn-session-menu-label">{children}</span>
     </button>
   );
@@ -167,18 +172,21 @@ function MenuSwitchItem({
   icon,
   children,
   title,
+  ariaLabel,
 }: {
   checked: boolean;
   onToggle: () => void;
   icon: ReactNode;
   children: ReactNode;
   title?: string;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       role="menuitemcheckbox"
       aria-checked={checked}
+      aria-label={ariaLabel}
       className="fn-session-menu-switch"
       title={title}
       onClick={(e) => {
@@ -186,7 +194,9 @@ function MenuSwitchItem({
         onToggle();
       }}
     >
-      <span className="fn-session-menu-icon">{icon}</span>
+      <span className="fn-session-menu-icon" aria-hidden>
+        {icon}
+      </span>
       <span className="fn-session-menu-label">{children}</span>
       <span
         className={`fn-session-switch${checked ? " is-on" : ""}`}
@@ -222,6 +232,7 @@ function ThemeToggleButton({
       className={className}
       onClick={onToggle}
       aria-label={toLight ? toLightLabel : toDarkLabel}
+      aria-pressed={theme === "dark"}
       title={toLight ? lightTitle : darkTitle}
     >
       {toLight ? (
@@ -717,10 +728,15 @@ export function SessionSidebar({
                     checked={menuShareMemory}
                     onToggle={handleToggleShareMemory}
                     title={t("sidebar.shareMemoryHint")}
+                    ariaLabel={t("sidebar.shareMemory")}
                   >
                     {t("sidebar.shareMemory")}
                   </MenuSwitchItem>
-                  <MenuItem icon={<IconShare />} onClick={handleShare}>
+                  <MenuItem
+                    icon={<IconShare />}
+                    onClick={handleShare}
+                    ariaLabel={t("sidebar.share")}
+                  >
                     {t("sidebar.share")}
                   </MenuItem>
                   <MenuItem
