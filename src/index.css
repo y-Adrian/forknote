@@ -1766,6 +1766,13 @@ body {
   border-color: var(--ds-code-border);
 }
 
+.fn-code-copy.is-copy-failed,
+.answer-body .fn-code-copy.is-copy-failed,
+.fn-msg-action.is-copy-failed,
+.btn.is-copy-failed {
+  color: var(--ds-stamp);
+}
+
 .answer-body .fn-code-body {
   display: flex;
   max-width: 100%;

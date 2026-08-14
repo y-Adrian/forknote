@@ -78,7 +78,7 @@ function ViewModeIcon({ mode }: { mode: MainThreadViewMode }) {
 function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
   const { t } = useLocale();
   const projectRoot = useAppStore((s) => s.projectRoot);
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"idle" | "copied" | "failed">("idle");
   const rel = archive.filePath?.trim() || archiveRelativePath(archive);
   const abs = projectRoot ? joinProjectPath(projectRoot, rel) : null;
   const onDisk = archive.storage === "project" && Boolean(archive.filePath);
@@ -86,10 +86,16 @@ function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
   const copyPath = async () => {
     const text = abs ?? rel;
     const ok = await copyTextToClipboard(text);
-    if (!ok) return;
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    setFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setFeedback("idle"), 1600);
   };
+
+  const copyLabel =
+    feedback === "copied"
+      ? t("chat.copied")
+      : feedback === "failed"
+        ? t("chat.copyFailed")
+        : t("archive.copyPath");
 
   return (
     <div className="fn-archive-path-row">
@@ -100,11 +106,16 @@ function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
           </code>
           <button
             type="button"
-            className="btn ghost sm"
+            className={`btn ghost sm${feedback === "failed" ? " is-copy-failed" : ""}`}
             onClick={() => void copyPath()}
-            title={t("archive.copyPathTitle")}
+            title={
+              feedback === "failed"
+                ? t("chat.copyFailed")
+                : t("archive.copyPathTitle")
+            }
+            aria-label={copyLabel}
           >
-            {copied ? t("chat.copied") : t("archive.copyPath")}
+            {copyLabel}
           </button>
         </>
       ) : (

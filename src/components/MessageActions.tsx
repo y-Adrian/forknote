@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { copyTextToClipboard } from "../lib/clipboard";
+import {
+  copyTextToClipboard,
+  type CopyTextFeedback,
+} from "../lib/clipboard";
 import { useLocale } from "../lib/i18n";
 
 interface Props {
@@ -12,15 +15,21 @@ interface Props {
 
 export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
   const { t } = useLocale();
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
 
   const copy = async () => {
     const ok = await copyTextToClipboard(text);
-    if (!ok) return;
-    onCopy?.();
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+    if (ok) onCopy?.();
+    setFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setFeedback("idle"), 1400);
   };
+
+  const label =
+    feedback === "copied"
+      ? t("chat.copied")
+      : feedback === "failed"
+        ? t("chat.copyFailed")
+        : t("chat.copy");
 
   return (
     <div
@@ -28,12 +37,12 @@ export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
     >
       <button
         type="button"
-        className="fn-msg-action"
+        className={`fn-msg-action${feedback === "failed" ? " is-copy-failed" : ""}`}
         onClick={() => void copy()}
-        aria-label={copied ? t("chat.copied") : t("chat.copy")}
-        title={copied ? t("chat.copied") : t("chat.copy")}
+        aria-label={label}
+        title={label}
       >
-        {copied ? (
+        {feedback === "copied" ? (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M5 12.5l4.5 4.5L19 7.5"
@@ -41,6 +50,15 @@ export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
               strokeWidth="1.8"
               strokeLinecap="round"
               strokeLinejoin="round"
+            />
+          </svg>
+        ) : feedback === "failed" ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M7 7l10 10M17 7L7 17"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
             />
           </svg>
         ) : (

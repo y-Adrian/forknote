@@ -14,6 +14,7 @@ import {
   sharePayloadToHtml,
   type ShareableMessage,
 } from "../lib/sessionShare";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
 import { AccessibleModal } from "./AccessibleModal";
@@ -150,13 +151,14 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
   };
 
   const copyText = async (text: string, kind: "link" | "content") => {
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
       setCopiedKind(kind);
       setError(null);
-    } catch {
-      setError(t("share.copyFailed"));
+      return;
     }
+    setCopiedKind(null);
+    setError(t("share.copyFailed"));
   };
 
   const copyMarkdown = () => {

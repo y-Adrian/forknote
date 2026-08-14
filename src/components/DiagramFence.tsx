@@ -10,6 +10,10 @@ import {
   copyDiagramImage,
   type CopyDiagramImageResult,
 } from "../lib/copyDiagramImage";
+import {
+  copyTextToClipboard,
+  type CopyTextFeedback,
+} from "../lib/clipboard";
 import { diagramKindFromLanguage } from "../lib/diagramFence";
 import { useLocale } from "../lib/i18n";
 import {
@@ -92,20 +96,23 @@ function SourceFence({
   toolbarExtra?: ReactNode;
 }) {
   const { t } = useLocale();
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
   const text = String(children).replace(/\n$/, "");
   const lines = text.length === 0 ? [""] : text.split("\n");
   const language = languageFromClass(className);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(text);
+    setFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setFeedback("idle"), 1400);
   };
+
+  const label =
+    feedback === "copied"
+      ? t("chat.copied")
+      : feedback === "failed"
+        ? t("chat.copyFailed")
+        : t("chat.copy");
 
   return (
     <div className="fn-code-block">
@@ -115,12 +122,12 @@ function SourceFence({
           {toolbarExtra}
           <button
             type="button"
-            className="fn-code-copy"
+            className={`fn-code-copy${feedback === "failed" ? " is-copy-failed" : ""}`}
             onClick={() => void copy()}
-            aria-label={copied ? t("chat.copied") : t("chat.copy")}
-            title={copied ? t("chat.copied") : t("chat.copy")}
+            aria-label={label}
+            title={label}
           >
-            {copied ? t("chat.copied") : t("chat.copy")}
+            {label}
           </button>
         </div>
       </div>
@@ -146,7 +153,7 @@ function DiagramToolbar({
   showSource,
   onToggleSource,
   onCopy,
-  copied,
+  copyFeedback,
   canToggle,
   onCopyImage,
   copyImageFeedback = "idle",
@@ -156,7 +163,7 @@ function DiagramToolbar({
   showSource: boolean;
   onToggleSource?: () => void;
   onCopy: () => void;
-  copied: boolean;
+  copyFeedback: CopyTextFeedback;
   canToggle: boolean;
   onCopyImage?: () => void;
   copyImageFeedback?: CopyImageFeedback;
@@ -171,6 +178,12 @@ function DiagramToolbar({
         : copyImageFeedback === "failed"
           ? t("chat.diagram.copyImageFailed")
           : t("chat.diagram.copyImage");
+  const sourceLabel =
+    copyFeedback === "copied"
+      ? t("chat.copied")
+      : copyFeedback === "failed"
+        ? t("chat.copyFailed")
+        : t("chat.copySource");
   return (
     <div className="fn-code-toolbar">
       <span className="fn-code-lang">{language}</span>
@@ -210,12 +223,12 @@ function DiagramToolbar({
         ) : null}
         <button
           type="button"
-          className="fn-code-copy"
+          className={`fn-code-copy${copyFeedback === "failed" ? " is-copy-failed" : ""}`}
           onClick={onCopy}
-          aria-label={copied ? t("chat.copied") : t("chat.copySource")}
-          title={copied ? t("chat.copied") : t("chat.copySource")}
+          aria-label={sourceLabel}
+          title={sourceLabel}
         >
-          {copied ? t("chat.copied") : t("chat.copySource")}
+          {sourceLabel}
         </button>
       </div>
     </div>
@@ -274,7 +287,7 @@ const MermaidDiagram = memo(function MermaidDiagram({
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<CopyTextFeedback>("idle");
   const [copyImageFeedback, setCopyImageFeedback] =
     useState<CopyImageFeedback>("idle");
   const renderGenRef = useRef(0);
@@ -282,13 +295,9 @@ const MermaidDiagram = memo(function MermaidDiagram({
   const copyImageTimerRef = useRef<number | null>(null);
 
   const copySource = async () => {
-    try {
-      await navigator.clipboard.writeText(source.trimEnd());
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(source.trimEnd());
+    setCopyFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setCopyFeedback("idle"), 1400);
   };
 
   const handleCopyImage = () => {
@@ -459,7 +468,7 @@ const MermaidDiagram = memo(function MermaidDiagram({
           language="mermaid"
           showSource={false}
           onCopy={() => void copySource()}
-          copied={copied}
+          copyFeedback={copyFeedback}
           canToggle={false}
         />
         <p className="fn-diagram-hint muted">{t("chat.diagram.rendering")}</p>
@@ -477,7 +486,7 @@ const MermaidDiagram = memo(function MermaidDiagram({
           showSource={false}
           onToggleSource={() => setShowSource(true)}
           onCopy={() => void copySource()}
-          copied={copied}
+          copyFeedback={copyFeedback}
           canToggle
           canCopyImage
           onCopyImage={handleCopyImage}
@@ -511,7 +520,7 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
   const [visual, setVisual] = useState<PlantumlVisual | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<CopyTextFeedback>("idle");
   const [copyImageFeedback, setCopyImageFeedback] =
     useState<CopyImageFeedback>("idle");
   const renderGenRef = useRef(0);
@@ -526,13 +535,9 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
   };
 
   const copySource = async () => {
-    try {
-      await navigator.clipboard.writeText(source.trimEnd());
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(source.trimEnd());
+    setCopyFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setCopyFeedback("idle"), 1400);
   };
 
   const handleCopyImage = () => {
@@ -698,7 +703,7 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
           language="plantuml"
           showSource={false}
           onCopy={() => void copySource()}
-          copied={copied}
+          copyFeedback={copyFeedback}
           canToggle={false}
         />
         <p className="fn-diagram-hint muted">{t("chat.diagram.rendering")}</p>
@@ -716,7 +721,7 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
           showSource={false}
           onToggleSource={() => setShowSource(true)}
           onCopy={() => void copySource()}
-          copied={copied}
+          copyFeedback={copyFeedback}
           canToggle
           canCopyImage
           onCopyImage={handleCopyImage}

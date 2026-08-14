@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  copyTextToClipboard,
+  type CopyTextFeedback,
+} from "../lib/clipboard";
 import { useLocale } from "../lib/i18n";
 import {
   decodeSharePayload,
@@ -18,7 +22,7 @@ export function ShareViewer({ token, onExit }: Props) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
 
   useEffect(() => {
     let cancelled = false;
@@ -40,14 +44,17 @@ export function ShareViewer({ token, onExit }: Props) {
 
   const copyMarkdown = async () => {
     if (!payload) return;
-    try {
-      await navigator.clipboard.writeText(sharePayloadToMarkdown(payload));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(sharePayloadToMarkdown(payload));
+    setFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setFeedback("idle"), 1600);
   };
+
+  const copyLabel =
+    feedback === "copied"
+      ? t("share.copied")
+      : feedback === "failed"
+        ? t("share.copyFailed")
+        : t("share.copyContent");
 
   return (
     <div className="fn-share-viewer">
@@ -69,10 +76,12 @@ export function ShareViewer({ token, onExit }: Props) {
           {status === "ready" ? (
             <button
               type="button"
-              className="btn ghost sm"
+              className={`btn ghost sm${feedback === "failed" ? " is-copy-failed" : ""}`}
               onClick={() => void copyMarkdown()}
+              aria-label={copyLabel}
+              title={copyLabel}
             >
-              {copied ? t("share.copied") : t("share.copyContent")}
+              {copyLabel}
             </button>
           ) : null}
           <button type="button" className="btn primary sm" onClick={onExit}>

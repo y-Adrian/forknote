@@ -17,6 +17,10 @@ import {
   type ImgHTMLAttributes,
   type ReactNode,
 } from "react";
+import {
+  copyTextToClipboard,
+  type CopyTextFeedback,
+} from "../lib/clipboard";
 import { AdoptedClarifyCard } from "./AdoptedClarifyCard";
 import { DiagramFence, isDiagramFenceClass } from "./DiagramFence";
 
@@ -54,20 +58,23 @@ function FencedCodeBlock({
   children: ReactNode;
 }) {
   const { t } = useLocale();
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
   const text = String(children).replace(/\n$/, "");
   const lines = text.length === 0 ? [""] : text.split("\n");
   const language = languageFromClass(className);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(text);
+    setFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setFeedback("idle"), 1400);
   };
+
+  const label =
+    feedback === "copied"
+      ? t("chat.copied")
+      : feedback === "failed"
+        ? t("chat.copyFailed")
+        : t("chat.copy");
 
   return (
     <div className="fn-code-block">
@@ -76,12 +83,12 @@ function FencedCodeBlock({
         <div className="fn-code-toolbar-actions">
           <button
             type="button"
-            className="fn-code-copy"
+            className={`fn-code-copy${feedback === "failed" ? " is-copy-failed" : ""}`}
             onClick={() => void copy()}
-            aria-label={copied ? t("chat.copied") : t("chat.copy")}
-            title={copied ? t("chat.copied") : t("chat.copy")}
+            aria-label={label}
+            title={label}
           >
-            {copied ? t("chat.copied") : t("chat.copy")}
+            {label}
           </button>
         </div>
       </div>
@@ -108,7 +115,7 @@ function MarkdownImage({
   title,
 }: ImgHTMLAttributes<HTMLImageElement>) {
   const { t } = useLocale();
-  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
   const [failed, setFailed] = useState(false);
   const safeSrc = typeof src === "string" ? forknoteUrlTransform(src.trim()) : "";
   const safeAlt = typeof alt === "string" ? alt : "";
@@ -118,14 +125,17 @@ function MarkdownImage({
 
   const copy = async () => {
     if (!markdown) return;
-    try {
-      await navigator.clipboard.writeText(markdown);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      // ignore
-    }
+    const ok = await copyTextToClipboard(markdown);
+    setFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setFeedback("idle"), 1400);
   };
+
+  const copyLabel =
+    feedback === "copied"
+      ? t("chat.copied")
+      : feedback === "failed"
+        ? t("chat.copyFailed")
+        : t("chat.image.copyMarkdown");
 
   if (!safeSrc) return null;
 
@@ -145,12 +155,12 @@ function MarkdownImage({
           </a>
           <button
             type="button"
-            className="fn-code-copy"
+            className={`fn-code-copy${feedback === "failed" ? " is-copy-failed" : ""}`}
             onClick={() => void copy()}
-            aria-label={copied ? t("chat.copied") : t("chat.image.copyMarkdown")}
-            title={copied ? t("chat.copied") : t("chat.image.copyMarkdown")}
+            aria-label={copyLabel}
+            title={copyLabel}
           >
-            {copied ? t("chat.copied") : t("chat.image.copyMarkdown")}
+            {copyLabel}
           </button>
         </div>
       </div>
