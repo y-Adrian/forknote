@@ -1,7 +1,7 @@
 /**
  * Simulate unbound runAgentTurn for「随便给我写一段代码」with a mocked fetch
- * SSE reply. Asserts: completed (not need_project), no tools in request body,
- * assistant content includes a code fence, no plan-approval callback.
+ * SSE reply. Asserts: completed, no tools in request body, assistant content
+ * includes a code fence, no plan-approval callback.
  */
 import assert from "node:assert/strict";
 import { runAgentTurn } from "../src/lib/agentTurn.ts";
@@ -116,15 +116,13 @@ try {
   });
 
   assert.equal(outcome, "completed");
-  assert.notEqual(outcome, "need_project");
   assert.equal(planCalls, 0, "no plan approval");
   assert.equal(activityCalls, 0, "no tool activity");
   assert.match(patchedContent, /```python/);
   assert.match(patchedContent, /Hello, ForkNote/);
   console.log("sim-unbound-write-code: ok");
 
-  // Named create-file phrasing must also stay plain chat when unbound
-  // (previously returned need_project and rolled back the turn).
+  // Named create-file phrasing must also stay plain chat when unbound.
   patchedContent = "";
   const namedOutcome = await runAgentTurn({
     llm: {
@@ -183,7 +181,6 @@ try {
     },
   });
   assert.equal(namedOutcome, "completed");
-  assert.notEqual(namedOutcome, "need_project");
   assert.equal(planCalls, 0);
   console.log("sim-unbound-create-named-file: ok");
 } finally {

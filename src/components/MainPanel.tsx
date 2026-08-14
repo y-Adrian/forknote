@@ -662,11 +662,8 @@ export function MainPanel({
     clearComposerForSend();
     void (async () => {
       const outcome = await askMain(saved);
-      // Only put text back when the turn never ran / was rolled back before streaming
-      if (
-        (outcome === "rejected" || outcome === "rolled_back") &&
-        lastSentPromptRef.current === saved
-      ) {
+      // Only put text back when the turn never started
+      if (outcome === "rejected" && lastSentPromptRef.current === saved) {
         suppressComposerChangeRef.current = false;
         setInput(saved);
       }

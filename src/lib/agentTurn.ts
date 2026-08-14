@@ -105,8 +105,7 @@ export type AgentContentPatch = {
 export type AgentTurnOutcome =
   | "completed"
   | "waiting_plan"
-  | "aborted"
-  | "need_project";
+  | "aborted";
 
 export type RunAgentTurnOptions = {
   llm: ApiSettings;
