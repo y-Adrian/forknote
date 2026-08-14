@@ -83,6 +83,28 @@ export function appendBranchToMessage(
   });
 }
 
+/** Drop a provisional Fork stub (and its subtree) after a failed clarify start. */
+export function removeBranchFromThread(
+  thread: ThreadRoot,
+  branchId: string,
+): ThreadRoot {
+  const removeInNodes = (nodes: BranchNode[]): BranchNode[] =>
+    nodes
+      .filter((node) => node.id !== branchId)
+      .map((node) => ({
+        ...node,
+        children: removeInNodes(node.children),
+      }));
+
+  return {
+    ...thread,
+    messages: thread.messages.map((m) => ({
+      ...m,
+      children: removeInNodes(m.children ?? []),
+    })),
+  };
+}
+
 export function patchBranchInThread(
   thread: ThreadRoot,
   branchId: string,

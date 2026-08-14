@@ -2709,6 +2709,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    const locale = getLocale();
+    let extraMessages;
+    try {
+      // Resolve clarify context before persisting a stub fork.
+      extraMessages = buildClarifyAddendumMessages(
+        thread,
+        parentId,
+        anchor.quotedText,
+        trimmed,
+        locale,
+      );
+    } catch (e) {
+      set({
+        error:
+          e instanceof Error
+            ? e.message
+            : t("fork.error.context", undefined, getLocale()),
+      });
+      return;
+    }
+
     const branch: BranchNode = {
       id: createId(),
       parentId,
@@ -2816,24 +2837,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       try {
         const { projectRoot, sidecarUrl } = get();
-        const locale = getLocale();
-        let extraMessages;
-        try {
-          extraMessages = buildClarifyAddendumMessages(
-            nextThread,
-            parentId,
-            anchor.quotedText,
-            trimmed,
-            locale,
-          );
-        } catch (e) {
-          set({
-            error:
-              e instanceof Error ? e.message : t("fork.error.context", undefined, getLocale()),
-          });
-          return;
-        }
-
         const outcome = await runAgentTurn({
           llm,
           settings,
