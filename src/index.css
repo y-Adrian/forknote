@@ -5687,6 +5687,24 @@ mark.branch-highlight:focus-visible {
   font-size: 0.9em;
 }
 
+.project-connected-hint.is-warn {
+  color: var(--ds-warning, #b45309);
+}
+
+.fn-project-terminal-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 4px 0 0;
+}
+
+.fn-project-terminal-settings {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: var(--fn-text-ui-sm);
+}
+
 
 /* ── Archive panel / context mode ─────────────────────────── */
 

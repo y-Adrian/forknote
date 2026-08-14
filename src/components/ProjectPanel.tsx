@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
+import { resolveAgentAllowTerminal } from "../lib/settings";
 import { DEFAULT_SIDECAR_URL, pickProjectFolder } from "../lib/sidecar";
 import { useAppStore } from "../store/useAppStore";
 import { AccessibleModal } from "./AccessibleModal";
@@ -19,9 +20,12 @@ export function ProjectPanel({ open, onClose }: Props) {
   const projectRoot = useAppStore((s) => s.projectRoot);
   const sidecarUrl = useAppStore((s) => s.sidecarUrl);
   const projectError = useAppStore((s) => s.projectError);
+  const settings = useAppStore((s) => s.settings);
   const openProject = useAppStore((s) => s.openProject);
   const disconnectProject = useAppStore((s) => s.disconnectProject);
   const setSidecarUrl = useAppStore((s) => s.setSidecarUrl);
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
+  const terminalAllowed = resolveAgentAllowTerminal(settings);
 
   const [pathDraft, setPathDraft] = useState("");
   const [urlDraft, setUrlDraft] = useState(sidecarUrl);
@@ -116,6 +120,30 @@ export function ProjectPanel({ open, onClose }: Props) {
         <p className="project-connected-hint">
           {t("projectPanel.connected")} <code>{projectRoot}</code>
         </p>
+      )}
+
+      {projectRoot && (
+        <div className="fn-project-terminal-status">
+          <p
+            className={`project-connected-hint${terminalAllowed ? "" : " is-warn"}`}
+          >
+            {t(
+              terminalAllowed
+                ? "projectPanel.terminalOn"
+                : "projectPanel.terminalOff",
+            )}
+          </p>
+          <button
+            type="button"
+            className="btn ghost fn-project-terminal-settings"
+            onClick={() => {
+              onClose();
+              setSettingsOpen(true, "project");
+            }}
+          >
+            {t("projectPanel.terminalSettings")}
+          </button>
+        </div>
       )}
 
       <div className={`fn-project-advanced${advancedOpen ? " is-open" : ""}`}>
