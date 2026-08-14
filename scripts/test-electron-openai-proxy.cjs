@@ -8,6 +8,7 @@ const appRoot = process.env.FORKNOTE_PACKAGED_ROOT
   : path.resolve(__dirname, "..");
 const {
   assertSafeApiTarget,
+  isBlockedIp,
   isPrivateLanIp,
   parseApiTarget,
 } = require(path.join(appRoot, "shared", "apiTargetPolicy.cjs"));
@@ -50,6 +51,14 @@ async function post(origin, target, apiKey = "secret-test-key") {
 }
 
 async function main() {
+  assert.equal(
+    isBlockedIp("198.18.0.10"),
+    false,
+    "VPN fake-IP range must not be treated as blocked special-use",
+  );
+  assert.equal(isBlockedIp("192.168.1.20"), true);
+  assert.equal(isBlockedIp("127.0.0.1"), true);
+
   const publicTarget = await assertSafeApiTarget(
     "https://api.placeholder.example/openai/v1",
     {
@@ -105,6 +114,40 @@ async function main() {
       err?.code === "ERR_UNSAFE_API_TARGET" &&
       /private or special-use/i.test(err.message),
     "hostname resolving to private LAN must stay blocked",
+  );
+
+  // VPN fake-IP: public API host → 198.18 (+ optional ULA) must be allowed so
+  // desktop /openai works; web_search still uses sidecar /net/search separately.
+  const fakeIpOnly = await assertSafeApiTarget(
+    "https://api.placeholder.example/v1",
+    {
+      lookup: async () => [{ address: "198.18.0.10", family: 4 }],
+    },
+  );
+  assert.deepEqual(fakeIpOnly.addresses, [
+    { address: "198.18.0.10", family: 4 },
+  ]);
+
+  const fakeIpDual = await assertSafeApiTarget(
+    "https://api.placeholder.example/v1",
+    {
+      lookup: async () => [
+        { address: "198.18.0.10", family: 4 },
+        { address: "fdfe:dcba:9876::9", family: 6 },
+      ],
+    },
+  );
+  assert.deepEqual(fakeIpDual.addresses, [
+    { address: "198.18.0.10", family: 4 },
+  ]);
+
+  await assert.rejects(
+    () =>
+      assertSafeApiTarget("https://ula-only.example/v1", {
+        lookup: async () => [{ address: "fdfe:dcba:9876::9", family: 6 }],
+      }),
+    (err) => err?.code === "ERR_UNSAFE_API_TARGET",
+    "ULA-only resolution must stay blocked",
   );
 
   assert.throws(
