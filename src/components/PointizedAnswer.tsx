@@ -20,6 +20,7 @@ import type {
   PointVerdictMap,
 } from "../types";
 import { MarkdownBody } from "./MarkdownBody";
+import { LazyMarkdownBody } from "./LazyMarkdownBody";
 
 interface Props {
   content: string;
@@ -275,9 +276,8 @@ export function PointizedAnswer({
           >
             <div className={`point-block${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}>
               <div className="point-content">
-                <MarkdownBody
+                <LazyMarkdownBody
                   content={stripLeakedFeedbackMeta(point.content)}
-                  streaming={streaming}
                 />
               </div>
               {truncated ? (
