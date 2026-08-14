@@ -15,14 +15,8 @@ import {
 } from "../lib/mainThreadViewMode";
 import { COMPRESS_SUGGEST_MESSAGE_THRESHOLD } from "../lib/settings";
 import { displaySessionTitle } from "../lib/storage";
-import {
-  archiveRelativePath,
-  joinProjectPath,
-} from "../lib/archiveFiles";
-import { copyTextToClipboard } from "../lib/clipboard";
-import { isAgentTurnPlaceholder } from "../lib/agentStatus";
 import { useAppStore } from "../store/useAppStore";
-import type { ArchiveSnapshot, ChatMessage, NodeId } from "../types";
+import type { ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
 import { BranchRail } from "./BranchRail";
 import { ForkHistoryMap } from "./ForkHistoryMap";
@@ -32,23 +26,10 @@ import {
   usePendingInlineApproval,
 } from "./InlineToolApproval";
 import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
-import { MarkdownBody } from "./MarkdownBody";
-import { MessageActions } from "./MessageActions";
-import { ProjectStatusBar, AgentActivityPanels } from "./ProjectStatusBar";
-import { SelectableAnswer } from "./SelectableAnswer";
+import { MainChatMessageList } from "./MainChatMessageList";
+import { ProjectStatusBar } from "./ProjectStatusBar";
 import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
-import { ThinkingBlock } from "./ThinkingBlock";
-import { GlassMessageBubble } from "./GlassMessageBubble";
-import { TurnBusyIndicator } from "./TurnBusyIndicator";
-
-function SourceBody({ content }: { content: string }) {
-  return (
-    <pre className="fn-source-body" tabIndex={0}>
-      {content}
-    </pre>
-  );
-}
 
 function ViewModeIcon({ mode }: { mode: MainThreadViewMode }) {
   if (mode === "source") {
@@ -73,60 +54,6 @@ function ViewModeIcon({ mode }: { mode: MainThreadViewMode }) {
         strokeLinecap="round"
       />
     </svg>
-  );
-}
-
-function ArchivePathRow({ archive }: { archive: ArchiveSnapshot }) {
-  const { t } = useLocale();
-  const projectRoot = useAppStore((s) => s.projectRoot);
-  const [feedback, setFeedback] = useState<"idle" | "copied" | "failed">("idle");
-  const rel = archive.filePath?.trim() || archiveRelativePath(archive);
-  const abs = projectRoot ? joinProjectPath(projectRoot, rel) : null;
-  const onDisk = archive.storage === "project" && Boolean(archive.filePath);
-
-  const copyPath = async () => {
-    const text = abs ?? rel;
-    const ok = await copyTextToClipboard(text);
-    setFeedback(ok ? "copied" : "failed");
-    window.setTimeout(() => setFeedback("idle"), 1600);
-  };
-
-  const copyLabel =
-    feedback === "copied"
-      ? t("chat.copied")
-      : feedback === "failed"
-        ? t("chat.copyFailed")
-        : t("archive.copyPath");
-
-  return (
-    <div className="fn-archive-path-row">
-      {onDisk && abs ? (
-        <>
-          <code className="fn-archive-path" title={abs}>
-            {rel}
-          </code>
-          <button
-            type="button"
-            className={`btn ghost sm${feedback === "failed" ? " is-copy-failed" : ""}`}
-            onClick={() => void copyPath()}
-            title={
-              feedback === "failed"
-                ? t("chat.copyFailed")
-                : t("archive.copyPathTitle")
-            }
-            aria-label={copyLabel}
-          >
-            {copyLabel}
-          </button>
-        </>
-      ) : (
-        <span className="fn-archive-path-hint">
-          {projectRoot
-            ? t("archive.pathPending")
-            : t("archive.pathNeedProject")}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -213,8 +140,7 @@ export function MainPanel({
     const plan = s.agentPendingPlan;
     return Boolean(plan && plan.sessionId === sid && !plan.branchId);
   });
-  const { pending: pendingInline, assistantId: pendingInlineAssistantId } =
-    usePendingInlineApproval({ kind: "main" });
+  const { pending: pendingInline } = usePendingInlineApproval({ kind: "main" });
   const error = useAppStore((s) => s.error);
   const pendingClarify = useAppStore((s) =>
     s.activeSessionId
@@ -328,6 +254,12 @@ export function MainPanel({
   }, [thread, showArchiveDoc, activeArchive]);
 
   const lastThreadMessageId = thread?.messages[thread.messages.length - 1]?.id;
+  const threadMessageIds = useMemo(
+    () => thread?.messages.map((m) => m.id) ?? [],
+    [thread],
+  );
+
+
 
   const showCompressSuggest = useMemo(() => {
     if (!thread || !activeSessionId) return false;
@@ -624,9 +556,9 @@ export function MainPanel({
     };
   }, []);
 
-  const toggleBranch = (branchId: NodeId | null) => {
+  const toggleBranch = useCallback((branchId: NodeId | null) => {
     setOpenBranchId(branchId);
-  };
+  }, []);
 
   const openArchiveOnMain = (archiveId?: NodeId | null) => {
     const targetId =
@@ -639,13 +571,13 @@ export function MainPanel({
     setContextMode("archive", targetId);
   };
 
-  const dismissModeNotice = () => {
+  const dismissModeNotice = useCallback(() => {
     setModeNotice(null);
     if (modeNoticeTimerRef.current) {
       window.clearTimeout(modeNoticeTimerRef.current);
       modeNoticeTimerRef.current = null;
     }
-  };
+  }, []);
 
   const switchToArchive = (archiveId?: NodeId) => {
     const targetId =
@@ -706,11 +638,11 @@ export function MainPanel({
     }
   };
 
-  const switchToLiveConversation = () => {
+  const switchToLiveConversation = useCallback(() => {
     captureScrollAnchor();
     setContextMode("live");
     dismissModeNotice();
-  };
+  }, [captureScrollAnchor, dismissModeNotice, setContextMode]);
 
   const switchToEvolution = () => {
     captureScrollAnchor();
@@ -750,11 +682,18 @@ export function MainPanel({
     }
   };
 
-  const editUserMessage = (text: string) => {
+  const copyMessage = useCallback(
+    (messageId: NodeId) => {
+      recordPassiveCopy(messageId);
+    },
+    [recordPassiveCopy],
+  );
+
+  const editUserMessage = useCallback((text: string) => {
     lastSentPromptRef.current = text;
     focusComposerAfterEditRef.current = true;
     setInput(text);
-  };
+  }, []);
 
   useEffect(() => {
     if (!focusComposerAfterEditRef.current) return;
@@ -959,190 +898,29 @@ export function MainPanel({
 
       <div className="ds-chat-body">
         <div className="ds-chat-column">
-          <div className="ds-chat-scroll" ref={scrollRef}>
-            <div
-              className={`ds-messages${suppressEnterAnim ? " is-no-enter" : ""}`}
-            >
-              {showArchiveDraft ? (
-                <div className="fn-msg fn-msg-assistant">
-                  <article className="fn-archive-base" aria-busy="true">
-                    <span className="fn-archive-base-kicker">
-                      {t("main.archiveBaseKicker")}
-                    </span>
-                    <h2 className="fn-archive-base-title">
-                      {t("main.archiving")}
-                    </h2>
-                    {archiveDraft.trim() ? (
-                      <div className="answer-body">
-                        {sourceMode ? (
-                          <SourceBody content={archiveDraft} />
-                        ) : (
-                          <MarkdownBody content={archiveDraft} />
-                        )}
-                      </div>
-                    ) : (
-                      <div className="fn-archive-loading" aria-busy="true">
-                        <div className="ds-typing" aria-label={t("archive.generatingAria")}>
-                          <span />
-                          <span />
-                          <span />
-                        </div>
-                        <p>{t("archive.generating")}</p>
-                      </div>
-                    )}
-                  </article>
-                </div>
-              ) : null}
-              {showArchiveDoc && activeArchive && !loadingArchive ? (
-                <div className="fn-msg fn-msg-assistant">
-                  <article className="fn-archive-base">
-                    <div className="fn-archive-base-toolbar">
-                      <span className="fn-archive-base-kicker">
-                        {t("main.archiveBaseKicker")}
-                        {archiveAlreadyCurrent
-                          ? ` · ${t("archive.hintUpToDateShort")}`
-                          : ""}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn ghost sm"
-                        title={t("main.liveConversationTitle")}
-                        onClick={switchToLiveConversation}
-                      >
-                        {t("main.liveConversation")}
-                      </button>
-                    </div>
-                    <h2 className="fn-archive-base-title">
-                      {activeArchive.title}
-                    </h2>
-                    <ArchivePathRow archive={activeArchive} />
-                    <div className="answer-body">
-                      {sourceMode ? (
-                        <SourceBody content={activeArchive.content} />
-                      ) : (
-                        <MarkdownBody content={activeArchive.content} />
-                      )}
-                    </div>
-                  </article>
-                  <MessageActions
-                    text={activeArchive.content}
-                    align="start"
-                  />
-                </div>
-              ) : null}
-              {visibleMessages.map((msg) =>
-                msg.role === "user" ? (
-                  <div
-                    key={msg.id}
-                    data-msg-id={msg.id}
-                    className="fn-msg fn-msg-user"
-                  >
-                    <GlassMessageBubble>
-                      <p>{msg.content}</p>
-                    </GlassMessageBubble>
-                    <MessageActions
-                      text={msg.content}
-                      align="end"
-                      onEdit={() => editUserMessage(msg.content)}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    key={msg.id}
-                    data-msg-id={msg.id}
-                    className="fn-msg fn-msg-assistant"
-                  >
-                    {msg.reasoning?.trim() ? (
-                      <ThinkingBlock
-                        reasoning={msg.reasoning}
-                        seconds={msg.thinkingSeconds}
-                        streaming={
-                          loadingMain && msg.id === lastThreadMessageId
-                        }
-                      />
-                    ) : null}
-                    {showMainAgentActivity &&
-                    msg.id === lastThreadMessageId ? (
-                      <AgentActivityPanels />
-                    ) : null}
-                    {msg.content ? (
-                      <>
-                        <div className="ds-bubble ds-bubble-assistant">
-                          {sourceMode ? (
-                            <SourceBody content={msg.content} />
-                          ) : (
-                            <SelectableAnswer
-                              parentId={msg.id}
-                              parentContent={msg.content}
-                              content={msg.content}
-                              branches={msg.children}
-                              onAskBranch={askBranch}
-                              branchLoading={
-                                loadingBranchId !== null ||
-                                (loadingMain && msg.id === lastThreadMessageId)
-                              }
-                              contentStreaming={
-                                loadingMain && msg.id === lastThreadMessageId
-                              }
-                              activeBranchId={openBranchId}
-                              onToggleBranch={toggleBranch}
-                              compact
-                              pointVerdicts={msg.pointVerdicts}
-                              pointDoubts={msg.pointDoubts}
-                              pointAttributions={msg.pointAttributions}
-                            />
-                          )}
-                        </div>
-                        <div
-                          className="fn-msg-footer is-start"
-                          aria-busy={
-                            loadingMain &&
-                            msg.id === lastThreadMessageId &&
-                            isAgentTurnPlaceholder(msg.content)
-                              ? true
-                              : undefined
-                          }
-                        >
-                          <MessageActions
-                            text={msg.content}
-                            align="start"
-                            onCopy={() => recordPassiveCopy(msg.id)}
-                          />
-                          {loadingMain &&
-                          msg.id === lastThreadMessageId &&
-                          isAgentTurnPlaceholder(msg.content) ? (
-                            <TurnBusyIndicator label={t("chat.generating")} />
-                          ) : null}
-                        </div>
-                      </>
-                    ) : loadingMain && msg.id === lastThreadMessageId ? (
-                      !msg.reasoning?.trim() ? (
-                        <div
-                          className="ds-typing"
-                          aria-label={t("main.thinking")}
-                        >
-                          <span />
-                          <span />
-                          <span />
-                        </div>
-                      ) : null
-                    ) : null}
-                    {pendingInline &&
-                    (pendingInlineAssistantId
-                      ? pendingInlineAssistantId === msg.id
-                      : msg.id === lastThreadMessageId) ? (
-                      <InlineToolApproval scope={{ kind: "main" }} />
-                    ) : null}
-                  </div>
-                ),
-              )}
-              {pendingInline &&
-              pendingInlineAssistantId &&
-              !thread.messages.some((m) => m.id === pendingInlineAssistantId) ? (
-                <InlineToolApproval scope={{ kind: "main" }} />
-              ) : null}
-            </div>
-          </div>
+          <MainChatMessageList
+            scrollRef={scrollRef}
+            suppressEnterAnim={suppressEnterAnim}
+            sourceMode={sourceMode}
+            showArchiveDraft={showArchiveDraft}
+            archiveDraft={archiveDraft}
+            showArchiveDoc={showArchiveDoc}
+            activeArchive={activeArchive}
+            archiveAlreadyCurrent={archiveAlreadyCurrent}
+            loadingArchive={loadingArchive}
+            loadingMain={loadingMain}
+            loadingBranchId={loadingBranchId}
+            showMainAgentActivity={showMainAgentActivity}
+            visibleMessages={visibleMessages}
+            lastThreadMessageId={lastThreadMessageId}
+            threadMessageIds={threadMessageIds}
+            openBranchId={openBranchId}
+            onToggleBranch={toggleBranch}
+            onAskBranch={askBranch}
+            onEditUserMessage={editUserMessage}
+            onCopyMessage={copyMessage}
+            onSwitchToLiveConversation={switchToLiveConversation}
+          />
 
           <footer className="ds-chat-footer">
             {pendingClarify ? (
