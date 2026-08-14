@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -31,6 +32,7 @@ import {
   clarifyBranchIdFromEventTarget,
   clearHighlights,
 } from "../lib/domHighlight";
+import { isActivationKey } from "../lib/keyboard";
 import { parseAnswerPoints, anchorForAnswerPoint } from "../lib/points";
 import { clearSelection, getSelectionInContainer } from "../lib/selection";
 import { useLocale } from "../lib/i18n";
@@ -285,6 +287,22 @@ export function SelectableMarkdown({
     [onHighlightClick],
   );
 
+  const handleContentKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (!isActivationKey(e.key)) return;
+      const branchId = clarifyBranchIdFromEventTarget(e.target);
+      if (!branchId) return;
+      const target = e.target as HTMLElement;
+      if (target.closest(".point-verdict-group, .point-hypo, .point-doubt")) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      onHighlightClick?.(branchId);
+    },
+    [onHighlightClick],
+  );
+
   const openPopover = () => {
     if (!pendingAnchor) return;
     const sel = window.getSelection();
@@ -349,6 +367,7 @@ export function SelectableMarkdown({
         onMouseUp={handleMouseUp}
         onPointerUp={handlePointerUp}
         onClick={handleContentClick}
+        onKeyDown={handleContentKeyDown}
       >
         {verdictTargetId ? (
           <PointizedAnswer

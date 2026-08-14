@@ -24,6 +24,15 @@ export function clearHighlights(root: HTMLElement): void {
     if (!(el instanceof HTMLElement)) return;
     delete el.dataset[POINT_CLARIFY_ATTR];
     el.classList.remove(POINT_CLARIFY_CLASS, POINT_CLARIFY_PENDING_CLASS);
+    const block = el.querySelector(".point-block") as HTMLElement | null;
+    for (const target of [el, block]) {
+      if (!target) continue;
+      if (target.getAttribute("role") === "button") {
+        target.removeAttribute("role");
+        target.removeAttribute("tabindex");
+        target.removeAttribute("aria-label");
+      }
+    }
   });
   try {
     root.normalize();
@@ -100,10 +109,16 @@ function findTextRange(
   return range;
 }
 
-function wrapRange(range: Range, branchId: string): boolean {
+function wrapRange(range: Range, branchId: string, label: string): boolean {
   const mark = document.createElement("mark");
   mark.className = MARK_CLASS;
   mark.dataset.branchId = branchId;
+  mark.setAttribute("role", "button");
+  mark.tabIndex = 0;
+  mark.setAttribute(
+    "aria-label",
+    label.trim() ? label.trim().slice(0, 120) : "Open fork",
+  );
 
   try {
     range.surroundContents(mark);
@@ -126,6 +141,7 @@ function markPointClarifyTarget(
   pointIndex: number,
   branchId: string,
   pending: boolean,
+  label: string,
 ): boolean {
   const row = root.querySelector(
     `[data-point-index="${pointIndex}"]`,
@@ -134,6 +150,14 @@ function markPointClarifyTarget(
   row.dataset[POINT_CLARIFY_ATTR] = branchId;
   row.classList.add(POINT_CLARIFY_CLASS);
   row.classList.toggle(POINT_CLARIFY_PENDING_CLASS, pending);
+  const block = row.querySelector(".point-block") as HTMLElement | null;
+  const target = block ?? row;
+  target.setAttribute("role", "button");
+  target.tabIndex = 0;
+  target.setAttribute(
+    "aria-label",
+    label.trim() ? label.trim().slice(0, 120) : "Open fork",
+  );
   return true;
 }
 
@@ -153,12 +177,14 @@ export function applyBranchHighlights(
   // Later branches for the same point win (most recent Ask).
   for (const branch of branches) {
     const pointIndex = branch.anchor.pointIndex;
+    const label = branch.userQuestion || branch.anchor.quotedText || "";
     if (pointIndex != null) {
       markPointClarifyTarget(
         root,
         pointIndex,
         branch.id,
         !branch.assistantMessage.trim(),
+        label,
       );
       continue;
     }
@@ -174,7 +200,7 @@ export function applyBranchHighlights(
     const overlaps = usedRanges.some((r) => rangesOverlap(r, range));
     if (overlaps) continue;
 
-    if (wrapRange(range, branch.id)) {
+    if (wrapRange(range, branch.id, label)) {
       usedRanges.push(range);
     }
   }
