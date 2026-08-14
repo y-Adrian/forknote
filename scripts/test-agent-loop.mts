@@ -112,7 +112,16 @@ function testWebReflectNudge() {
   assert.equal(observeBatchHasWebTools(observed), true);
   assert.equal(
     shouldAskLlmReflect({ observed }, "continue"),
+    false,
+    "clean successful web batches must not trigger LLM Reflect",
+  );
+  assert.equal(
+    shouldAskLlmReflect(
+      { observed, expectedOutcome: "enough sources for the answer" },
+      "continue",
+    ),
     true,
+    "expected-outcome checks may still ask the LLM after web tools",
   );
   const retry = buildReflectNudge({
     decision: "retry",
