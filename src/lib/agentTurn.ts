@@ -29,6 +29,7 @@ import {
   isChatOnlyDiagramAsk,
   looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
+  mutationPlanNoToolsAction,
   shouldPreferPlainChatTurn,
   multiStepFollowUpHint,
   multiStepSystemHint,
@@ -1812,13 +1813,39 @@ export async function runAgentTurn(
       return signal.aborted ? "aborted" : "completed";
     }
 
-    // Clear create/office intents must still run tools — never treat a
-    // hallucinated "already created" plan as a finished turn.
-    if (!planNeedsToolApproval(first.displayPlan, first.steps)) {
-      if (createPath || officeIntent) {
-        visibleContent = await executeTools();
+    // Clear create/office/mutation intents must still run tools — never treat a
+    // hallucinated "already done / no tools needed" plan as a finished turn.
+    const noToolsAction = mutationPlanNoToolsAction({
+      planNeedsTools: planNeedsToolApproval(first.displayPlan, first.steps),
+      userText: trimmed,
+      createPath,
+      hasOfficeIntent: Boolean(officeIntent),
+      shellIntent,
+    });
+    if (noToolsAction === "force_execute") {
+      visibleContent = await executeTools({ requireToolBatch: true });
+      return signal.aborted ? "aborted" : "completed";
+    }
+    if (noToolsAction === "replan_or_execute") {
+      apiMessages.push({
+        role: "user",
+        content:
+          locale === "zh"
+            ? "上份计划声称无需工具，但用户请求需要修改项目或系统。请重新输出可执行计划，必须写明具体工具（如 write_file / search_replace / run_terminal / write_docx / write_xlsx），禁止「无需工具」或假装已完成。"
+            : "The previous plan claimed no tools are needed, but the user request requires mutating the project or system. Output an executable plan that names concrete tools (write_file / search_replace / run_terminal / write_docx / write_xlsx). Do not say tools are unnecessary or pretend the work is done.",
+      });
+      const retry = await draftPlanFromModel();
+      if (!retry) {
         return signal.aborted ? "aborted" : "completed";
       }
+      if (!planNeedsToolApproval(retry.displayPlan, retry.steps)) {
+        visibleContent = await executeTools({ requireToolBatch: true });
+        return signal.aborted ? "aborted" : "completed";
+      }
+      presentPlanForApproval(retry);
+      return "waiting_plan";
+    }
+    if (!planNeedsToolApproval(first.displayPlan, first.steps)) {
       return "completed";
     }
 
