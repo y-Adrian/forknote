@@ -9,6 +9,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { assertSafeApiTarget } = require("../shared/apiTargetPolicy.cjs");
+const { PACKAGED_UI_CSP } = require("../shared/packagedUiCsp.cjs");
 
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
@@ -47,8 +48,14 @@ function sendJson(res, status, body) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(data),
+    "Content-Security-Policy": PACKAGED_UI_CSP,
   });
   res.end(data);
+}
+
+/** @param {import('node:http').ServerResponse} res */
+function applyPackagedCsp(res) {
+  res.setHeader("Content-Security-Policy", PACKAGED_UI_CSP);
 }
 
 /**
@@ -191,10 +198,12 @@ function serveStatic(distDir, req, res) {
   try {
     pathname = decodeURIComponent(rawPathname);
   } catch {
+    applyPackagedCsp(res);
     res.writeHead(400).end("Bad Request");
     return;
   }
   if (pathname.includes("\0")) {
+    applyPackagedCsp(res);
     res.writeHead(400).end("Bad Request");
     return;
   }
@@ -212,6 +221,7 @@ function serveStatic(distDir, req, res) {
     relativePath.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relativePath)
   ) {
+    applyPackagedCsp(res);
     res.writeHead(403).end("Forbidden");
     return;
   }
@@ -222,18 +232,22 @@ function serveStatic(distDir, req, res) {
         // SPA fallback
         fs.readFile(path.join(root, "index.html"), (err2, html) => {
           if (err2) {
+            applyPackagedCsp(res);
             res.writeHead(404).end("Not found");
             return;
           }
+          applyPackagedCsp(res);
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(html);
         });
         return;
       }
+      applyPackagedCsp(res);
       res.writeHead(404).end("Not found");
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
+    applyPackagedCsp(res);
     res.writeHead(200, {
       "Content-Type": MIME[ext] || "application/octet-stream",
     });
@@ -314,4 +328,9 @@ function startUiServer(opts) {
   });
 }
 
-module.exports = { forwardOpenAi, resolveOpenAiRoot, startUiServer };
+module.exports = {
+  forwardOpenAi,
+  resolveOpenAiRoot,
+  startUiServer,
+  PACKAGED_UI_CSP,
+};
