@@ -19,6 +19,49 @@ export type NetworkReachability = {
 
 export { resolveAgentAllowNetwork };
 
+/** How long a /net/status result stays reusable per sidecar URL. */
+export const NETWORK_PROBE_TTL_MS = 15_000;
+
+type ProbeCacheEntry = { at: number; value: boolean | null };
+const probeCache = new Map<string, ProbeCacheEntry>();
+let connectivityListenersWired = false;
+let probeNow: () => number = () => Date.now();
+
+/** Test seam — restore with `() => Date.now()` when done. */
+export function setNetworkProbeNowForTests(fn: () => number): void {
+  probeNow = fn;
+}
+
+export function invalidateNetworkProbeCache(sidecarUrl?: string): void {
+  if (sidecarUrl == null) {
+    probeCache.clear();
+    return;
+  }
+  probeCache.delete(base(sidecarUrl));
+}
+
+/** Peek cache for probes/tests (null when missing or expired). */
+export function peekNetworkProbeCache(
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  ttlMs = NETWORK_PROBE_TTL_MS,
+): boolean | null | undefined {
+  const hit = probeCache.get(base(sidecarUrl));
+  if (!hit) return undefined;
+  if (probeNow() - hit.at >= ttlMs) return undefined;
+  return hit.value;
+}
+
+function wireConnectivityInvalidation(): void {
+  if (connectivityListenersWired) return;
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") {
+    return;
+  }
+  connectivityListenersWired = true;
+  const bust = () => invalidateNetworkProbeCache();
+  window.addEventListener("online", bust);
+  window.addEventListener("offline", bust);
+}
+
 export function isBrowserOnline(): boolean {
   if (typeof navigator === "undefined") return true;
   return navigator.onLine !== false;
@@ -33,14 +76,25 @@ export async function probeNetworkReachable(
   sidecarUrl = DEFAULT_SIDECAR_URL,
   signal?: AbortSignal,
 ): Promise<boolean | null> {
+  wireConnectivityInvalidation();
+  const key = base(sidecarUrl);
+  const cached = peekNetworkProbeCache(key);
+  if (cached !== undefined) return cached;
+
+  let value: boolean | null;
   try {
-    const res = await fetch(`${base(sidecarUrl)}/net/status`, { signal });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { online?: boolean };
-    return Boolean(data.online);
+    const res = await fetch(`${key}/net/status`, { signal });
+    if (!res.ok) {
+      value = null;
+    } else {
+      const data = (await res.json()) as { online?: boolean };
+      value = Boolean(data.online);
+    }
   } catch {
-    return null;
+    value = null;
   }
+  probeCache.set(key, { at: probeNow(), value });
+  return value;
 }
 
 export async function resolveNetworkReachability(args: {
