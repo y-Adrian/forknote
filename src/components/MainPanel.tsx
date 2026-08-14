@@ -31,7 +31,7 @@ import {
   InlineToolApproval,
   usePendingInlineApproval,
 } from "./InlineToolApproval";
-import { ChatComposer } from "./ChatComposer";
+import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
 import { ProjectStatusBar, AgentActivityPanels } from "./ProjectStatusBar";
@@ -267,6 +267,8 @@ export function MainPanel({
   const archiveHistoryOptionPrefix = useId();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipTitleBlurCommit = useRef(false);
+  const composerRef = useRef<ChatComposerHandle>(null);
+  const focusComposerAfterEditRef = useRef(false);
   /** Preserve viewport across Live/Archive/Evolution remounts. */
   const scrollAnchorRef = useRef<
     | { kind: "msg"; id: string; top: number }
@@ -750,8 +752,15 @@ export function MainPanel({
 
   const editUserMessage = (text: string) => {
     lastSentPromptRef.current = text;
+    focusComposerAfterEditRef.current = true;
     setInput(text);
   };
+
+  useEffect(() => {
+    if (!focusComposerAfterEditRef.current) return;
+    focusComposerAfterEditRef.current = false;
+    composerRef.current?.focus({ caret: "end" });
+  }, [input]);
 
   const startTitleRename = () => {
     if (!activeSessionId || !activeSession) return;
@@ -828,6 +837,7 @@ export function MainPanel({
           <AgentPlanReview scope={{ kind: "main" }} />
 
           <ChatComposer
+            ref={composerRef}
             value={input}
             onChange={setComposerValue}
             onSubmit={submit}
@@ -1397,6 +1407,7 @@ export function MainPanel({
             <AgentPlanReview scope={{ kind: "main" }} />
 
             <ChatComposer
+              ref={composerRef}
               value={input}
               onChange={setComposerValue}
               onSubmit={submit}
