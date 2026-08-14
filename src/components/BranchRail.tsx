@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { maxBranchDepthInThread } from "../lib/branches";
+import {
+  filterMsgsForRailViewport,
+  RAIL_OVERSCAN_PX,
+  RAIL_Y_GAP,
+  RAIL_Y_START,
+} from "../lib/branchRailVirtual";
 import { isActivationKey } from "../lib/keyboard";
 import type { BranchNode, ThreadRoot } from "../types";
 import { useLocale } from "../lib/i18n";
@@ -25,8 +31,8 @@ interface Props {
 // ── Layout constants ───────────────────────────────────────
 const TRUNK_X = 12;   // trunk line x (left side)
 const X_STEP  = 32;   // horizontal shift per depth level
-const Y_START = 22;   // first branch offset below forkY
-const Y_GAP   = 28;   // vertical gap between DFS-ordered nodes
+const Y_START = RAIL_Y_START;
+const Y_GAP   = RAIL_Y_GAP;
 const TRUNK_R = 5.5;
 const NODE_R  = 4.5;
 const RAIL_PAD = 10;
@@ -85,6 +91,15 @@ function flatAll(nodes: LayoutNode[]): LayoutNode[] {
   return out;
 }
 
+function shiftLayout(nodes: LayoutNode[], dy: number): LayoutNode[] {
+  return nodes.map((n) => ({
+    ...n,
+    y: n.y + dy,
+    parentY: n.parentY + dy,
+    children: shiftLayout(n.children, dy),
+  }));
+}
+
 // ── Curve ──────────────────────────────────────────────────
 /**
  * "Branch off trunk" curve:
@@ -101,8 +116,9 @@ function branchCurve(px: number, py: number, cx: number, cy: number): string {
 export function BranchRail({ thread, scrollRef }: Props) {
   const { t } = useLocale();
   const [msgs,      setMsgs]      = useState<RailMsg[]>([]);
-  const [totalH,    setTotalH]    = useState(600);
   const [scrollTop, setScrollTop] = useState(0);
+  const [viewportH, setViewportH] = useState(600);
+  const railHostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const openBranchFloat  = useAppStore((s) => s.openBranchFloat);
@@ -122,13 +138,17 @@ export function BranchRail({ thread, scrollRef }: Props) {
         if (!el) continue;
         next.push({ msgId: msg.id, y: el.offsetTop, branches: msg.children });
       }
-      const key = `${scroll.scrollTop}|${scroll.scrollHeight}|${next
+      const hostH =
+        railHostRef.current?.clientHeight ||
+        scroll.clientHeight ||
+        600;
+      const key = `${scroll.scrollTop}|${hostH}|${scroll.scrollHeight}|${next
         .map((m) => `${m.msgId}:${m.y}:${m.branches.length}`)
         .join(",")}`;
       if (key === lastKey) return;
       lastKey = key;
       setScrollTop(scroll.scrollTop);
-      setTotalH(scroll.scrollHeight);
+      setViewportH(hostH);
       setMsgs(next);
     };
     /** Defer out of MutationObserver / React commit to avoid removeChild races. */
@@ -152,6 +172,24 @@ export function BranchRail({ thread, scrollRef }: Props) {
       if (raf) cancelAnimationFrame(raf);
     };
   }, [thread, scrollRef]);
+
+  // Empty ↔ populated swaps the host node; keep viewportH in sync.
+  useEffect(() => {
+    const host = railHostRef.current;
+    const scroll = scrollRef.current;
+    if (!host) return;
+    const ro = new ResizeObserver(() => {
+      setViewportH(host.clientHeight || scroll?.clientHeight || 600);
+    });
+    ro.observe(host);
+    setViewportH(host.clientHeight || scroll?.clientHeight || 600);
+    return () => ro.disconnect();
+  }, [scrollRef, msgs.length === 0]);
+
+  const visibleMsgs = useMemo(
+    () => filterMsgsForRailViewport(msgs, scrollTop, viewportH, RAIL_OVERSCAN_PX),
+    [msgs, scrollTop, viewportH],
+  );
 
   const isOpen = (id: string) => branchFloatStack.some((e) => e.branchId === id);
 
@@ -197,6 +235,7 @@ export function BranchRail({ thread, scrollRef }: Props) {
   if (msgs.length === 0) {
     return (
       <div
+        ref={railHostRef}
         className="ds-branch-rail"
         style={{ width: railW }}
         aria-hidden
@@ -204,17 +243,20 @@ export function BranchRail({ thread, scrollRef }: Props) {
     );
   }
 
+  const svgH = Math.max(1, viewportH);
+
   return (
     <div
+      ref={railHostRef}
       className="ds-branch-rail"
       style={{ width: railW }}
       aria-label={t("fork.railAria")}
+      data-fn-rail-virtual="1"
     >
       <svg
         ref={svgRef}
         width={railW}
-        height={totalH}
-        style={{ transform: `translateY(${-scrollTop}px)` }}
+        height={svgH}
         overflow="visible"
       >
         <defs>
@@ -224,19 +266,23 @@ export function BranchRail({ thread, scrollRef }: Props) {
           </filter>
         </defs>
 
-        {/* ── Trunk vertical line ── */}
+        {/* ── Trunk vertical line (viewport only) ── */}
         <line
-          x1={TRUNK_X} y1={0} x2={TRUNK_X} y2={totalH}
+          x1={TRUNK_X} y1={0} x2={TRUNK_X} y2={svgH}
           stroke={C_TRUNK_LINE} strokeWidth="2" strokeLinecap="round"
         />
 
-        {msgs.map((msg) => {
-          const forkY     = msg.y + 20;
+        {visibleMsgs.map((msg) => {
+          const forkYDoc  = msg.y + 20;
+          const forkY     = forkYDoc - scrollTop;
           const hasBranch = msg.branches.length > 0;
 
-          // Build DFS-ordered layout starting below the trunk node
-          const counter     = { y: forkY + Y_START };
-          const layoutRoots = buildDFS(msg.branches, TRUNK_X, forkY, 1, counter);
+          // Build DFS-ordered layout in document Y, then shift into viewport SVG space.
+          const counter     = { y: forkYDoc + Y_START };
+          const layoutRoots = shiftLayout(
+            buildDFS(msg.branches, TRUNK_X, forkYDoc, 1, counter),
+            -scrollTop,
+          );
           const allNodes    = flatAll(layoutRoots);
 
           return (
