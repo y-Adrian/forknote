@@ -1220,6 +1220,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const turn = mainTurnsBySession.get(sessionId);
     const branch = branchAbortBySession.get(sessionId);
+    const pendingPlanForSession =
+      get().agentPendingPlan?.sessionId === sessionId
+        ? get().agentPendingPlan
+        : null;
 
     // Abort first so in-flight fetch/reader/tool calls start unwinding
     turn?.ctrl.abort();
@@ -1227,8 +1231,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     archiveJobs.abort(sessionId);
     compressJobs.abort(sessionId);
 
-    if (get().agentPendingPlan?.sessionId === sessionId) {
+    if (pendingPlanForSession) {
+      // Mirror rejectAgentPlan: dismiss approval UI / continuation, but keep the
+      // user's question (and plan reply) in the thread.
       clearPendingAgentPlan(set, sessionId);
+      mainTurnsBySession.delete(sessionId);
+      branchAbortBySession.delete(sessionId);
+      setSessionMainLoading(set, sessionId, false);
+      setSessionBranchLoading(set, sessionId, null);
+      clearSessionSummaryLoading(set, sessionId);
+      clearSessionAgentUi(set, sessionId);
+      flushSessionPersistence();
+      return null;
     }
 
     // Roll back the incomplete main turn immediately (don't wait for hung finally)
