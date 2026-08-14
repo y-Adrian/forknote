@@ -55,7 +55,9 @@
       "electron/**/*",
       "sidecar/**/*",
       "shared/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/docx/**/*",
+      "node_modules/exceljs/**/*"
     ],
     "asar": false,
     "extraMetadata": {
