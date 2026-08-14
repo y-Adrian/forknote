@@ -4591,7 +4591,7 @@ export async function executeToolCall(
           return {
             ok: false,
             resultText:
-              "Error: run_terminal is disabled in Settings → Project",
+              "Error: run_terminal is disabled — enable Settings → Project → Allow terminal tool (run_terminal)",
             activity: {
               kind: "error",
               message: t("agent.activity.terminalDisabled", undefined, locale),

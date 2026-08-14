@@ -297,7 +297,7 @@ const en = {
 
   "projectSettings.title": "Project",
   "projectSettings.lead":
-    "Local project tools talk to a sidecar on this machine. Run npm run sidecar, then open a project folder.",
+    "Local project tools talk to a sidecar on this machine (read/write files and run_terminal). Run npm run sidecar, then open a project folder.",
   "projectSettings.sessionHint":
     "Each chat session binds its own project. Switching sessions restores that session's project (or none).",
   "projectSettings.sidecarUrl": "Sidecar URL",
@@ -306,7 +306,7 @@ const en = {
   "projectSettings.open": "Open project…",
   "projectPanel.title": "Local project",
   "projectPanel.lead":
-    "Choose a folder on this machine so chat can read and write files there. If the local helper is not running, start it with npm run sidecar (or npm run dev).",
+    "Choose a folder on this machine so chat can read/write files and run shell commands (run_terminal, on by default). If the local helper is not running, start it with npm run sidecar (or npm run dev).",
   "projectPanel.path": "Project folder",
   "projectPanel.pathPlaceholder": "/Users/you/my-app",
   "projectPanel.browse": "Browse…",
@@ -317,6 +317,11 @@ const en = {
   "projectPanel.sidecarUrlHint":
     "Frontend proxy path to the local Node helper (default /sidecar → 127.0.0.1:8787). This is not a project folder path.",
   "projectPanel.connected": "Connected:",
+  "projectPanel.terminalOn":
+    "Terminal tool (run_terminal): on — agent can run in-project shell commands.",
+  "projectPanel.terminalOff":
+    "Terminal tool (run_terminal): off — enable it in Settings → Project.",
+  "projectPanel.terminalSettings": "Terminal settings…",
   "projectPanel.disconnect": "Disconnect",
   "projectPanel.connect": "Connect",
   "projectPanel.connecting": "Connecting…",
@@ -732,7 +737,8 @@ const en = {
   "agent.activity.search": "Search “{query}” → {n} hit(s)",
   "agent.activity.ranCommand": "Ran `{command}` (exit {code})",
   "agent.activity.terminalMissingCommand": "run_terminal missing command",
-  "agent.activity.terminalDisabled": "run_terminal is disabled in settings",
+  "agent.activity.terminalDisabled":
+    "run_terminal is disabled — enable Settings → Project → Allow terminal tool",
   "agent.activity.terminalNoProject": "run_terminal requires an open project",
   "agent.activity.terminalOutsideDenied":
     "Outside-project terminal blocked — approval required",
@@ -1014,7 +1020,7 @@ const zh: Record<MessageKey, string> = {
 
   "projectSettings.title": "项目",
   "projectSettings.lead":
-    "本地项目工具通过本机 sidecar 通信。运行 npm run sidecar，然后打开项目文件夹。",
+    "本地项目工具通过本机 sidecar 通信（读写文件与 run_terminal）。运行 npm run sidecar，然后打开项目文件夹。",
   "projectSettings.sessionHint":
     "每个会话独立绑定项目；切换会话时会恢复该会话的项目（或未绑定）。",
   "projectSettings.sidecarUrl": "Sidecar URL",
@@ -1023,7 +1029,7 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.open": "打开项目…",
   "projectPanel.title": "本地项目",
   "projectPanel.lead":
-    "选择本机文件夹后，主对话可在该目录下读写文件。若本地助手尚未运行，请先执行 npm run sidecar（或 npm run dev）。",
+    "选择本机文件夹后，主对话可在该目录下读写文件并执行 shell 命令（run_terminal，默认开启）。若本地助手尚未运行，请先执行 npm run sidecar（或 npm run dev）。",
   "projectPanel.path": "项目目录",
   "projectPanel.pathPlaceholder": "/Users/you/my-app",
   "projectPanel.browse": "浏览…",
@@ -1034,6 +1040,11 @@ const zh: Record<MessageKey, string> = {
   "projectPanel.sidecarUrlHint":
     "前端代理路径，指向本机 Node 助手（默认 /sidecar → 127.0.0.1:8787）。这不是项目目录路径。",
   "projectPanel.connected": "已连接：",
+  "projectPanel.terminalOn":
+    "终端工具（run_terminal）：已开启 — Agent 可在项目内执行 shell 命令。",
+  "projectPanel.terminalOff":
+    "终端工具（run_terminal）：已关闭 — 请到「设置 → 项目」开启。",
+  "projectPanel.terminalSettings": "终端设置…",
   "projectPanel.disconnect": "断开",
   "projectPanel.connect": "连接",
   "projectPanel.connecting": "连接中…",
@@ -1432,7 +1443,8 @@ const zh: Record<MessageKey, string> = {
   "agent.activity.search": "搜索 “{query}” → {n} 处",
   "agent.activity.ranCommand": "已运行 `{command}`（exit {code}）",
   "agent.activity.terminalMissingCommand": "run_terminal 缺少 command",
-  "agent.activity.terminalDisabled": "设置中已禁用 run_terminal",
+  "agent.activity.terminalDisabled":
+    "run_terminal 已禁用 — 请到「设置 → 项目 → 允许终端工具」开启",
   "agent.activity.terminalNoProject": "run_terminal 需要先打开项目",
   "agent.activity.terminalOutsideDenied":
     "已拦截项目外终端 — 需要先批准权限",
