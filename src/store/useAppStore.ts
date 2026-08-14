@@ -1263,6 +1263,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const ctrl = archiveJobs.start(sessionId);
 
+    // Capture live (or prior archive) context so empty/failed/aborted
+    // generation can restore instead of leaving stale archive-mode meta.
+    const priorContextMode = session?.contextMode ?? "live";
+    const priorThreadView = session?.threadView;
+    const priorActiveArchiveId = session?.activeArchiveId ?? null;
+    const priorViewingArchiveId = get().viewingArchiveId;
+    let archiveCommitted = false;
+
     // Stream draft inline on the main page (no modal).
     set((state) => ({
       loadingArchiveBySession: {
@@ -1359,6 +1367,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         threadView: "archive",
       });
       persistSessions(nextSessions, get().activeSessionId);
+      archiveCommitted = true;
       set({
         sessions: nextSessions,
         ...(get().activeSessionId === sessionId
@@ -1418,7 +1427,44 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     } finally {
-      if (archiveJobs.release(sessionId, ctrl)) {
+      // `abort()` removes the controller from the registry before the stream
+      // unwinds, so `release` alone misses stop/cancel. Still clean up when
+      // this job was aborted and nothing replaced it.
+      const released = archiveJobs.release(sessionId, ctrl);
+      const abortedWithoutReplacement =
+        ctrl.signal.aborted && !released && !archiveJobs.has(sessionId);
+      if (!released && !abortedWithoutReplacement) return;
+
+      if (!archiveCommitted) {
+        const restored = patchActiveSessionMeta(get().sessions, sessionId, {
+          contextMode: priorContextMode,
+          activeArchiveId: priorActiveArchiveId,
+          ...(priorThreadView !== undefined
+            ? { threadView: priorThreadView }
+            : { threadView: "evolution" as const }),
+        });
+        persistSessions(restored, get().activeSessionId);
+        set((state) => {
+          const loadingArchiveBySession = {
+            ...state.loadingArchiveBySession,
+          };
+          const archiveDraftBySession = { ...state.archiveDraftBySession };
+          delete loadingArchiveBySession[sessionId];
+          delete archiveDraftBySession[sessionId];
+          return {
+            sessions: restored,
+            loadingArchiveBySession,
+            archiveDraftBySession,
+            ...(state.activeSessionId === sessionId
+              ? {
+                  loadingArchiveSessionId: null,
+                  archiveDraft: "",
+                  viewingArchiveId: priorViewingArchiveId,
+                }
+              : {}),
+          };
+        });
+      } else {
         set((state) => {
           const loadingArchiveBySession = {
             ...state.loadingArchiveBySession,
