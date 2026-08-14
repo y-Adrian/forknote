@@ -1877,6 +1877,19 @@ body {
   line-height: 1.65;
 }
 
+/* Offscreen point bodies — plain preview until IntersectionObserver mounts Markdown. */
+.fn-markdown-deferred {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ds-text-secondary);
+  font-size: var(--fn-text-chat);
+  line-height: 1.65;
+}
+
+.fn-lazy-md {
+  min-height: 1.5em;
+}
+
 .fn-markdown-with-adopts {
   display: flex;
   flex-direction: column;
