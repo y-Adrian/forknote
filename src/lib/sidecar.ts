@@ -65,6 +65,19 @@ function base(url: string): string {
   return url.replace(/\/$/, "");
 }
 
+/** Bust @mention shallow listings after filesystem mutations (dynamic to avoid cycles). */
+function bustProjectFileHintCache(expectedRoot?: string): void {
+  void import("./repoContext")
+    .then((m) => {
+      m.invalidateProjectFileHintCache(
+        expectedRoot && expectedRoot.trim() ? expectedRoot : undefined,
+      );
+    })
+    .catch(() => {
+      /* ignore */
+    });
+}
+
 export async function sidecarHealth(
   sidecarUrl = DEFAULT_SIDECAR_URL,
 ): Promise<{ ok: boolean; root: string | null }> {
@@ -111,7 +124,9 @@ export async function closeProject(
     headers: { "Content-Type": "application/json" },
     body: "{}",
   });
-  return parseJson(res);
+  const data = await parseJson<{ root: null }>(res);
+  bustProjectFileHintCache();
+  return data;
 }
 
 export async function listDir(
@@ -161,7 +176,15 @@ export async function writeFile(
     body: JSON.stringify({ path: relPath, content, expectedRoot }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{
+    path: string;
+    size: number;
+    written: boolean;
+    diff?: string;
+    created?: boolean;
+  }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function searchReplace(
@@ -194,7 +217,16 @@ export async function searchReplace(
     }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{
+    path: string;
+    size: number;
+    written: boolean;
+    kind: string;
+    replacements: number;
+    diff?: string;
+  }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function applyPatch(
@@ -222,7 +254,17 @@ export async function applyPatch(
     body: JSON.stringify({ path: relPath, edits, expectedRoot }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{
+    path: string;
+    size: number;
+    written: boolean;
+    kind: string;
+    edits: number;
+    replacements: number;
+    diff?: string;
+  }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function writeDocx(
@@ -243,7 +285,14 @@ export async function writeDocx(
     }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{
+    path: string;
+    size: number;
+    written: boolean;
+    kind: string;
+  }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function writeXlsx(
@@ -273,7 +322,15 @@ export async function writeXlsx(
     }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{
+    path: string;
+    size: number;
+    written: boolean;
+    kind: string;
+    rows: number;
+  }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function mkdir(
@@ -288,7 +345,9 @@ export async function mkdir(
     body: JSON.stringify({ path: relPath, expectedRoot }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{ path: string; created: boolean }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function searchFiles(
@@ -496,7 +555,14 @@ export async function deleteFile(
     body: JSON.stringify({ path: relPath, expectedRoot }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{
+    path: string;
+    deleted: boolean;
+    kind: string;
+    size?: number;
+  }>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function renameFile(
@@ -512,7 +578,11 @@ export async function renameFile(
     body: JSON.stringify({ from, to, expectedRoot }),
     signal,
   });
-  return parseJson(res);
+  const data = await parseJson<{ from: string; to: string; renamed: boolean }>(
+    res,
+  );
+  bustProjectFileHintCache(expectedRoot);
+  return data;
 }
 
 export async function readDocx(

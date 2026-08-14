@@ -11,6 +11,11 @@ const MAX_HINTS = 20;
 const FILE_INJECT_MAX = 4500;
 const MAX_INCLUDE_FILES = 4;
 
+/** How long a shallow listing stays reusable per project root. */
+export const PROJECT_FILE_HINT_TTL_MS = 8_000;
+/** Coalesce bursty @mentions before kicking off a cold/stale refresh. */
+export const PROJECT_FILE_HINT_DEBOUNCE_MS = 120;
+
 const SKIP_DIR = new Set([
   "node_modules",
   ".git",
@@ -21,6 +26,66 @@ const SKIP_DIR = new Set([
   ".turbo",
   ".cache",
 ]);
+
+type HintCacheEntry = {
+  files: string[];
+  at: number;
+  inflight: Promise<string[]> | null;
+};
+
+const hintCache = new Map<string, HintCacheEntry>();
+let hintNow: () => number = () => Date.now();
+let hintListDir = listDir;
+/** Counts collectShallowFiles invocations (each fans out multiple listDir calls). */
+let hintRefreshCount = 0;
+
+function hintCacheKey(sidecarUrl: string, projectRoot: string): string {
+  return `${sidecarUrl.replace(/\/$/, "")}\0${projectRoot}`;
+}
+
+/** Test seam — restore with `() => Date.now()` when done. */
+export function setProjectFileHintNowForTests(fn: () => number): void {
+  hintNow = fn;
+}
+
+/** Test seam — restore with the real `listDir` when done. */
+export function setProjectFileHintListDirForTests(
+  fn: typeof listDir,
+): void {
+  hintListDir = fn;
+}
+
+export function peekProjectFileHintRefreshCount(): number {
+  return hintRefreshCount;
+}
+
+export function peekProjectFileHintCache(
+  projectRoot: string,
+  sidecarUrl = "/sidecar",
+  ttlMs = PROJECT_FILE_HINT_TTL_MS,
+): string[] | undefined {
+  const hit = hintCache.get(hintCacheKey(sidecarUrl, projectRoot));
+  if (!hit) return undefined;
+  if (hintNow() - hit.at >= ttlMs) return undefined;
+  return hit.files;
+}
+
+export function invalidateProjectFileHintCache(projectRoot?: string): void {
+  if (projectRoot == null) {
+    hintCache.clear();
+    return;
+  }
+  for (const key of hintCache.keys()) {
+    if (key.endsWith(`\0${projectRoot}`)) hintCache.delete(key);
+  }
+}
+
+export function resetProjectFileHintStatsForTests(): void {
+  hintCache.clear();
+  hintRefreshCount = 0;
+  hintNow = () => Date.now();
+  hintListDir = listDir;
+}
 
 export function loadRecentProjectFiles(projectRoot: string | null): string[] {
   if (!projectRoot) return [];
@@ -100,8 +165,9 @@ async function collectShallowFiles(
   projectRoot: string,
   signal?: AbortSignal,
 ): Promise<string[]> {
+  hintRefreshCount += 1;
   const out: string[] = [];
-  const root = await listDir(".", sidecarUrl, signal, projectRoot);
+  const root = await hintListDir(".", sidecarUrl, signal, projectRoot);
   const dirs: FsEntry[] = [];
   for (const e of root.entries) {
     if (e.type === "file") out.push(e.path);
@@ -110,7 +176,7 @@ async function collectShallowFiles(
   await Promise.all(
     dirs.slice(0, 12).map(async (d) => {
       try {
-        const nested = await listDir(d.path, sidecarUrl, signal, projectRoot);
+        const nested = await hintListDir(d.path, sidecarUrl, signal, projectRoot);
         for (const e of nested.entries) {
           if (e.type === "file") out.push(e.path);
         }
@@ -120,6 +186,69 @@ async function collectShallowFiles(
     }),
   );
   return out;
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Cached + coalesced shallow listing. Bursty @mention queries share one refresh.
+ */
+async function getShallowFilesCached(
+  sidecarUrl: string,
+  projectRoot: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const key = hintCacheKey(sidecarUrl, projectRoot);
+  let entry = hintCache.get(key);
+  const now = hintNow();
+  if (entry && now - entry.at < PROJECT_FILE_HINT_TTL_MS) {
+    return entry.files;
+  }
+  if (entry?.inflight) return entry.inflight;
+
+  const inflight = (async () => {
+    await delay(PROJECT_FILE_HINT_DEBOUNCE_MS, signal);
+    // Another waiter may have completed a refresh during debounce.
+    const latest = hintCache.get(key);
+    if (latest && hintNow() - latest.at < PROJECT_FILE_HINT_TTL_MS) {
+      return latest.files;
+    }
+    const files = await collectShallowFiles(sidecarUrl, projectRoot, signal);
+    hintCache.set(key, { files, at: hintNow(), inflight: null });
+    return files;
+  })();
+
+  const guarded = inflight.catch((err) => {
+    const cur = hintCache.get(key);
+    if (cur?.inflight === guarded) {
+      hintCache.set(key, { files: cur.files, at: cur.at, inflight: null });
+    }
+    throw err;
+  });
+
+  hintCache.set(key, {
+    files: entry?.files ?? [],
+    at: entry?.at ?? 0,
+    inflight: guarded,
+  });
+  return guarded;
 }
 
 export async function listProjectFileHints(options: {
@@ -133,12 +262,12 @@ export async function listProjectFileHints(options: {
   const recent = loadRecentProjectFiles(projectRoot);
   const files: string[] = [...recent];
   try {
-    const shallow = await collectShallowFiles(sidecarUrl, projectRoot, signal);
+    const shallow = await getShallowFilesCached(sidecarUrl, projectRoot, signal);
     for (const p of shallow) {
       if (!files.includes(p)) files.push(p);
     }
   } catch {
-    // sidecar down
+    // sidecar down / aborted
   }
   const q = query.trim().toLowerCase();
   const ranked = files
