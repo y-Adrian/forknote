@@ -23,6 +23,11 @@ const {
   sidecarPortConflictLines,
   decideSidecarStartupAction,
 } = require("../shared/sidecarStartupHealth.cjs");
+const {
+  checkDistIndex,
+  buildStartupFailure,
+  startupError,
+} = require("../shared/electronStartupGuard.cjs");
 
 /**
  * Floor must sit below the web shell’s narrow-sidebar breakpoint (768px in
@@ -89,11 +94,14 @@ async function ensureUiServer() {
   if (uiServerStart) return uiServerStart;
 
   const dist = distDir();
-  if (!fs.existsSync(path.join(dist, "index.html"))) {
-    console.error(
-      `[forknote-desktop] missing ${path.join(dist, "index.html")} — run npm run build first`,
-    );
+  const distCheck = checkDistIndex(path.join(dist, "index.html"));
+  if (!distCheck.ok) {
+    const failure = buildStartupFailure("missing_dist", {
+      path: path.join(dist, "index.html"),
+    });
+    throw startupError(failure.code, failure.message);
   }
+
   uiServerStart = startUiServer({
     distDir: dist,
     sidecarToken: SIDECAR_AUTH_TOKEN,
@@ -104,10 +112,48 @@ async function ensureUiServer() {
       console.log(`[forknote-desktop] UI at ${origin}`);
       return origin;
     })
+    .catch((err) => {
+      const failure = buildStartupFailure("ui_bind", { err });
+      throw startupError(failure.code, failure.message);
+    })
     .finally(() => {
       uiServerStart = null;
     });
   return uiServerStart;
+}
+
+/**
+ * Dev shell expects an already-running Vite; probe before loadURL so we do not
+ * leave a blank BrowserWindow when :5173 is down.
+ * @param {string} viteUrl
+ */
+function viteDevServerReachable(viteUrl) {
+  return new Promise((resolve) => {
+    let url;
+    try {
+      url = new URL(viteUrl);
+    } catch {
+      resolve(false);
+      return;
+    }
+    const req = http.get(
+      {
+        host: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname || "/",
+        timeout: 800,
+      },
+      (res) => {
+        res.resume();
+        resolve((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 500);
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
 }
 
 function sidecarEntry() {
@@ -343,12 +389,65 @@ function buildAppMenu(allowDevSurfaces) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function stopUiServer() {
+  if (!uiServer) return;
+  try {
+    uiServer.close();
+  } catch {
+    /* ignore */
+  }
+  uiServer = null;
+  uiOrigin = null;
+}
+
+/**
+ * User-visible startup failure: log, dialog (unless already shown), cleanup, quit.
+ * @param {unknown} err
+ * @param {{ dialogAlreadyShown?: boolean }} [opts]
+ */
+function reportStartupFailureAndQuit(err, opts = {}) {
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String(/** @type {{ code?: string }} */ (err).code || "")
+      : "";
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[forknote-desktop] startup failed: ${message}`);
+
+  const alreadyShown =
+    opts.dialogAlreadyShown ||
+    code === "FORKNOTE_SIDECAR_PORT_CONFLICT";
+  if (!alreadyShown) {
+    let title = "ForkNote failed to start";
+    if (code === "FORKNOTE_MISSING_DIST") title = "ForkNote UI missing";
+    else if (code === "FORKNOTE_VITE_UNAVAILABLE")
+      title = "ForkNote dev UI unavailable";
+    else if (code === "FORKNOTE_UI_BIND") title = "ForkNote UI server failed";
+    else if (code === "FORKNOTE_LOAD_URL") title = "ForkNote failed to load UI";
+    try {
+      dialog.showErrorBox(title, message);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  stopSidecar();
+  stopUiServer();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.destroy();
+  }
+  app.quit();
+}
+
 async function createWindow(allowDevSurfaces) {
   await ensureSidecar();
 
   let loadUrl;
   if (isDev) {
     loadUrl = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173";
+    if (!(await viteDevServerReachable(loadUrl))) {
+      const failure = buildStartupFailure("vite_unavailable", { url: loadUrl });
+      throw startupError(failure.code, failure.message);
+    }
   } else {
     loadUrl = await ensureUiServer();
   }
@@ -376,7 +475,9 @@ async function createWindow(allowDevSurfaces) {
     show: false,
   });
 
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed()) win.show();
+  });
 
   // Disable pinch/page zoom — main session uses CSS `--fn-text-zoom` instead.
   void win.webContents.setVisualZoomLevelLimits(
@@ -425,7 +526,13 @@ async function createWindow(allowDevSurfaces) {
     return { action: "deny" };
   });
 
-  await win.loadURL(loadUrl);
+  try {
+    await win.loadURL(loadUrl);
+  } catch (err) {
+    if (!win.isDestroyed()) win.destroy();
+    const failure = buildStartupFailure("load_url", { url: loadUrl, err });
+    throw startupError(failure.code, failure.message);
+  }
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -446,7 +553,9 @@ if (!hasSingleInstanceLock) {
       win.focus();
       return;
     }
-    void createWindow(allowDevSurfaces);
+    void createWindow(allowDevSurfaces).catch((err) => {
+      reportStartupFailureAndQuit(err);
+    });
   });
 
   app.whenReady().then(() => {
@@ -460,23 +569,12 @@ if (!hasSingleInstanceLock) {
     }
     buildAppMenu(allowDevSurfaces);
     void createWindow(allowDevSurfaces).catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`[forknote-desktop] startup failed: ${message}`);
-      if (err?.code !== "FORKNOTE_SIDECAR_PORT_CONFLICT") {
-        try {
-          dialog.showErrorBox("ForkNote failed to start", message);
-        } catch {
-          /* ignore */
-        }
-      }
-      app.quit();
+      reportStartupFailureAndQuit(err);
     });
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         void createWindow(allowDevSurfaces).catch((err) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[forknote-desktop] startup failed: ${message}`);
-          app.quit();
+          reportStartupFailureAndQuit(err);
         });
       }
     });
@@ -488,14 +586,6 @@ if (!hasSingleInstanceLock) {
 
   app.on("before-quit", () => {
     stopSidecar();
-    if (uiServer) {
-      try {
-        uiServer.close();
-      } catch {
-        /* ignore */
-      }
-      uiServer = null;
-      uiOrigin = null;
-    }
+    stopUiServer();
   });
 }
