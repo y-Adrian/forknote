@@ -1,6 +1,7 @@
 import {
   memo,
   useEffect,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -180,6 +181,11 @@ function DiagramToolbar({
             className="fn-code-copy"
             onClick={onToggleSource}
             aria-pressed={showSource}
+            aria-label={
+              showSource
+                ? t("chat.diagram.viewDiagram")
+                : t("chat.diagram.viewSource")
+            }
             title={
               showSource
                 ? t("chat.diagram.viewDiagram")
@@ -213,6 +219,46 @@ function DiagramToolbar({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Accessible figure wrapper: type label + screen-reader source relationship. */
+function DiagramAccessibleFrame({
+  kind,
+  source,
+  toolbar,
+  children,
+}: {
+  kind: "mermaid" | "plantuml";
+  source: string;
+  toolbar: ReactNode;
+  children: ReactNode;
+}) {
+  const { t } = useLocale();
+  const labelId = useId();
+  const descId = useId();
+  const label =
+    kind === "mermaid"
+      ? t("chat.diagram.mermaidLabel")
+      : t("chat.diagram.plantumlLabel");
+  const sourcePreview = source.trim().replace(/\s+/g, " ").slice(0, 280);
+  return (
+    <figure
+      className="fn-diagram-block"
+      aria-labelledby={labelId}
+      aria-describedby={descId}
+    >
+      {toolbar}
+      <figcaption id={labelId} className="sr-only">
+        {label}
+      </figcaption>
+      <div className="fn-diagram-svg" aria-hidden="true">
+        {children}
+      </div>
+      <p id={descId} className="sr-only">
+        {t("chat.diagram.sourceDescription", { source: sourcePreview })}
+      </p>
+    </figure>
   );
 }
 
@@ -404,7 +450,11 @@ const MermaidDiagram = memo(function MermaidDiagram({
 
   if (!svg) {
     return (
-      <div className="fn-diagram-block" aria-busy="true">
+      <div
+        className="fn-diagram-block"
+        aria-busy="true"
+        aria-label={t("chat.diagram.mermaidLabel")}
+      >
         <DiagramToolbar
           language="mermaid"
           showSource={false}
@@ -418,25 +468,29 @@ const MermaidDiagram = memo(function MermaidDiagram({
   }
 
   return (
-    <div className="fn-diagram-block">
-      <DiagramToolbar
-        language="mermaid"
-        showSource={false}
-        onToggleSource={() => setShowSource(true)}
-        onCopy={() => void copySource()}
-        copied={copied}
-        canToggle
-        canCopyImage
-        onCopyImage={handleCopyImage}
-        copyImageFeedback={copyImageFeedback}
-      />
+    <DiagramAccessibleFrame
+      kind="mermaid"
+      source={source}
+      toolbar={
+        <DiagramToolbar
+          language="mermaid"
+          showSource={false}
+          onToggleSource={() => setShowSource(true)}
+          onCopy={() => void copySource()}
+          copied={copied}
+          canToggle
+          canCopyImage
+          onCopyImage={handleCopyImage}
+          copyImageFeedback={copyImageFeedback}
+        />
+      }
+    >
       <div
         ref={svgHostRef}
-        className="fn-diagram-svg"
         // Mermaid SVG is sanitized under securityLevel: "strict"
         dangerouslySetInnerHTML={{ __html: svg }}
       />
-    </div>
+    </DiagramAccessibleFrame>
   );
 });
 
@@ -635,7 +689,11 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
 
   if (!visual) {
     return (
-      <div className="fn-diagram-block" aria-busy="true">
+      <div
+        className="fn-diagram-block"
+        aria-busy="true"
+        aria-label={t("chat.diagram.plantumlLabel")}
+      >
         <DiagramToolbar
           language="plantuml"
           showSource={false}
@@ -649,22 +707,27 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
   }
 
   return (
-    <div className="fn-diagram-block">
-      <DiagramToolbar
-        language="plantuml"
-        showSource={false}
-        onToggleSource={() => setShowSource(true)}
-        onCopy={() => void copySource()}
-        copied={copied}
-        canToggle
-        canCopyImage
-        onCopyImage={handleCopyImage}
-        copyImageFeedback={copyImageFeedback}
-      />
-      <div ref={visualHostRef} className="fn-diagram-svg">
-        <img src={visual.src} alt="PlantUML diagram" />
+    <DiagramAccessibleFrame
+      kind="plantuml"
+      source={source}
+      toolbar={
+        <DiagramToolbar
+          language="plantuml"
+          showSource={false}
+          onToggleSource={() => setShowSource(true)}
+          onCopy={() => void copySource()}
+          copied={copied}
+          canToggle
+          canCopyImage
+          onCopyImage={handleCopyImage}
+          copyImageFeedback={copyImageFeedback}
+        />
+      }
+    >
+      <div ref={visualHostRef}>
+        <img src={visual.src} alt="" />
       </div>
-    </div>
+    </DiagramAccessibleFrame>
   );
 });
 

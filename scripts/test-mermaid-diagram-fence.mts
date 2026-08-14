@@ -18,8 +18,17 @@ assert.equal(diagramKindFromLanguage("mermaid"), "mermaid");
 assert.equal(diagramKindFromLanguage("plantuml"), "plantuml");
 
 assert.ok(
-  !/useId\(/.test(fenceSrc),
-  "MermaidDiagram must not pin render ids with useId (causes mermaid removeChild races)",
+  /mermaid\.render\(\s*\n?\s*id,/.test(fenceSrc) ||
+    /mermaid\.render\(\s*id,/.test(fenceSrc),
+  "mermaid.render must use a per-call id variable (not useId)",
+);
+assert.ok(
+  !/const id = useId\(/.test(fenceSrc) && !/mermaid\.render\(\s*useId/.test(fenceSrc),
+  "MermaidDiagram must not pin mermaid.render ids with useId",
+);
+assert.ok(
+  /useId\(/.test(fenceSrc) && /DiagramAccessibleFrame/.test(fenceSrc),
+  "accessible diagram frame may use useId for label/description ids",
 );
 assert.ok(
   /mermaid\.render\(/.test(fenceSrc) && /host/.test(fenceSrc),
