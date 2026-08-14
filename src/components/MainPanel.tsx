@@ -254,12 +254,6 @@ export function MainPanel({
   }, [thread, showArchiveDoc, activeArchive]);
 
   const lastThreadMessageId = thread?.messages[thread.messages.length - 1]?.id;
-  const threadMessageIds = useMemo(
-    () => thread?.messages.map((m) => m.id) ?? [],
-    [thread],
-  );
-
-
 
   const showCompressSuggest = useMemo(() => {
     if (!thread || !activeSessionId) return false;
@@ -914,7 +908,6 @@ export function MainPanel({
             showMainAgentActivity={showMainAgentActivity}
             visibleMessages={visibleMessages}
             lastThreadMessageId={lastThreadMessageId}
-            threadMessageIds={threadMessageIds}
             openBranchId={openBranchId}
             onToggleBranch={toggleBranch}
             onAskBranch={askBranch}
