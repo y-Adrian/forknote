@@ -83,6 +83,7 @@ import {
   AgentLoopController,
   buildReflectNudge,
   parseStructuredPlanHints,
+  upsertWorkingMemoryAddendum,
 } from "./agentLoop";
 import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { reflectWithOptionalLlm } from "./llmReflect";
@@ -751,6 +752,15 @@ export async function runAgentTurn(
 
     while (round < agentMaxRounds) {
       if (signal.aborted) break;
+
+      // Subsequent rounds see a bounded snapshot of plan/observe/reflect continuity.
+      if (round > 0) {
+        upsertWorkingMemoryAddendum(
+          apiMessages,
+          agentLoop,
+          locale === "zh" ? "zh" : "en",
+        );
+      }
 
       shrinkPriorToolResultsInMessages(apiMessages);
 

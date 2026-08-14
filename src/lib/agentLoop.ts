@@ -318,6 +318,53 @@ export class AgentLoopController {
   }
 }
 
+export const WORKING_MEMORY_ADDENDUM_PREFIX_ZH = "【Agent 工作记忆】";
+export const WORKING_MEMORY_ADDENDUM_PREFIX_EN = "[Agent working memory]";
+
+/** Bounded user-role addendum for later model rounds (retry / replan / continue). */
+export function buildWorkingMemoryAddendum(
+  loop: AgentLoopController,
+  locale: "zh" | "en" = "en",
+  maxChars = 4_000,
+): string | null {
+  const body = loop.formatWorkingMemory(maxChars).trim();
+  if (!body) return null;
+  const header =
+    locale === "zh"
+      ? WORKING_MEMORY_ADDENDUM_PREFIX_ZH
+      : WORKING_MEMORY_ADDENDUM_PREFIX_EN;
+  return `${header}\n${body}`;
+}
+
+export function isWorkingMemoryAddendum(content: string): boolean {
+  return (
+    content.startsWith(WORKING_MEMORY_ADDENDUM_PREFIX_ZH) ||
+    content.startsWith(WORKING_MEMORY_ADDENDUM_PREFIX_EN)
+  );
+}
+
+/**
+ * Replace any prior working-memory addendum, then append the latest snapshot.
+ * Returns true when a message was inserted.
+ */
+export function upsertWorkingMemoryAddendum(
+  messages: Array<{ role: string; content: string | null }>,
+  loop: AgentLoopController,
+  locale: "zh" | "en" = "en",
+  maxChars = 4_000,
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const content = messages[i]?.content;
+    if (typeof content === "string" && isWorkingMemoryAddendum(content)) {
+      messages.splice(i, 1);
+    }
+  }
+  const addendum = buildWorkingMemoryAddendum(loop, locale, maxChars);
+  if (!addendum) return false;
+  messages.push({ role: "user", content: addendum });
+  return true;
+}
+
 /** Observe a tool batch into a structured signal (also usable without the controller). */
 export function observeToolBatch(
   items: Array<{ tool: string; result: ToolResult }>,
