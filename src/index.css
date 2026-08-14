@@ -6554,3 +6554,41 @@ mark.branch-highlight:focus-visible {
   border-radius: 8px !important;
   box-shadow: var(--ds-shadow) !important;
 }
+
+/* ── prefers-reduced-motion ───────────────────────────────── */
+/* Collapse motion tokens + hard-coded durations. Decorative brand /
+   typing bounce stop; busy spinners remain as static rings. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0.01ms;
+    --dur-base: 0.01ms;
+    --dur-slow: 0.01ms;
+    --ease-spring: ease;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .ds-empty-brand .ds-brand-icon-svg,
+  .fn-empty-logo .fn-brand-icon {
+    animation: none !important;
+    transform: none;
+  }
+
+  .ds-typing span {
+    animation: none !important;
+    opacity: 0.7;
+    transform: none;
+  }
+
+  .ds-send-spinner,
+  .fn-turn-busy-spinner {
+    animation: none !important;
+  }
+}
