@@ -812,6 +812,7 @@ export function MainPanel({
               type="button"
               className="fn-fork-chip"
               title={t("main.forksTitle")}
+              aria-label={t("main.forksTitle")}
               aria-haspopup="dialog"
               aria-expanded={forkMapOpen}
               onClick={() => setForkMapOpen(true)}

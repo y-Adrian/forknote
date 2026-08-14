@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { maxBranchDepthInThread } from "../lib/branches";
+import { isActivationKey } from "../lib/keyboard";
 import type { BranchNode, ThreadRoot } from "../types";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
@@ -154,12 +155,36 @@ export function BranchRail({ thread, scrollRef }: Props) {
 
   const isOpen = (id: string) => branchFloatStack.some((e) => e.branchId === id);
 
-  const handleClick = (branch: BranchNode, msgId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isOpen(branch.id)) { closeBranchFloat(branch.id); return; }
-    const el = scrollRef.current?.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+  const handleActivate = (branch: BranchNode, msgId: string) => {
+    if (isOpen(branch.id)) {
+      closeBranchFloat(branch.id);
+      return;
+    }
+    const el = scrollRef.current?.querySelector(
+      `[data-msg-id="${msgId}"]`,
+    ) as HTMLElement | null;
     const rect = el?.getBoundingClientRect() ?? new DOMRect(0, 0, 300, 40);
     openBranchFloat(branch.id, rect, null);
+  };
+
+  const handleClick = (
+    branch: BranchNode,
+    msgId: string,
+    e: MouseEvent,
+  ) => {
+    e.stopPropagation();
+    handleActivate(branch, msgId);
+  };
+
+  const handleKeyDown = (
+    branch: BranchNode,
+    msgId: string,
+    e: KeyboardEvent,
+  ) => {
+    if (!isActivationKey(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleActivate(branch, msgId);
   };
 
   const railW = useMemo(
@@ -242,8 +267,15 @@ export function BranchRail({ thread, scrollRef }: Props) {
                 return (
                   <g
                     key={n.branch.id}
+                    className="fn-fork-rail-node"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t("fork.openNodeAria", {
+                      question: n.branch.userQuestion.slice(0, 80),
+                    })}
                     style={{ cursor: "pointer" }}
                     onClick={(e) => handleClick(n.branch, msg.msgId, e)}
+                    onKeyDown={(e) => handleKeyDown(n.branch, msg.msgId, e)}
                   >
                     {/* Parent → child curve */}
                     <path

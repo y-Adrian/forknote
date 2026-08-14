@@ -1212,12 +1212,24 @@ body {
 }
 
 /* Branch groups are interactive */
-.ds-branch-rail svg g[style*="cursor"] {
+.ds-branch-rail svg g[style*="cursor"],
+.ds-branch-rail svg g.fn-fork-rail-node {
   pointer-events: all;
 }
 
-.ds-branch-rail svg g[style*="cursor"]:hover circle {
+.ds-branch-rail svg g[style*="cursor"]:hover circle,
+.ds-branch-rail svg g.fn-fork-rail-node:hover circle,
+.ds-branch-rail svg g.fn-fork-rail-node:focus circle {
   filter: brightness(1.25);
+}
+
+.ds-branch-rail svg g.fn-fork-rail-node:focus {
+  outline: none;
+}
+
+.ds-branch-rail svg g.fn-fork-rail-node:focus-visible circle {
+  stroke: var(--ds-accent, #4d6bfe);
+  stroke-width: 2;
 }
 
 @media (max-width: 900px) {
@@ -1226,6 +1238,13 @@ body {
   }
   .ds-branch-rail {
     display: none;
+  }
+  /* Compact fork entry when the rail is hidden on narrow viewports. */
+  .fn-fork-chip {
+    color: var(--ds-text);
+    border-color: var(--ds-border-strong);
+    background: var(--ds-surface-elevated);
+    font-weight: 600;
   }
 }
 
@@ -2394,8 +2413,14 @@ mark.branch-highlight {
   transition: background var(--dur-fast) ease;
 }
 
-mark.branch-highlight:hover {
+mark.branch-highlight:hover,
+mark.branch-highlight:focus-visible {
   background: rgba(255, 210, 80, 0.45);
+}
+
+mark.branch-highlight:focus-visible {
+  outline: 2px solid var(--ds-accent, #4d6bfe);
+  outline-offset: 2px;
 }
 
 /* Point Ask / 澄 — whole segment stays reopenable after the float closes */
@@ -2405,9 +2430,14 @@ mark.branch-highlight:hover {
   cursor: pointer;
 }
 
-.point-row.point-has-clarify:hover > .point-block {
+.point-row.point-has-clarify:hover > .point-block,
+.point-row.point-has-clarify > .point-block:focus-visible {
   outline-color: color-mix(in srgb, var(--ds-highlight) 90%, var(--ds-border));
   background: color-mix(in srgb, var(--ds-highlight) 18%, var(--ds-surface, transparent));
+}
+
+.point-row.point-has-clarify > .point-block:focus-visible {
+  outline-width: 2px;
 }
 
 .point-row.point-has-clarify-pending > .point-block {
@@ -4737,8 +4767,18 @@ mark.branch-highlight:hover {
   color: var(--ds-text);
 }
 
-.fn-fork-map-node:hover circle:last-of-type {
+.fn-fork-map-node:hover circle:last-of-type,
+.fn-fork-map-node:focus circle:last-of-type {
   filter: brightness(1.08);
+}
+
+.fn-fork-map-node:focus {
+  outline: none;
+}
+
+.fn-fork-map-node:focus-visible circle:last-of-type {
+  stroke: var(--ds-accent, #4d6bfe);
+  stroke-width: 2;
 }
 
 .fn-fork-map-empty {

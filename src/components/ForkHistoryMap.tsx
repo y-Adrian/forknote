@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useLocale } from "../lib/i18n";
+import { isActivationKey } from "../lib/keyboard";
 import { useAppStore } from "../store/useAppStore";
 import type { BranchNode, ChatMessage, ThreadRoot } from "../types";
 
@@ -229,8 +230,18 @@ export function ForkHistoryMap({ thread, open, onClose, scrollRef }: Props) {
                   />
                   <g
                     className="fn-fork-map-node"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t("fork.openNodeAria", {
+                      question: n.branch.userQuestion.slice(0, 80),
+                    })}
                     style={{ cursor: "pointer" }}
                     onClick={() => openFork(n.branch, n.hostMsgId)}
+                    onKeyDown={(e: ReactKeyboardEvent) => {
+                      if (!isActivationKey(e.key)) return;
+                      e.preventDefault();
+                      openFork(n.branch, n.hostMsgId);
+                    }}
                   >
                     <circle
                       cx={n.x}
@@ -269,8 +280,19 @@ export function ForkHistoryMap({ thread, open, onClose, scrollRef }: Props) {
                 <g
                   key={trunk.msg.id}
                   className="fn-fork-map-node"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t("fork.mapMainStepAria", {
+                    n: i + 1,
+                    label: trunk.label,
+                  })}
                   style={{ cursor: "pointer" }}
                   onClick={() => focusMain(trunk.msg.id)}
+                  onKeyDown={(e: ReactKeyboardEvent) => {
+                    if (!isActivationKey(e.key)) return;
+                    e.preventDefault();
+                    focusMain(trunk.msg.id);
+                  }}
                 >
                   <circle
                     cx={TRUNK_X}
