@@ -6,6 +6,7 @@ import {
   forknoteUrlTransform,
   MARKDOWN_REMARK_PLUGINS,
 } from "../lib/markdownRemark";
+import { planMarkdownRender } from "../lib/markdownStream";
 import {
   createContext,
   memo,
@@ -24,8 +25,10 @@ interface Props {
   /** Skip adopted-note cards (used inside the card body itself). */
   skipAdoptedSplit?: boolean;
   /**
-   * While the assistant reply is still streaming, keep a stable mount key and
-   * defer Mermaid render so partial fences do not thrash.
+   * While the assistant reply is still streaming, render plain text (no
+   * ReactMarkdown) so each token does not reparse the full answer. Full
+   * remark parse runs once when streaming ends. Diagram fences still defer
+   * via context when a completed body remounts with streaming leftovers.
    */
   streaming?: boolean;
 }
@@ -242,9 +245,10 @@ const MARKDOWN_COMPONENTS: Components = {
 };
 
 /**
- * Markdown updates in place. While `streaming`, diagram fences defer render
- * (see DiagramFence) so we must not remount on every token — and we also avoid
- * remounting when streaming ends, which used to collapse layout and yank chat scroll.
+ * Markdown updates in place. While `streaming`, use a lightweight plain-text
+ * mount (see `planMarkdownRender`) so token deltas do not reparse the full
+ * tree. When streaming ends, ReactMarkdown runs once. Completed diagram fences
+ * still defer via `MarkdownStreamingContext` when needed.
  */
 export const MarkdownBody = memo(function MarkdownBody({
   content,
@@ -252,11 +256,23 @@ export const MarkdownBody = memo(function MarkdownBody({
   streaming = false,
 }: Props) {
   const { t } = useLocale();
-  if (!content) {
+  const plan = planMarkdownRender(content, streaming);
+  if (plan.mode === "empty") {
     return <p className="muted">{t("chat.generating")}</p>;
   }
 
-  let markdown = content;
+  if (plan.mode === "stream-plain") {
+    return (
+      <div
+        className="fn-markdown-mount fn-markdown-streaming"
+        data-fn-md-mode="stream"
+      >
+        {plan.text}
+      </div>
+    );
+  }
+
+  let markdown = plan.markdown;
   if (!skipAdoptedSplit) {
     const segments = splitAdoptedSegments(content);
     if (segments.some((s) => s.type === "adopted")) {
@@ -288,7 +304,7 @@ export const MarkdownBody = memo(function MarkdownBody({
 
   return (
     <MarkdownStreamingContext.Provider value={streaming}>
-      <div className="fn-markdown-mount">
+      <div className="fn-markdown-mount" data-fn-md-mode="full">
         <ReactMarkdown
           remarkPlugins={MARKDOWN_REMARK_PLUGINS}
           urlTransform={forknoteUrlTransform}
