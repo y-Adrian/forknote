@@ -297,7 +297,6 @@
   --ds-link-hover:      #79b8ff;
 
   --ds-user-bubble:     #ffffff;
-  --ds-comment-bg:      #161b22;
   --ds-composer-bg:     #0d1117;
   --ds-composer-shadow: var(--ds-hard-shadow);
   --ds-highlight:       rgba(210, 153, 34, 0.28);
@@ -365,7 +364,6 @@
   --ds-link-hover:      #0550ae;
 
   --ds-user-bubble:     #ffffff;
-  --ds-comment-bg:      #f6f8fa;
   --ds-composer-bg:     #ffffff;
   --ds-composer-shadow: var(--ds-hard-shadow);
   --ds-highlight:       rgba(234, 179, 8, 0.28);
@@ -940,24 +938,6 @@ body {
   box-shadow: 2px 2px 0 var(--ds-ink);
 }
 
-.ds-comments-toggle {
-  flex-shrink: 0;
-  padding: 6px 14px;
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-surface);
-  color: var(--ds-muted);
-  font: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
-}
-
-.ds-comments-toggle:hover {
-  background: var(--ds-surface-hover);
-  color: var(--ds-text);
-}
-
 /* Chat footer — same horizontal inset as .ds-chat-scroll so composer
    edges align with .ds-messages */
 .ds-chat-footer {
@@ -1332,8 +1312,7 @@ body {
   width: 100%;
 }
 
-/* Main chat passes compact for SelectableAnswer; unbox it here.
-   CommentCard keeps the compact surface via .answer-body-compact alone. */
+/* Main chat passes compact for SelectableAnswer; unbox it here. */
 .ds-bubble-assistant .answer-body-compact {
   padding: 0;
   background: transparent;
@@ -2868,257 +2847,6 @@ mark.branch-highlight:focus-visible {
 }
 
 
-/* ── Comments Drawer ──────────────────────────────────────── */
-
-.ds-drawer-backdrop {
-  position: absolute;
-  inset: 0;
-  border: none;
-  background: var(--ds-overlay);
-  cursor: pointer;
-  z-index: 10;
-}
-
-.ds-comments-drawer {
-  position: absolute;
-  top: var(--ds-shell-gap);
-  right: var(--ds-shell-gap);
-  bottom: var(--ds-shell-gap);
-  width: min(400px, 92vw);
-  z-index: 20;
-  background: var(--ds-sidebar);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-xl);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--ds-shadow-lg);
-  animation: floatIn 0.22s var(--ease-out) both;
-}
-
-.ds-drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--ds-border);
-  flex-shrink: 0;
-}
-
-.ds-drawer-header h2 {
-  margin: 0;
-  font-size: var(--fn-text-ui-lg);
-  font-weight: 600;
-}
-
-.ds-comments-drawer .ds-tree-nav {
-  flex-shrink: 0;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--ds-border);
-  max-height: 160px;
-  overflow: auto;
-}
-
-.ds-comments-drawer .ds-comments-panel {
-  flex: 1;
-  overflow: auto;
-  padding: 12px;
-}
-
-.ds-comments-toolbar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-/* Tree nav */
-.ds-tree-heading {
-  margin: 0 0 8px;
-  font-size: 0.7rem;
-  color: var(--ds-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.ds-tree-root,
-.ds-tree-children {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.ds-tree-children {
-  padding-left: 10px;
-  border-left: 1px solid var(--ds-border);
-  margin-top: 2px;
-}
-
-.ds-tree-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  width: 100%;
-  text-align: left;
-  gap: 2px;
-  padding: 6px 8px;
-  margin-bottom: 2px;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--ds-text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-  transition: background var(--dur-fast) ease;
-}
-
-.ds-tree-item:hover {
-  background: var(--ds-surface-hover);
-}
-
-.ds-tree-item.active {
-  background: var(--ds-accent-soft);
-}
-
-.ds-tree-quote {
-  color: var(--ds-muted);
-  font-size: 0.7rem;
-}
-
-/* Comment cards */
-.comments-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.comment-card {
-  position: relative;
-  background: var(--ds-comment-bg);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius);
-  padding: 14px 16px 16px 18px;
-  box-shadow: var(--ds-card-shadow);
-  transition: border-color var(--dur-base) ease;
-}
-
-.comment-card .comment-connector {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2.5px;
-  border-radius: 0;
-  background: var(--ds-accent);
-}
-
-.comment-card.focused {
-  border-color: var(--ds-focus-border);
-  box-shadow: 0 0 0 1px var(--ds-accent-glow);
-}
-
-.comment-badge {
-  font-size: var(--fn-text-ui-xs);
-  font-weight: 700;
-  color: var(--ds-brand-2);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.comment-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  color: var(--ds-muted);
-  font-size: 0.72rem;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font: inherit;
-  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
-}
-
-.comment-toggle:hover {
-  background: var(--ds-surface-hover);
-  color: var(--ds-text);
-}
-
-.comment-chevron {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
-  transition: transform var(--dur-base) ease;
-}
-
-.comment-card.collapsed .comment-chevron {
-  transform: rotate(-90deg);
-}
-
-.comment-anchor mark {
-  background: var(--ds-highlight);
-  color: var(--ds-text);
-  padding: 1px 4px;
-  border-radius: 2px;
-}
-
-.comment-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.comment-adopted-badge {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: #3d6b45;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(107, 143, 113, 0.45);
-  background: rgba(107, 143, 113, 0.12);
-  white-space: nowrap;
-  margin-right: auto;
-}
-
-.comment-anchor {
-  margin: 0 0 6px;
-  font-size: 0.82rem;
-  color: var(--ds-muted);
-}
-
-.comment-question {
-  margin: 0;
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-
-.comment-body {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--ds-border);
-}
-
-.comment-replies {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.comment-card.depth-1,
-.comment-card.depth-2,
-.comment-card.depth-3 {
-  margin-left: 6px;
-}
-
-
 /* ── Buttons ──────────────────────────────────────────────── */
 
 .btn {
@@ -3209,11 +2937,6 @@ mark.branch-highlight:focus-visible {
   z-index: var(--fn-z-modal);
   padding: 20px;
   animation: backdropIn var(--dur-base) ease both;
-}
-
-.popover-backdrop {
-  align-items: flex-start;
-  padding-top: 12vh;
 }
 
 .modal {
@@ -3735,17 +3458,6 @@ mark.branch-highlight:focus-visible {
   color: var(--ds-text-secondary);
   line-height: 1.5;
   font-size: 0.95rem;
-}
-
-.quote-preview {
-  margin: 0 0 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--ds-accent-soft);
-  color: var(--ds-muted);
-  font-size: 0.9rem;
-  border: none;
-  box-shadow: inset 2px 0 0 var(--ds-accent);
 }
 
 .hint {
