@@ -1882,6 +1882,15 @@ body {
 .answer-body blockquote > :first-child { margin-top: 0.4em; }
 .answer-body blockquote > :last-child { margin-bottom: 0.4em; }
 
+/* Lightweight stream mount — no ReactMarkdown until the reply completes. */
+.fn-markdown-streaming {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ds-text);
+  font-size: var(--fn-text-chat);
+  line-height: 1.65;
+}
+
 .fn-markdown-with-adopts {
   display: flex;
   flex-direction: column;

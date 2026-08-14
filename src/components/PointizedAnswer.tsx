@@ -224,6 +224,18 @@ export function PointizedAnswer({
   streaming = false,
 }: Props) {
   const { t } = useLocale();
+  // While tokens arrive, stay on a single MarkdownBody stream mount — avoid
+  // point-splitting + full remounts that thrash as numbered lists grow.
+  if (streaming) {
+    return (
+      <MarkdownBody
+        key="stream"
+        content={stripLeakedFeedbackMeta(content)}
+        streaming
+      />
+    );
+  }
+
   const parsed = parseAnswerPoints(content);
 
   if (parsed.points.length < 2) {
