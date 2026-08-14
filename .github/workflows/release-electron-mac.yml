@@ -1,10 +1,16 @@
-# Build unsigned macOS Electron installers and attach them to a GitHub Release.
+# Build macOS Electron installers and attach them to a GitHub Release.
 #
 # Triggers:
 #   - Push a version tag: git tag v0.1.0 && git push origin v0.1.0
 #   - Manual run: Actions → “Release Electron Mac” → Run workflow
 #
-# Artifacts: DMG + ZIP (arm64 + x64). Not signed / notarized — Gatekeeper may warn.
+# Signing / notarization (optional):
+#   When all of MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD, APPLE_ID,
+#   APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID are set as repository secrets,
+#   the job signs + notarizes. Otherwise it builds unsigned (Gatekeeper may warn)
+#   and prints an explicit notice — secret-dependent steps stay blocked.
+#
+# Artifacts: DMG + ZIP (arm64 + x64).
 name: Release Electron Mac
 
 on:
@@ -61,13 +67,48 @@ jobs:
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           echo "Package version set to ${VERSION}"
 
-      - name: Build unsigned DMG + ZIP (arm64 + x64)
+      - name: Resolve signing mode
+        id: signing
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MACOS_CERTIFICATE:-}" ] \
+            && [ -n "${MACOS_CERTIFICATE_PASSWORD:-}" ] \
+            && [ -n "${APPLE_ID:-}" ] \
+            && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] \
+            && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+            echo "Signing + notarization secrets present — will sign and notarize."
+          else
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS signing secrets incomplete; building UNSIGNED (Gatekeeper may warn). Configure MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID to enable."
+          fi
+
+      - name: Build DMG + ZIP (arm64 + x64)
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           npm run build
-          npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+          if [ "${SIGNING_MODE}" = "signed" ]; then
+            export CSC_LINK="${MACOS_CERTIFICATE}"
+            export CSC_KEY_PASSWORD="${MACOS_CERTIFICATE_PASSWORD}"
+            unset CSC_IDENTITY_AUTO_DISCOVERY || true
+            npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+          fi
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
@@ -89,13 +130,10 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           body: |
-            Unsigned macOS builds (no Apple notarization).
+            macOS builds from CI.
 
-            First open may be blocked by Gatekeeper — allow in **System Settings → Privacy & Security**, or:
-
-            ```bash
-            xattr -cr /path/to/ForkNote.app
-            ```
+            - If repository signing secrets are configured, artifacts are signed and notarized.
+            - Otherwise builds are **unsigned** — first open may be blocked by Gatekeeper (allow in **System Settings → Privacy & Security**, or `xattr -cr /path/to/ForkNote.app`).
 
             Prefer the **DMG** for install; **ZIP** is the same `.app` archived.
           files: |
@@ -113,13 +151,10 @@ jobs:
           prerelease: ${{ contains(inputs.tag, '-') }}
           generate_release_notes: true
           body: |
-            Unsigned macOS builds (no Apple notarization).
+            macOS builds from CI.
 
-            First open may be blocked by Gatekeeper — allow in **System Settings → Privacy & Security**, or:
-
-            ```bash
-            xattr -cr /path/to/ForkNote.app
-            ```
+            - If repository signing secrets are configured, artifacts are signed and notarized.
+            - Otherwise builds are **unsigned** — first open may be blocked by Gatekeeper (allow in **System Settings → Privacy & Security**, or `xattr -cr /path/to/ForkNote.app`).
 
             Prefer the **DMG** for install; **ZIP** is the same `.app` archived.
           files: |

@@ -71,10 +71,14 @@
     "extraMetadata": {
       "main": "electron/main.cjs"
     },
+    "afterSign": "scripts/macos-notarize.cjs",
     "mac": {
-      "identity": null,
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
         "dir"
       ]
