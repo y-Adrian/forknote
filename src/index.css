@@ -6097,13 +6097,6 @@ mark.branch-highlight:focus-visible {
   box-sizing: border-box;
 }
 
-.fn-context-banner-footer.is-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
-  animation: none;
-}
-
 .fn-context-banner-text {
   margin: 0;
   font-size: var(--fn-text-ui-sm);
