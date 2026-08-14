@@ -12,6 +12,12 @@ const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { startUiServer } = require("./uiServer.cjs");
 const { loadOrCreateSidecarToken } = require("../shared/sidecarAuth.cjs");
+const {
+  buildSidecarUrl,
+  allowDeveloperSurfaces,
+  buildDesktopAdditionalArguments,
+  isDevToolsShortcut,
+} = require("../shared/desktopRuntimeConfig.cjs");
 
 /**
  * Floor must sit below the web shell’s narrow-sidebar breakpoint (768px in
@@ -50,6 +56,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
+const SIDECAR_URL = buildSidecarUrl(SIDECAR_HOST, SIDECAR_PORT);
 const SIDECAR_AUTH_TOKEN = loadOrCreateSidecarToken();
 const isDev = process.env.ELECTRON_DEV === "1";
 
@@ -212,7 +219,16 @@ function sendTextZoom(action) {
   win.webContents.send("text-zoom", action);
 }
 
-function buildAppMenu() {
+function buildAppMenu(allowDevSurfaces) {
+  /** @type {Electron.MenuItemConstructorOptions[]} */
+  const viewExtras = allowDevSurfaces
+    ? [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+      ]
+    : [];
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
     ...(process.platform === "darwin"
@@ -248,9 +264,7 @@ function buildAppMenu() {
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { type: "separator" },
+        ...viewExtras,
         {
           label: "Actual Size",
           accelerator: "CommandOrControl+0",
@@ -289,7 +303,7 @@ function buildAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-async function createWindow() {
+async function createWindow(allowDevSurfaces) {
   await ensureSidecar();
 
   let loadUrl;
@@ -314,6 +328,10 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      additionalArguments: buildDesktopAdditionalArguments({
+        sidecarUrl: SIDECAR_URL,
+        allowDevSurfaces,
+      }),
     },
     show: false,
   });
@@ -332,6 +350,15 @@ async function createWindow() {
       win.webContents.setZoomFactor(1);
     }
   });
+
+  if (!allowDevSurfaces) {
+    win.webContents.on("before-input-event", (event, input) => {
+      if (isDevToolsShortcut(input)) event.preventDefault();
+    });
+    win.webContents.on("devtools-opened", () => {
+      if (!win.isDestroyed()) win.webContents.closeDevTools();
+    });
+  }
 
   const appOrigin = new URL(loadUrl).origin;
   const keepExternalNavigationOutOfChat = (event, url) => {
@@ -365,6 +392,12 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
+  /** Resolved once app is ready; safe default until then. */
+  let allowDevSurfaces = allowDeveloperSurfaces({
+    isDev,
+    isPackaged: false,
+  });
+
   app.on("second-instance", () => {
     const win = BrowserWindow.getAllWindows()[0];
     if (win && !win.isDestroyed()) {
@@ -373,19 +406,23 @@ if (!hasSingleInstanceLock) {
       win.focus();
       return;
     }
-    void createWindow();
+    void createWindow(allowDevSurfaces);
   });
 
   app.whenReady().then(() => {
+    allowDevSurfaces = allowDeveloperSurfaces({
+      isDev,
+      isPackaged: app.isPackaged,
+    });
     const appIcon = resolveAppIconPath();
     if (appIcon && process.platform === "darwin" && app.dock) {
       app.dock.setIcon(appIcon);
     }
-    buildAppMenu();
-    void createWindow();
+    buildAppMenu(allowDevSurfaces);
+    void createWindow(allowDevSurfaces);
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        void createWindow();
+        void createWindow(allowDevSurfaces);
       }
     });
   });
