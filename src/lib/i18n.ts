@@ -279,6 +279,8 @@ const en = {
   "data.importFailed": "Import failed.",
   "data.importSaveFailed": "Import failed while saving: {error}",
   "data.cleared": "All sessions cleared.",
+  "data.storageQuotaExceeded":
+    "Browser storage is full — sessions could not be saved. Free space or export a backup.",
   "data.alsoStored": "Also stored locally",
   "data.key.settings": "API settings",
   "data.key.userPreferences": "user preference memory",
@@ -989,6 +991,8 @@ const zh: Record<MessageKey, string> = {
   "data.importFailed": "导入失败。",
   "data.importSaveFailed": "导入保存失败：{error}",
   "data.cleared": "已清空全部会话。",
+  "data.storageQuotaExceeded":
+    "浏览器存储已满 — 会话未能保存。请清理空间或导出备份。",
   "data.alsoStored": "本机还存储了",
   "data.key.settings": "API 设置",
   "data.key.userPreferences": "用户偏好记忆",

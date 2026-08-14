@@ -1,4 +1,8 @@
 import type { ApiSettings } from "../types";
+import {
+  safeLocalStorageRemoveItem,
+  safeLocalStorageSetItem,
+} from "./browserStorage";
 
 const STORAGE_KEY = "forknote-settings";
 const LEGACY_STORAGE_KEY = "branch-chat-settings";
@@ -263,8 +267,9 @@ export function loadSettings(): ApiSettings {
 }
 
 export function saveSettings(settings: ApiSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeApiSettings(settings)));
-  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  const payload = JSON.stringify(normalizeApiSettings(settings));
+  const result = safeLocalStorageSetItem(STORAGE_KEY, payload);
+  if (result.ok) safeLocalStorageRemoveItem(LEGACY_STORAGE_KEY);
 }
 
 /**

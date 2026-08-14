@@ -25,6 +25,7 @@ import {
 } from "../lib/contextBuilder";
 import { getLocale, t } from "../lib/i18n";
 import { createId } from "../lib/id";
+import { isQuotaExceededError } from "../lib/browserStorage";
 import {
   buildCompressSource,
   compressChatMessages,
@@ -316,12 +317,25 @@ function persistSessions(
   try {
     if (opts?.mode === "scheduled") {
       scheduleSessionStoreSave({ sessions, activeSessionId });
-    } else {
-      saveSessionStore({ sessions, activeSessionId });
+      return;
+    }
+    const result = saveSessionStore({ sessions, activeSessionId });
+    if (!result.ok) {
+      console.warn("[ForkNote] persistSessions failed", result.message);
+      if (result.quotaExceeded) {
+        useAppStore.setState({
+          error: t("data.storageQuotaExceeded", undefined, getLocale()),
+        });
+      }
     }
   } catch (e) {
     // QuotaExceeded / private-mode write failures must not crash the agent turn.
     console.warn("[ForkNote] persistSessions failed", e);
+    if (isQuotaExceededError(e)) {
+      useAppStore.setState({
+        error: t("data.storageQuotaExceeded", undefined, getLocale()),
+      });
+    }
   }
 }
 
@@ -330,6 +344,11 @@ function flushSessionPersistence(): void {
     flushScheduledSessionStoreSave();
   } catch (e) {
     console.warn("[ForkNote] flushSessionPersistence failed", e);
+    if (isQuotaExceededError(e)) {
+      useAppStore.setState({
+        error: t("data.storageQuotaExceeded", undefined, getLocale()),
+      });
+    }
   }
 }
 

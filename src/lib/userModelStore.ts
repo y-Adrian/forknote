@@ -4,6 +4,7 @@
  * confidence that survives new notes / deleted sessions.
  */
 import type { FeedbackEvent } from "../types";
+import { safeLocalStorageSetItem } from "./browserStorage";
 import {
   applyFeedbackToUserModel,
   buildUserModelFromFeedbackLog,
@@ -86,14 +87,16 @@ export function loadPersistedUserModel(): UserModel {
 
 export function savePersistedUserModel(model: UserModel): void {
   if (!isBrowserStorage()) return;
-  try {
-    const envelope: PersistedEnvelope = {
-      version: 1,
-      model: clampModel(model),
-    };
-    localStorage.setItem(USER_MODEL_STORAGE_KEY, JSON.stringify(envelope));
-  } catch (e) {
-    console.warn("[ForkNote] savePersistedUserModel failed", e);
+  const envelope: PersistedEnvelope = {
+    version: 1,
+    model: clampModel(model),
+  };
+  const result = safeLocalStorageSetItem(
+    USER_MODEL_STORAGE_KEY,
+    JSON.stringify(envelope),
+  );
+  if (!result.ok) {
+    console.warn("[ForkNote] savePersistedUserModel failed", result.message);
   }
 }
 
