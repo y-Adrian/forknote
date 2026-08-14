@@ -51,7 +51,13 @@ export function parseReflectDecision(text: string): ReflectDecision | null {
   return null;
 }
 
-/** When true, ask the LLM (expected outcome check or ambiguous errors). */
+/**
+ * When true, spend an LLM call on Reflect.
+ *
+ * Clean successful web batches stay on the deterministic rule decision
+ * (`continue`) — no extra round-trip. LLM Reflect is reserved for expected-
+ * outcome checks, ambiguous/unknown errors, and mixed success+error batches.
+ */
 export function shouldAskLlmReflect(
   input: ReflectInput,
   ruleDecision: ReflectDecision,
@@ -62,9 +68,13 @@ export function shouldAskLlmReflect(
   if (expectedOutcome?.trim() && observed.successCount + observed.errorCount > 0) {
     return true;
   }
-  // After web search/fetch: judge whether hits suffice or need another angle.
-  if (observeBatchHasWebTools(observed) && observed.successCount > 0) {
-    return true;
+  // Clean web_search / web_fetch batches: rules already continue — skip LLM.
+  if (
+    observeBatchHasWebTools(observed) &&
+    observed.batchOk &&
+    ruleDecision === "continue"
+  ) {
+    return false;
   }
   if (
     observed.errorCount > 0 &&
