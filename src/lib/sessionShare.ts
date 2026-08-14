@@ -66,6 +66,14 @@ export function getShareableMessages(session: ChatSession): ShareableMessage[] {
     }));
 }
 
+/** Resolve the live session by id so share export is not stuck on a frozen snapshot. */
+export function resolveLiveShareSession(
+  sessions: readonly ChatSession[],
+  sessionId: string,
+): ChatSession | null {
+  return sessions.find((session) => session.id === sessionId) ?? null;
+}
+
 export function buildSharePayload(
   title: string,
   messages: Array<Pick<ChatMessage, "role" | "content">>,

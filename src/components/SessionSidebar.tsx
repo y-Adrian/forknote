@@ -22,7 +22,7 @@ import {
 } from "../lib/storage";
 import { useTheme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
-import type { ChatSession, NodeId } from "../types";
+import type { NodeId } from "../types";
 import { ShareSessionDialog } from "./ShareSessionDialog";
 
 type MenuPos = { top: number; right: number };
@@ -279,7 +279,7 @@ export function SessionSidebar({
   } | null>(null);
   const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] =
     useState(false);
-  const [shareSession, setShareSession] = useState<ChatSession | null>(null);
+  const [shareSessionId, setShareSessionId] = useState<NodeId | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommit = useRef(false);
 
@@ -502,7 +502,7 @@ export function SessionSidebar({
 
   const handleShare = () => {
     if (!menuSession) return;
-    setShareSession(menuSession);
+    setShareSessionId(menuSession.id);
     closeMenu();
   };
 
@@ -777,11 +777,11 @@ export function SessionSidebar({
               )
             : null}
 
-          {shareSession
+          {shareSessionId
             ? createPortal(
                 <ShareSessionDialog
-                  session={shareSession}
-                  onClose={() => setShareSession(null)}
+                  sessionId={shareSessionId}
+                  onClose={() => setShareSessionId(null)}
                 />,
                 document.body,
               )
