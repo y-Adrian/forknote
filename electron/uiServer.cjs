@@ -13,8 +13,7 @@ const { assertSafeApiTarget } = require("../shared/apiTargetPolicy.cjs");
 const SIDECAR_HOST = process.env.SIDECAR_HOST || "127.0.0.1";
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT || 8787);
 const SIDECAR_UNREACHABLE = {
-  error:
-    "Sidecar unreachable on 127.0.0.1:8787. Run npm run sidecar (or npm run dev), then retry.",
+  error: `Sidecar unreachable on ${SIDECAR_HOST}:${SIDECAR_PORT}. Run npm run sidecar (or npm run dev), then retry.`,
 };
 
 const HOP_BY_HOP = new Set([
