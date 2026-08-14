@@ -1,12 +1,18 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import {
+  selectionRangeForCaret,
+  type ComposerCaret,
+} from "../lib/composerFocus";
 import { handleComposerEnterKey } from "../lib/composerKeys";
 import { useLocale } from "../lib/i18n";
 import { activeAtQuery, listProjectFileHints } from "../lib/repoContext";
@@ -27,21 +33,30 @@ interface Props {
   onRemoveInclude?: (path: string) => void;
 }
 
-export function ChatComposer({
-  value,
-  onChange,
-  onSubmit,
-  onStop,
-  loading = false,
-  placeholder,
-  compact = false,
-  leading,
-  projectRoot = null,
-  sidecarUrl = "/sidecar",
-  includedFiles = [],
-  onIncludeFile,
-  onRemoveInclude,
-}: Props) {
+export type ChatComposerHandle = {
+  /** Focus the textarea and place the caret at start or end of the current value. */
+  focus: (opts?: { caret?: ComposerCaret }) => void;
+};
+
+export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
+  function ChatComposer(
+    {
+      value,
+      onChange,
+      onSubmit,
+      onStop,
+      loading = false,
+      placeholder,
+      compact = false,
+      leading,
+      projectRoot = null,
+      sidecarUrl = "/sidecar",
+      includedFiles = [],
+      onIncludeFile,
+      onRemoveInclude,
+    },
+    forwardedRef,
+  ) {
   const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
@@ -56,6 +71,17 @@ export function ChatComposer({
   const activeOptionId = mentionOpen
     ? `${optionIdPrefix}-opt-${hintIndex}`
     : undefined;
+
+  useImperativeHandle(forwardedRef, () => ({
+    focus: (opts) => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      const range = selectionRangeForCaret(el.value.length, opts?.caret ?? "end");
+      el.setSelectionRange(range.start, range.end);
+      setCursor(range.start);
+    },
+  }));
 
   useEffect(() => {
     if (!projectRoot || !at) {
@@ -304,4 +330,5 @@ export function ChatComposer({
       </div>
     </form>
   );
-}
+  },
+);
