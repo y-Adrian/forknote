@@ -6527,7 +6527,7 @@ mark.branch-highlight:focus-visible {
 .fn-include-chip-x { border: none; background: transparent; color: var(--ds-muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
 .fn-composer-input-wrap { position: relative; }
 .fn-at-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 20; margin: 0; padding: 4px; list-style: none; max-height: 200px; overflow: auto; border-radius: 12px; border: 1px solid var(--ds-border); background: var(--ds-bg); box-shadow: 0 8px 24px color-mix(in srgb, var(--ds-text) 12%, transparent); }
-.fn-at-option { display: block; width: 100%; text-align: left; border: none; background: transparent; color: var(--ds-text); font: inherit; font-size: var(--fn-text-ui-sm); padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.fn-at-option { display: block; width: 100%; text-align: left; border: none; background: transparent; color: var(--ds-text); font: inherit; font-size: var(--fn-text-ui-sm); padding: 8px 10px; border-radius: 8px; cursor: pointer; list-style: none; }
 .fn-at-option:hover, .fn-at-option.is-active { background: var(--ds-accent-soft); color: var(--ds-accent); }
 
 

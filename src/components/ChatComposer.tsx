@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type KeyboardEvent,
@@ -44,11 +45,17 @@ export function ChatComposer({
   const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+  const listboxId = useId();
+  const optionIdPrefix = useId();
   const resolvedPlaceholder = placeholder ?? t("main.placeholderEmpty");
   const [cursor, setCursor] = useState(0);
   const [hints, setHints] = useState<string[]>([]);
   const [hintIndex, setHintIndex] = useState(0);
   const at = projectRoot ? activeAtQuery(value, cursor) : null;
+  const mentionOpen = Boolean(projectRoot && at && hints.length > 0);
+  const activeOptionId = mentionOpen
+    ? `${optionIdPrefix}-opt-${hintIndex}`
+    : undefined;
 
   useEffect(() => {
     if (!projectRoot || !at) {
@@ -115,6 +122,16 @@ export function ChatComposer({
         setHintIndex((i) => (i - 1 + hints.length) % hints.length);
         return;
       }
+      if (e.key === "Home") {
+        e.preventDefault();
+        setHintIndex(0);
+        return;
+      }
+      if (e.key === "End") {
+        e.preventDefault();
+        setHintIndex(hints.length - 1);
+        return;
+      }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         applyMention(hints[hintIndex] ?? hints[0]);
@@ -167,6 +184,12 @@ export function ChatComposer({
           ref={ref}
           rows={compact ? 1 : 3}
           value={value}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={mentionOpen}
+          aria-controls={mentionOpen ? listboxId : undefined}
+          aria-activedescendant={activeOptionId}
+          aria-haspopup="listbox"
           onChange={(e) => {
             onChange(e.target.value);
             setCursor(e.target.selectionStart);
@@ -186,22 +209,31 @@ export function ChatComposer({
             compact ? t("composer.continue") : t("composer.newQuestion")
           }
         />
-        {projectRoot && at && hints.length > 0 ? (
-          <ul className="fn-at-menu" role="listbox">
-            {hints.map((path, i) => (
-              <li key={path}>
-                <button
-                  type="button"
-                  className={`fn-at-option${i === hintIndex ? " is-active" : ""}`}
+        {mentionOpen ? (
+          <ul
+            id={listboxId}
+            className="fn-at-menu"
+            role="listbox"
+            aria-label={t("composer.mentionListAria")}
+          >
+            {hints.map((path, i) => {
+              const selected = i === hintIndex;
+              return (
+                <li
+                  key={path}
+                  id={`${optionIdPrefix}-opt-${i}`}
+                  role="option"
+                  aria-selected={selected}
+                  className={`fn-at-option${selected ? " is-active" : ""}`}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     applyMention(path);
                   }}
                 >
                   @{path}
-                </button>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </div>
