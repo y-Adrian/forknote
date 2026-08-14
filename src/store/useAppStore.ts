@@ -271,14 +271,17 @@ interface AppState {
   /** Set the model for the active session (snapshotted; empty clears to inherit settings). */
   setSessionApi: (api: SessionApiOverride | null) => void;
   clearSessionApi: () => void;
-  setSessionMemory: (summary: string) => void;
+  setSessionMemory: (summary: string, sessionId?: NodeId) => void;
   /** Whether the session shares the project memory pack with other sessions. */
   setShareMemory: (sessionId: NodeId, share: boolean) => void;
-  saveContextMemoryFields: (fields: {
-    summary?: string;
-    tasks?: string;
-    decisions?: string;
-  }) => Promise<void>;
+  saveContextMemoryFields: (
+    fields: {
+      summary?: string;
+      tasks?: string;
+      decisions?: string;
+    },
+    opts?: { sessionId?: NodeId },
+  ) => Promise<void>;
   addFileInclude: (path: string) => void;
   removeFileInclude: (path: string) => void;
   clearFileIncludes: () => void;
@@ -2344,11 +2347,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sessions: nextSessions });
   },
 
-  setSessionMemory: (summary) => {
+  setSessionMemory: (summary, sessionId) => {
     const { sessions, activeSessionId } = get();
-    if (!activeSessionId) return;
+    const targetId = sessionId ?? activeSessionId;
+    if (!targetId || !sessions.some((s) => s.id === targetId)) return;
     const trimmed = summary.trim();
-    const nextSessions = patchActiveSessionMeta(sessions, activeSessionId, {
+    const nextSessions = patchActiveSessionMeta(sessions, targetId, {
       sessionMemory: trimmed
         ? { summary: trimmed.slice(0, 4000), updatedAt: Date.now() }
         : null,
@@ -2357,12 +2361,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sessions: nextSessions });
   },
 
-  saveContextMemoryFields: async (fields) => {
-    const { settings, projectRoot, sidecarUrl, sessions, activeSessionId } = get();
-    if (!activeSessionId) return;
-    const session = sessions.find((s) => s.id === activeSessionId);
+  saveContextMemoryFields: async (fields, opts) => {
+    const { settings, sidecarUrl, sessions, activeSessionId } = get();
+    const sessionId = opts?.sessionId ?? activeSessionId;
+    if (!sessionId) return;
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const projectRoot =
+      session.projectRoot?.trim() || get().projectRoot || null;
     const existing =
-      (await loadContextMemoryPack({ settings, session, projectRoot, sidecarUrl })) ?? {
+      (await loadContextMemoryPack({
+        settings,
+        session,
+        projectRoot,
+        sidecarUrl,
+      })) ?? {
         summary: "",
         tasks: "",
         decisions: "",
@@ -2376,14 +2389,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       decisions: fields.decisions ?? existing.decisions,
       updatedAt: Date.now(),
     };
+    // Re-read the initiating session after awaits — do not retarget to the
+    // currently active note if the user switched mid-import.
+    const latestSession =
+      get().sessions.find((s) => s.id === sessionId) ?? session;
     const saved = await saveContextMemoryPack({
       pack,
       settings,
-      session,
-      projectRoot,
-      sidecarUrl,
+      session: latestSession,
+      projectRoot:
+        latestSession.projectRoot?.trim() || get().projectRoot || null,
+      sidecarUrl: get().sidecarUrl,
     });
-    const nextSessions = patchActiveSessionMeta(get().sessions, activeSessionId, {
+    const nextSessions = patchActiveSessionMeta(get().sessions, sessionId, {
       contextMemory: saved,
     });
     persistSessions(nextSessions, get().activeSessionId);

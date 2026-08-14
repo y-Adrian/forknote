@@ -435,15 +435,20 @@ function MemoryTransferPanel({
       const hasPack = memoryPackHasContent(parsed);
       const hasSessionMemory = Boolean(parsed.sessionMemory?.summary?.trim());
 
-      if (hasPack) {
-        const sessionId = activeSessionId ?? ensureActiveSessionForImport();
+      // Pin the note that started the import before any further awaits / confirms.
+      const pinnedSessionId =
+        hasPack || hasSessionMemory
+          ? (activeSessionId ?? ensureActiveSessionForImport())
+          : null;
+
+      if (hasPack && pinnedSessionId) {
         const importSession =
-          sessions.find((s) => s.id === sessionId) ??
-          useAppStore.getState().sessions.find((s) => s.id === sessionId);
+          useAppStore.getState().sessions.find((s) => s.id === pinnedSessionId);
         const existing = await loadContextMemoryPack({
           settings,
           session: importSession,
-          projectRoot,
+          projectRoot:
+            importSession?.projectRoot?.trim() || projectRoot || null,
           sidecarUrl,
         });
         if (
@@ -457,16 +462,18 @@ function MemoryTransferPanel({
 
       const importedPrefs = applyImportedPreferences(parsed.preferences);
 
-      if (hasPack) {
-        await saveContextMemoryFields({
-          summary: parsed.summary,
-          tasks: parsed.tasks,
-          decisions: parsed.decisions,
-        });
+      if (hasPack && pinnedSessionId) {
+        await saveContextMemoryFields(
+          {
+            summary: parsed.summary,
+            tasks: parsed.tasks,
+            decisions: parsed.decisions,
+          },
+          { sessionId: pinnedSessionId },
+        );
       }
-      if (hasSessionMemory) {
-        if (!activeSessionId) ensureActiveSessionForImport();
-        setSessionMemory(parsed.sessionMemory!.summary);
+      if (hasSessionMemory && pinnedSessionId) {
+        setSessionMemory(parsed.sessionMemory!.summary, pinnedSessionId);
       }
 
       onImported();
