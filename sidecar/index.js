@@ -724,6 +724,7 @@ async function handleRead(query, signal) {
     path: relative,
     content,
     size: slice.size,
+    mtimeMs: stat.mtimeMs,
     totalLines: slice.totalLines,
     startLine: slice.startLine,
     endLine: slice.endLine,

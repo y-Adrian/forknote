@@ -201,6 +201,50 @@ function memoryPath(
   return `${dir}/${file}`;
 }
 
+/**
+ * Prefer the newest filesystem mtime from pack files; fall back to `now`
+ * when no valid mtimes are available (e.g. older sidecars).
+ */
+export function resolveMemoryPackUpdatedAt(
+  mtimes: Array<number | null | undefined>,
+  now: number = Date.now(),
+): number {
+  let max = 0;
+  for (const t of mtimes) {
+    if (typeof t === "number" && Number.isFinite(t) && t > max) max = t;
+  }
+  return max > 0 ? max : now;
+}
+
+type MemoryFileRead = { content: string; mtimeMs?: number };
+
+async function readMemoryFile(
+  dir: string,
+  file: MemoryFileName | typeof CODING_MEMORY_FILE,
+  sidecarUrl: string,
+  signal: AbortSignal | undefined,
+  projectRoot: string,
+): Promise<MemoryFileRead> {
+  try {
+    const res = await readFile(
+      memoryPath(dir, file),
+      sidecarUrl,
+      signal,
+      undefined,
+      projectRoot,
+    );
+    return {
+      content: res.content ?? "",
+      mtimeMs:
+        typeof res.mtimeMs === "number" && Number.isFinite(res.mtimeMs)
+          ? res.mtimeMs
+          : undefined,
+    };
+  } catch {
+    return { content: "" };
+  }
+}
+
 export async function loadContextMemoryPack(options: {
   settings: ApiSettings;
   session?: ChatSession | null;
@@ -213,36 +257,16 @@ export async function loadContextMemoryPack(options: {
 
   if (projectRoot) {
     try {
-      const [summary, tasks, decisions, coding] = await Promise.all([
-        ...MEMORY_FILES.map(async (file) => {
-          try {
-            const res = await readFile(
-              memoryPath(dir, file),
-              sidecarUrl,
-              signal,
-              undefined,
-              projectRoot,
-            );
-            return res.content ?? "";
-          } catch {
-            return "";
-          }
-        }),
-        (async () => {
-          try {
-            const res = await readFile(
-              memoryPath(dir, CODING_MEMORY_FILE),
-              sidecarUrl,
-              signal,
-              undefined,
-              projectRoot,
-            );
-            return res.content ?? "";
-          } catch {
-            return "";
-          }
-        })(),
+      const [summaryRes, tasksRes, decisionsRes, codingRes] = await Promise.all([
+        readMemoryFile(dir, "SUMMARY.md", sidecarUrl, signal, projectRoot),
+        readMemoryFile(dir, "TASKS.md", sidecarUrl, signal, projectRoot),
+        readMemoryFile(dir, "DECISIONS.md", sidecarUrl, signal, projectRoot),
+        readMemoryFile(dir, CODING_MEMORY_FILE, sidecarUrl, signal, projectRoot),
       ]);
+      const summary = summaryRes.content;
+      const tasks = tasksRes.content;
+      const decisions = decisionsRes.content;
+      const coding = codingRes.content;
       if (
         summary.trim() ||
         tasks.trim() ||
@@ -254,7 +278,13 @@ export async function loadContextMemoryPack(options: {
           tasks,
           decisions,
           coding,
-          updatedAt: Date.now(),
+          // Only content-bearing files contribute to freshness.
+          updatedAt: resolveMemoryPackUpdatedAt([
+            summary.trim() ? summaryRes.mtimeMs : undefined,
+            tasks.trim() ? tasksRes.mtimeMs : undefined,
+            decisions.trim() ? decisionsRes.mtimeMs : undefined,
+            coding.trim() ? codingRes.mtimeMs : undefined,
+          ]),
           storage: "project",
           dir,
         };
