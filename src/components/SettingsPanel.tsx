@@ -204,7 +204,7 @@ function GeneralPanel({
       return;
     }
     applyLocale(pendingLocale);
-    window.location.reload();
+    setPendingLocale(null);
   };
 
   const loadInstalledFonts = async () => {
