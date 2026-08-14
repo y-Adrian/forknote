@@ -46,6 +46,11 @@ npm run dev                  # 同时启动 Vite + sidecar；Ctrl+C 一起停
 | `npm run electron:dev` | Electron 壳加载 Vite（需另开 `npm run dev` / `dev:web`）；自动拉起或复用 sidecar |
 | `npm run electron:build:mac` | 生产构建 + **未签名** macOS `.app`（`release/mac*/ForkNote.app`） |
 | `npm run electron:release:mac` | 生产构建 + **未签名** DMG / ZIP（本机当前架构） |
+| `npm run electron:build:win` | 生产构建 + **未签名** Windows 解压目录（需在 Windows 上或 CI 跑） |
+| `npm run electron:release:win` | 生产构建 + **未签名** NSIS / ZIP |
+| `npm run electron:build:linux` | 生产构建 + **未签名** Linux 解压目录（需在 Linux 上或 CI 跑） |
+| `npm run electron:release:linux` | 生产构建 + **未签名** AppImage / deb |
+| `npm run test:desktop-build-pipelines` | 探针：确认 Win/Linux 脚本、builder 配置与 CI 工作流已落地 |
 
 ### macOS 桌面应用（Electron，未签名）
 
@@ -75,9 +80,24 @@ npm run electron:release:mac
 # 产物在 release/*.dmg 与 release/*.zip
 ```
 
+### Windows / Linux 桌面包（Electron，未签名）
+
+与 macOS 相同的薄壳与 sidecar 布局；在对应平台或 CI 上打包：
+
+```bash
+npm run electron:release:win     # NSIS .exe + ZIP（Windows）
+npm run electron:release:linux   # AppImage + deb（Linux）
+```
+
 ### 在 GitHub 上构建并发布
 
-工作流 [`.github/workflows/release-electron-mac.yml`](.github/workflows/release-electron-mac.yml) 会在 **macos-14** 上构建 **arm64 + x64** 的未签名 **DMG / ZIP**，并挂到 GitHub Release。
+推送 `v*` tag 后，三条平台发布工作流会并行跑：
+
+| 工作流 | Runner | 产物 |
+|--------|--------|------|
+| [release-electron-mac.yml](.github/workflows/release-electron-mac.yml) | macos-14 | arm64 + x64 **DMG / ZIP**（含 `latest-mac.yml`） |
+| [release-electron-win.yml](.github/workflows/release-electron-win.yml) | windows-latest | x64 **NSIS / ZIP** |
+| [release-electron-linux.yml](.github/workflows/release-electron-linux.yml) | ubuntu-latest | x64 **AppImage / deb** |
 
 **推荐：打版本 tag**
 
@@ -89,15 +109,11 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-推送 `v*` tag 后，Actions 中的 **Release Electron Mac** 会创建/更新同名 Release，并上传：
+**手动跑：** GitHub → **Actions** → 对应 **Release Electron …** → **Run workflow**。不填 tag 时只上传 workflow Artifact；填写 `v0.1.0` 会同时发/更新 Release。
 
-- `ForkNote-*-arm64.dmg` / `.zip`
-- `ForkNote-*-x64.dmg` / `.zip`
-- `latest-mac.yml`（供后续自动更新用）
+**验证管道（非 release）：** [verify-desktop-builds.yml](.github/workflows/verify-desktop-builds.yml) 在打包相关路径变更或手动触发时，于 **windows-latest** / **ubuntu-latest** 上跑 `--dir` 解压包冒烟，并执行 `npm run test:desktop-build-pipelines`。
 
-**手动跑：** GitHub → **Actions** → **Release Electron Mac** → **Run workflow**。不填 tag 时只上传 workflow Artifact；填写 `v0.1.0` 会同时发 Release。
-
-仍未签名 / 未公证；用户首次打开可能需在「隐私与安全性」允许，或 `xattr -cr` 去掉隔离属性。
+macOS 仍未签名 / 未公证；用户首次打开可能需在「隐私与安全性」允许，或 `xattr -cr` 去掉隔离属性。Windows / Linux 产物同样未代码签名。
 
 
 若启动失败（常见原因：端口被占用）：
