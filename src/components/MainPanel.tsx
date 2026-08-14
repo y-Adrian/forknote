@@ -973,11 +973,10 @@ export function MainPanel({
               </div>
             )}
 
-            {showCompressSuggest && (
+            {showCompressSuggestBanner && (
               <div
-                className={`fn-context-banner fn-context-banner-footer${showCompressSuggestBanner ? "" : " is-placeholder"}`}
+                className="fn-context-banner fn-context-banner-footer"
                 role="status"
-                aria-hidden={!showCompressSuggestBanner}
               >
                 <p className="fn-context-banner-text">
                   {t("main.compressSuggestText")}
@@ -986,8 +985,7 @@ export function MainPanel({
                   <button
                     type="button"
                     className="fn-context-banner-btn"
-                    disabled={composerBusy || !showCompressSuggestBanner}
-                    tabIndex={showCompressSuggestBanner ? undefined : -1}
+                    disabled={composerBusy}
                     onClick={() => {
                       if (activeSessionId) {
                         setCompressSuggestDismissedFor(activeSessionId);
@@ -1000,8 +998,6 @@ export function MainPanel({
                   <button
                     type="button"
                     className="fn-context-banner-btn is-quiet"
-                    disabled={!showCompressSuggestBanner}
-                    tabIndex={showCompressSuggestBanner ? undefined : -1}
                     onClick={() => {
                       if (activeSessionId) {
                         setCompressSuggestDismissedFor(activeSessionId);
