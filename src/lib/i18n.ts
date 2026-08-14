@@ -76,6 +76,7 @@ const en = {
   "common.ok": "OK",
   "common.save": "Save",
   "common.saved": "Saved",
+  "common.discard": "Discard",
   "common.close": "Close",
   "common.delete": "Delete",
   "common.settings": "Settings",
@@ -95,6 +96,10 @@ const en = {
   "settings.nav.data": "Data",
   "settings.nav.project": "Project",
   "settings.nav.about": "About",
+  "settings.discardConfirmAria": "Discard unsaved settings",
+  "settings.discardConfirmTitle": "Discard unsaved changes?",
+  "settings.discardConfirmBody":
+    "Closing Settings will discard unsaved API, Memory, and PlantUML edits.",
 
   "general.title": "General",
   "general.lead":
@@ -792,6 +797,7 @@ const zh: Record<MessageKey, string> = {
   "common.ok": "确定",
   "common.save": "保存",
   "common.saved": "已保存",
+  "common.discard": "丢弃",
   "common.close": "关闭",
   "common.delete": "删除",
   "common.settings": "设置",
@@ -811,6 +817,10 @@ const zh: Record<MessageKey, string> = {
   "settings.nav.data": "数据",
   "settings.nav.project": "项目",
   "settings.nav.about": "关于",
+  "settings.discardConfirmAria": "丢弃未保存的设置",
+  "settings.discardConfirmTitle": "丢弃未保存的更改？",
+  "settings.discardConfirmBody":
+    "关闭设置将丢弃未保存的 API、记忆与 PlantUML 修改。",
 
   "general.title": "通用",
   "general.lead":
