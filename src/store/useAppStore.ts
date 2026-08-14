@@ -3,6 +3,12 @@ import {
   type AgentActivity,
   type AgentFileChange,
 } from "../lib/agentTools";
+import {
+  appendSessionAgentActivity,
+  appendSessionAgentChange,
+  clearSessionAgentUiMaps,
+  projectAgentSessionUi,
+} from "../lib/agentSessionActivity";
 import { isAgentTurnPlaceholder } from "../lib/agentStatus";
 import { runAgentTurn } from "../lib/agentTurn";
 import { withAgentPhaseModel } from "../lib/agentModelRouting";
@@ -177,7 +183,13 @@ interface AppState {
   projectRoot: string | null;
   sidecarUrl: string;
   projectError: string | null;
+  /** Mid-turn tool log keyed by session; `agentActivity` projects the active one. */
+  agentActivityBySession: Record<NodeId, AgentActivity[]>;
+  /** Mid-turn file changes keyed by session; `agentChanges` projects the active one. */
+  agentChangesBySession: Record<NodeId, AgentFileChange[]>;
+  /** Active-session projection of `agentActivityBySession`. */
   agentActivity: AgentActivity[];
+  /** Active-session projection of `agentChangesBySession`. */
   agentChanges: AgentFileChange[];
   /** Plan awaiting user approval before tool execution (project agent). */
   agentPendingPlan: AgentPendingPlan | null;
@@ -469,11 +481,10 @@ function restoreSessionProject(
 ): void {
   const apply = (root: string | null, projectError: string | null) => {
     if (get().activeSessionId !== sessionId) return;
+    // Do not wipe per-session agent activity — generation may still be in flight.
     set({
       projectRoot: root,
       projectError,
-      agentActivity: [],
-      agentChanges: [],
     });
   };
 
@@ -813,9 +824,82 @@ function rollbackMainTurn(
   const nextThread: ThreadRoot | null =
     remaining.length === 0 ? null : { ...current, messages: remaining };
   commitSessionThread(get, set, turn.sessionId, nextThread);
-  if (get().activeSessionId === turn.sessionId) {
-    set({ agentActivity: [], agentChanges: [] });
-  }
+  clearSessionAgentUi(set, turn.sessionId);
+}
+
+function clearSessionAgentUi(
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  sessionId: NodeId,
+): void {
+  set((state) => {
+    const maps = clearSessionAgentUiMaps(
+      state.agentActivityBySession,
+      state.agentChangesBySession,
+      sessionId,
+    );
+    return {
+      ...maps,
+      ...(state.activeSessionId === sessionId
+        ? { agentActivity: [], agentChanges: [] }
+        : {}),
+    };
+  });
+}
+
+function pushSessionAgentActivity(
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  sessionId: NodeId,
+  activity: AgentActivity,
+): void {
+  set((state) => {
+    const agentActivityBySession = appendSessionAgentActivity(
+      state.agentActivityBySession,
+      sessionId,
+      activity,
+    );
+    return {
+      agentActivityBySession,
+      ...(state.activeSessionId === sessionId
+        ? {
+            agentActivity: agentActivityBySession[sessionId] ?? [],
+          }
+        : {}),
+    };
+  });
+}
+
+function pushSessionAgentChange(
+  set: (
+    partial:
+      | Partial<AppState>
+      | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  sessionId: NodeId,
+  change: AgentFileChange,
+): void {
+  set((state) => {
+    const agentChangesBySession = appendSessionAgentChange(
+      state.agentChangesBySession,
+      sessionId,
+      change,
+    );
+    return {
+      agentChangesBySession,
+      ...(state.activeSessionId === sessionId
+        ? {
+            agentChanges: agentChangesBySession[sessionId] ?? [],
+          }
+        : {}),
+    };
+  });
 }
 
 function requireApiKey(settings: ApiSettings): string | null {
@@ -862,6 +946,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   projectRoot: null,
   sidecarUrl: loadProjectPrefs().sidecarUrl,
   projectError: null,
+  agentActivityBySession: {},
+  agentChangesBySession: {},
   agentActivity: [],
   agentChanges: [],
   agentPendingPlan: null,
@@ -886,6 +972,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       sidecarUrl: prefs.sidecarUrl,
       projectRoot: sessionProject,
       projectError: null,
+      agentActivityBySession: {},
+      agentChangesBySession: {},
       agentActivity: [],
       agentChanges: [],
     });
@@ -932,12 +1020,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       persistSessions(nextSessions, activeSessionId);
       if (activeSessionId === bindingSessionId) {
-        set({
-          sessions: nextSessions,
-          projectRoot: root,
-          projectError: null,
-          agentActivity: [],
-          agentChanges: [],
+        set((state) => {
+          const maps = clearSessionAgentUiMaps(
+            state.agentActivityBySession,
+            state.agentChangesBySession,
+            bindingSessionId!,
+          );
+          return {
+            sessions: nextSessions,
+            projectRoot: root,
+            projectError: null,
+            ...maps,
+            agentActivity: [],
+            agentChanges: [],
+          };
         });
       } else {
         set({ sessions: nextSessions });
@@ -970,12 +1066,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     void sidecarCloseProject(sidecarUrl).catch(() => undefined);
     const nextSessions = patchSessionProject(sessions, activeSessionId, null);
     persistSessions(nextSessions, activeSessionId);
-    set({
-      sessions: nextSessions,
-      projectRoot: null,
-      projectError: null,
-      agentActivity: [],
-      agentChanges: [],
+    set((state) => {
+      const maps = activeSessionId
+        ? clearSessionAgentUiMaps(
+            state.agentActivityBySession,
+            state.agentChangesBySession,
+            activeSessionId,
+          )
+        : {
+            agentActivityBySession: {},
+            agentChangesBySession: {},
+          };
+      return {
+        sessions: nextSessions,
+        projectRoot: null,
+        projectError: null,
+        ...maps,
+        agentActivity: [],
+        agentChanges: [],
+      };
     });
   },
 
@@ -2138,8 +2247,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
       projectRoot: targetProject,
       projectError: null,
-      agentActivity: [],
-      agentChanges: [],
+      ...projectAgentSessionUi(
+        sessionId,
+        get().agentActivityBySession,
+        get().agentChangesBySession,
+      ),
       pendingFileIncludes: [],
     });
     restoreSessionProject(get, set, sessionId, targetProject, sidecarUrl);
@@ -2168,6 +2280,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         branchFloatStack: [],
         projectRoot: null,
         projectError: null,
+        agentActivityBySession: {},
+        agentChangesBySession: {},
         agentActivity: [],
         agentChanges: [],
         loadingMainBySession: {},
@@ -2205,26 +2319,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextProject = active?.projectRoot?.trim() || null;
 
     persistSessions(nextSessions, nextActive);
-    set({
-      sessions: nextSessions,
-      activeSessionId: nextActive,
-      thread: nextThread,
-      ...projectSessionJobUi(
-        nextActive,
-        get().loadingArchiveBySession,
-        get().loadingCompressBySession,
-        get().archiveDraftBySession,
-      ),
-      focus: { type: "root" },
-      error: null,
-      agentActivity: [],
-      agentChanges: [],
-      ...(sessionId === activeSessionId
-        ? {
-            projectRoot: nextProject,
-            projectError: null,
-          }
-        : {}),
+    set((state) => {
+      const maps = clearSessionAgentUiMaps(
+        state.agentActivityBySession,
+        state.agentChangesBySession,
+        sessionId,
+      );
+      return {
+        sessions: nextSessions,
+        activeSessionId: nextActive,
+        thread: nextThread,
+        ...projectSessionJobUi(
+          nextActive,
+          state.loadingArchiveBySession,
+          state.loadingCompressBySession,
+          state.archiveDraftBySession,
+        ),
+        focus: { type: "root" },
+        error: null,
+        ...maps,
+        ...projectAgentSessionUi(
+          nextActive,
+          maps.agentActivityBySession,
+          maps.agentChangesBySession,
+        ),
+        ...(sessionId === activeSessionId
+          ? {
+              projectRoot: nextProject,
+              projectError: null,
+            }
+          : {}),
+      };
     });
     if (sessionId === activeSessionId && nextActive) {
       restoreSessionProject(get, set, nextActive, nextProject, sidecarUrl);
@@ -2247,6 +2372,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       archivePanelOpen: false,
       viewingArchiveId: null,
       archiveDraft: "",
+      agentActivityBySession: {},
+      agentChangesBySession: {},
       agentActivity: [],
       agentChanges: [],
       projectRoot: null,
@@ -2290,6 +2417,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       archivePanelOpen: false,
       viewingArchiveId: null,
       archiveDraft: "",
+      agentActivityBySession: {},
+      agentChangesBySession: {},
       agentActivity: [],
       agentChanges: [],
       projectRoot: nextProject,
@@ -2532,9 +2661,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       thread,
       error: null,
       focus: { type: "root" },
-      agentActivity: [],
-      agentChanges: [],
     });
+    clearSessionAgentUi(set, sessionId);
     setSessionMainLoading(set, sessionId, true);
 
     const assistantId = assistantMsg.id;
@@ -2618,10 +2746,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         includeFiles,
         patchContent: patchAssistantState,
         onAgentActivity: (activity) => {
-          set((s) => ({ agentActivity: [...s.agentActivity, activity] }));
+          pushSessionAgentActivity(set, sessionId, activity);
         },
         onAgentChange: (change) => {
-          set((s) => ({ agentChanges: [...s.agentChanges, change] }));
+          pushSessionAgentChange(set, sessionId, change);
         },
         onRepairContextToLive: () => {
           const repaired = patchActiveSessionMeta(get().sessions, sessionId, {
@@ -2808,9 +2936,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessions: nextSessions,
       thread: nextThread,
       error: null,
-      agentActivity: [],
-      agentChanges: [],
     });
+    clearSessionAgentUi(set, sessionId);
     setSessionBranchLoading(set, sessionId, branch.id);
 
     const branchId = branch.id;
@@ -2888,10 +3015,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           isOwned,
           patchContent: patchBranchState,
           onAgentActivity: (activity) => {
-            set((s) => ({ agentActivity: [...s.agentActivity, activity] }));
+            pushSessionAgentActivity(set, sessionId, activity);
           },
           onAgentChange: (change) => {
-            set((s) => ({ agentChanges: [...s.agentChanges, change] }));
+            pushSessionAgentChange(set, sessionId, change);
           },
           onRepairContextToLive: () => {
             const repaired = patchActiveSessionMeta(get().sessions, sessionId, {
@@ -3015,9 +3142,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessions: nextSessions,
       thread: nextThread,
       error: null,
-      agentActivity: [],
-      agentChanges: [],
     });
+    clearSessionAgentUi(set, sessionId);
     setSessionBranchLoading(set, sessionId, branchId);
 
     const priorBranch = branchAbortBySession.get(sessionId);
@@ -3113,10 +3239,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           isOwned,
           patchContent: patchReplyState,
           onAgentActivity: (activity) => {
-            set((s) => ({ agentActivity: [...s.agentActivity, activity] }));
+            pushSessionAgentActivity(set, sessionId, activity);
           },
           onAgentChange: (change) => {
-            set((s) => ({ agentChanges: [...s.agentChanges, change] }));
+            pushSessionAgentChange(set, sessionId, change);
           },
           onRepairContextToLive: () => {
             const repaired = patchActiveSessionMeta(get().sessions, sessionId, {
