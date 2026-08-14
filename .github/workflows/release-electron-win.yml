@@ -1,0 +1,115 @@
+# Build unsigned Windows Electron installers and attach them to a GitHub Release.
+#
+# Triggers:
+#   - Push a version tag: git tag v0.1.0 && git push origin v0.1.0
+#   - Manual run: Actions → “Release Electron Windows” → Run workflow
+#
+# Artifacts: NSIS installer + ZIP (x64). Not code-signed.
+name: Release Electron Windows
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional release tag to create/update (e.g. v0.1.0). Leave empty to only upload workflow artifacts."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-electron-win-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-win:
+    name: Build Windows packages
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync package version from tag
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "::error::Tag '${TAG}' must look like v1.2.3"
+            exit 1
+          fi
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "Package version set to ${VERSION}"
+
+      - name: Build unsigned NSIS + ZIP (x64)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          npx electron-builder --win nsis zip --x64 --publish never
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: forknote-win-${{ github.sha }}
+          path: |
+            release/*.exe
+            release/*.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ForkNote ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            Unsigned Windows builds (no Authenticode signing).
+
+            Prefer the **NSIS installer** (`.exe`); **ZIP** is a portable unpack of the same app.
+          files: |
+            release/*.exe
+            release/*.zip
+
+      - name: Publish GitHub Release (manual tag input)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ForkNote ${{ inputs.tag }}
+          draft: false
+          prerelease: ${{ contains(inputs.tag, '-') }}
+          generate_release_notes: true
+          body: |
+            Unsigned Windows builds (no Authenticode signing).
+
+            Prefer the **NSIS installer** (`.exe`); **ZIP** is a portable unpack of the same app.
+          files: |
+            release/*.exe
+            release/*.zip

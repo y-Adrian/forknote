@@ -1,0 +1,125 @@
+# Smoke-build unpackaged Electron apps on Windows and Linux runners.
+# Confirms packaging config works before relying on release workflows.
+#
+# Triggers:
+#   - Manual: Actions → “Verify Desktop Builds” → Run workflow
+#   - Push/PR touching desktop packaging paths (leading only)
+name: Verify Desktop Builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [leading]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "electron/**"
+      - "build/**"
+      - "sidecar/**"
+      - "shared/**"
+      - ".github/workflows/release-electron-*.yml"
+      - ".github/workflows/verify-desktop-builds.yml"
+      - "scripts/test-desktop-build-pipelines.mjs"
+  push:
+    branches: [leading]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "electron/**"
+      - "build/**"
+      - "sidecar/**"
+      - "shared/**"
+      - ".github/workflows/release-electron-*.yml"
+      - ".github/workflows/verify-desktop-builds.yml"
+      - "scripts/test-desktop-build-pipelines.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-desktop-builds-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe-config:
+    name: Probe desktop pipeline config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run desktop pipeline probe
+        run: npm run test:desktop-build-pipelines
+
+  build-win-dir:
+    name: Windows dir package
+    runs-on: windows-latest
+    needs: probe-config
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build unpackaged Windows app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          npx electron-builder --win --dir --x64 --publish never
+
+      - name: Assert Windows output exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d release/win-unpacked
+          test -f release/win-unpacked/ForkNote.exe
+
+  build-linux-dir:
+    name: Linux dir package
+    runs-on: ubuntu-latest
+    needs: probe-config
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build unpackaged Linux app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          set -euo pipefail
+          npm run build
+          npx electron-builder --linux --dir --x64 --publish never
+
+      - name: Assert Linux output exists
+        run: |
+          set -euo pipefail
+          test -d release/linux-unpacked
+          test -x release/linux-unpacked/forknote || test -x release/linux-unpacked/ForkNote

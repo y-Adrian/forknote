@@ -19,7 +19,12 @@
     "test:stream-storage-throttle": "tsx scripts/test-stream-storage-throttle.mts",
     "electron:dev": "ELECTRON_DEV=1 electron .",
     "electron:build:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir",
-    "electron:release:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip"
+    "electron:release:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip",
+    "electron:build:win": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --dir",
+    "electron:release:win": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis zip",
+    "electron:build:linux": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --linux --dir",
+    "electron:release:linux": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --linux AppImage deb",
+    "test:desktop-build-pipelines": "node scripts/test-desktop-build-pipelines.mjs"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -76,6 +81,23 @@
     },
     "dmg": {
       "title": "${productName} ${version}"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "dir"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        "dir"
+      ]
     }
   }
 }
