@@ -204,6 +204,17 @@ async function readLineSlice(resolved, startLine, limit, signal) {
 
 /** @type {string | null} */
 let projectRoot = null;
+
+/**
+ * Bounded per-project semantic index: path → { mtimeMs, size, chunks }.
+ * Invalidated by mtime/size on path-scoped refresh; cleared on project open/close.
+ * @type {Map<string, {
+ *   files: Map<string, { mtimeMs: number, size: number, chunks: ReturnType<typeof chunkSource> }>,
+ *   totalChunks: number,
+ * }>}
+ */
+const semanticIndexByRoot = new Map();
+const MAX_SEMANTIC_INDEX_ROOTS = 2;
 const requestProjectRoot = new AsyncLocalStorage();
 const requestBodies = new WeakMap();
 
@@ -548,6 +559,10 @@ async function handleOpen(body) {
     throw Object.assign(new Error("path must be a directory"), { status: 400 });
   }
   projectRoot = await fs.realpath(resolved);
+  // Drop indexes for other roots; keep at most one warm entry for the new root.
+  for (const key of semanticIndexByRoot.keys()) {
+    if (key !== projectRoot) semanticIndexByRoot.delete(key);
+  }
   return { root: projectRoot };
 }
 
@@ -1507,6 +1522,191 @@ async function handleDependencyGraph(body, signal) {
   };
 }
 
+/**
+ * @param {string} root
+ */
+function getSemanticIndex(root) {
+  let index = semanticIndexByRoot.get(root);
+  if (!index) {
+    if (semanticIndexByRoot.size >= MAX_SEMANTIC_INDEX_ROOTS) {
+      const oldest = semanticIndexByRoot.keys().next().value;
+      if (oldest) semanticIndexByRoot.delete(oldest);
+    }
+    index = { files: new Map(), totalChunks: 0 };
+    semanticIndexByRoot.set(root, index);
+  }
+  return index;
+}
+
+/**
+ * Path-scoped refresh of the semantic chunk index using file mtime/size.
+ * Reuses cached chunks when unchanged; re-reads only misses / changed files.
+ *
+ * @param {string} startRel
+ * @param {AbortSignal | undefined} signal
+ */
+async function loadSemanticChunksCached(startRel, signal) {
+  const { root, resolved: start } = await resolveSafe(startRel || ".");
+  const index = getSemanticIndex(root);
+  /** @type {ReturnType<typeof chunkSource>} */
+  const chunks = [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  let reusedFiles = 0;
+  let refreshedFiles = 0;
+  let filesSeen = 0;
+  let truncated = false;
+
+  /**
+   * @param {string} rel
+   * @param {string} full
+   * @param {import("node:fs").Stats} st
+   */
+  async function ingestFile(rel, full, st) {
+    throwIfAborted(signal);
+    if (chunks.length >= MAX_CHUNKS) {
+      truncated = true;
+      return;
+    }
+    if (st.size > 400 * 1024) return;
+    seen.add(rel);
+    filesSeen++;
+    const cached = index.files.get(rel);
+    if (
+      cached &&
+      cached.mtimeMs === st.mtimeMs &&
+      cached.size === st.size
+    ) {
+      reusedFiles++;
+      for (const c of cached.chunks) {
+        chunks.push(c);
+        if (chunks.length >= MAX_CHUNKS) {
+          truncated = true;
+          break;
+        }
+      }
+      return;
+    }
+
+    let source;
+    try {
+      source = await fs.readFile(full, { encoding: "utf8", signal });
+    } catch (error) {
+      if (isAbortError(error, signal)) throw error;
+      return;
+    }
+    refreshedFiles++;
+    const fileChunks = chunkSource(rel, source);
+    const prev = index.files.get(rel);
+    if (prev) index.totalChunks -= prev.chunks.length;
+    index.files.set(rel, {
+      mtimeMs: st.mtimeMs,
+      size: st.size,
+      chunks: fileChunks,
+    });
+    index.totalChunks += fileChunks.length;
+    for (const c of fileChunks) {
+      chunks.push(c);
+      if (chunks.length >= MAX_CHUNKS) {
+        truncated = true;
+        break;
+      }
+    }
+  }
+
+  async function walk(dir) {
+    throwIfAborted(signal);
+    if (filesSeen >= MAX_SYMBOL_FILES || chunks.length >= MAX_CHUNKS) {
+      if (chunks.length >= MAX_CHUNKS) truncated = true;
+      return;
+    }
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      throwIfAborted(signal);
+      if (filesSeen >= MAX_SYMBOL_FILES || chunks.length >= MAX_CHUNKS) {
+        if (chunks.length >= MAX_CHUNKS) truncated = true;
+        return;
+      }
+      if (ent.isDirectory()) {
+        if (shouldSkipDir(ent.name) || shouldSkipName(ent.name)) continue;
+        await walk(path.join(dir, ent.name));
+        continue;
+      }
+      if (!ent.isFile()) continue;
+      if (!isCodeFile(ent.name)) continue;
+      const full = path.join(dir, ent.name);
+      const rel = path.relative(root, full).split(path.sep).join("/");
+      let st;
+      try {
+        st = await fs.stat(full);
+      } catch {
+        continue;
+      }
+      await ingestFile(rel, full, st);
+    }
+  }
+
+  const st = await fs.stat(start).catch(() => null);
+  if (st?.isFile()) {
+    const rel = path.relative(root, start).split(path.sep).join("/");
+    if (isCodeFile(rel)) await ingestFile(rel, start, st);
+  } else if (st?.isDirectory()) {
+    await walk(start);
+  }
+
+  // Drop deleted / moved files under this path scope from the index.
+  const scopePrefix =
+    startRel === "." || startRel === ""
+      ? ""
+      : startRel.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  let removedFiles = 0;
+  for (const rel of [...index.files.keys()]) {
+    const inScope =
+      !scopePrefix ||
+      rel === scopePrefix ||
+      rel.startsWith(`${scopePrefix}/`);
+    if (!inScope) continue;
+    if (seen.has(rel)) continue;
+    const prev = index.files.get(rel);
+    if (prev) index.totalChunks -= prev.chunks.length;
+    index.files.delete(rel);
+    removedFiles++;
+  }
+
+  // Soft bound: if the project index grew past 2× MAX_CHUNKS, prune untouched paths.
+  if (index.totalChunks > MAX_CHUNKS * 2) {
+    for (const rel of [...index.files.keys()]) {
+      if (index.totalChunks <= MAX_CHUNKS) break;
+      if (seen.has(rel)) continue;
+      const prev = index.files.get(rel);
+      if (!prev) continue;
+      index.totalChunks -= prev.chunks.length;
+      index.files.delete(rel);
+      removedFiles++;
+    }
+  }
+
+  return {
+    chunks,
+    truncated: truncated || chunks.length >= MAX_CHUNKS,
+    indexStats: {
+      root,
+      path: startRel || ".",
+      filesSeen,
+      reusedFiles,
+      refreshedFiles,
+      removedFiles,
+      indexedFiles: index.files.size,
+      indexedChunks: index.totalChunks,
+    },
+  };
+}
+
 async function handleSemanticSearch(body, signal) {
   const query = String(body?.query ?? body?.q ?? "").trim();
   if (!query) {
@@ -1515,19 +1715,8 @@ async function handleSemanticSearch(body, signal) {
   const startRel = String(body?.path ?? ".").trim() || ".";
   const limit = Math.min(20, Math.max(1, Number(body?.limit) || 8));
 
-  /** @type {ReturnType<typeof chunkSource>} */
-  const chunks = [];
-  await walkCodeFiles(
+  const { chunks, truncated, indexStats } = await loadSemanticChunksCached(
     startRel,
-    (rel, source) => {
-      throwIfAborted(signal);
-      if (chunks.length >= MAX_CHUNKS) return;
-      for (const c of chunkSource(rel, source)) {
-        throwIfAborted(signal);
-        chunks.push(c);
-        if (chunks.length >= MAX_CHUNKS) break;
-      }
-    },
     signal,
   );
 
@@ -1546,7 +1735,8 @@ async function handleSemanticSearch(body, signal) {
     query,
     hits,
     chunkCount: chunks.length,
-    truncated: chunks.length >= MAX_CHUNKS,
+    truncated,
+    indexStats,
   };
 }
 
@@ -2246,6 +2436,7 @@ async function dispatchRequest(req, res, url, pathname, signal) {
       return sendJson(res, 200, { root: projectRoot });
     }
     if (req.method === "POST" && pathname === "/project/close") {
+      if (projectRoot) semanticIndexByRoot.delete(projectRoot);
       projectRoot = null;
       return sendJson(res, 200, { root: null });
     }
