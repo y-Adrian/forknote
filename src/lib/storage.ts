@@ -4,6 +4,11 @@ import type {
   SessionStore,
   ThreadRoot,
 } from "../types";
+import {
+  safeLocalStorageRemoveItem,
+  safeLocalStorageSetItem,
+  type StorageWriteResult,
+} from "./browserStorage";
 import { resolveConversationContext } from "./conversationContext";
 import { createId } from "./id";
 import { t } from "./i18n";
@@ -34,9 +39,12 @@ function clearSessionStoreTimers(): void {
   }
 }
 
-function writeSessionStore(store: SessionStore): void {
-  localStorage.setItem(STORE_KEY, JSON.stringify(store));
-  localStorage.removeItem(LEGACY_STORE_KEY);
+function writeSessionStore(store: SessionStore): StorageWriteResult {
+  const result = safeLocalStorageSetItem(STORE_KEY, JSON.stringify(store));
+  if (result.ok) {
+    safeLocalStorageRemoveItem(LEGACY_STORE_KEY);
+  }
+  return result;
 }
 
 function tryFlushScheduledSessionStoreSave(reason: string): void {
@@ -149,11 +157,26 @@ function readSessionStoreRaw(): string | null {
   if (current) return current;
   const legacy = localStorage.getItem(LEGACY_STORE_KEY);
   if (legacy) {
-    localStorage.setItem(STORE_KEY, legacy);
-    localStorage.removeItem(LEGACY_STORE_KEY);
+    const moved = safeLocalStorageSetItem(STORE_KEY, legacy);
+    if (moved.ok) safeLocalStorageRemoveItem(LEGACY_STORE_KEY);
     return legacy;
   }
   return null;
+}
+
+/**
+ * A parsed store is valid when `sessions` is an array — including empty.
+ * Empty arrays are seeded with one blank session (same as import).
+ */
+export function coerceLoadedSessionStore(
+  parsed: SessionStore,
+): SessionStore | null {
+  if (!parsed || !Array.isArray(parsed.sessions)) return null;
+  if (parsed.sessions.length === 0) {
+    const session = createEmptySession();
+    return { sessions: [session], activeSessionId: session.id };
+  }
+  return normalizeLoadedStore(parsed);
 }
 
 export function loadSessionStore(): SessionStore {
@@ -161,9 +184,13 @@ export function loadSessionStore(): SessionStore {
     const raw = readSessionStoreRaw();
     if (raw) {
       const parsed = JSON.parse(raw) as SessionStore;
-      if (parsed.sessions?.length) {
-        const store = normalizeLoadedStore(parsed);
-        return store;
+      const coerced = coerceLoadedSessionStore(parsed);
+      if (coerced) {
+        // Persist seeded empty → one-session stores so the next load is stable.
+        if (parsed.sessions.length === 0) {
+          saveSessionStore(coerced);
+        }
+        return coerced;
       }
     }
   } catch {
@@ -180,7 +207,7 @@ export function loadSessionStore(): SessionStore {
       createdAt: legacy.createdAt,
       updatedAt: Date.now(),
     };
-    localStorage.removeItem(LEGACY_THREAD_KEY);
+    safeLocalStorageRemoveItem(LEGACY_THREAD_KEY);
     const store: SessionStore = migrateLoadedStore({
       sessions: [session],
       activeSessionId: session.id,
@@ -198,10 +225,10 @@ export function loadSessionStore(): SessionStore {
   return store;
 }
 
-export function saveSessionStore(store: SessionStore): void {
+export function saveSessionStore(store: SessionStore): StorageWriteResult {
   pendingSessionStore = null;
   clearSessionStoreTimers();
-  writeSessionStore(store);
+  return writeSessionStore(store);
 }
 
 export function scheduleSessionStoreSave(store: SessionStore): void {
@@ -225,7 +252,15 @@ export function flushScheduledSessionStoreSave(): boolean {
   }
   pendingSessionStore = null;
   clearSessionStoreTimers();
-  writeSessionStore(store);
+  const result = writeSessionStore(store);
+  if (!result.ok) {
+    // Keep the payload so a later flush / immediate save can retry.
+    pendingSessionStore = store;
+    throw Object.assign(new Error(result.message), {
+      name: result.quotaExceeded ? "QuotaExceededError" : "StorageWriteError",
+      quotaExceeded: result.quotaExceeded,
+    });
+  }
   return true;
 }
 
@@ -257,14 +292,10 @@ export function getSkipSessionDeleteConfirm(): boolean {
 }
 
 export function setSkipSessionDeleteConfirm(skip: boolean): void {
-  try {
-    if (skip) {
-      localStorage.setItem(SKIP_SESSION_DELETE_CONFIRM_KEY, "1");
-    } else {
-      localStorage.removeItem(SKIP_SESSION_DELETE_CONFIRM_KEY);
-    }
-  } catch {
-    // ignore quota / private mode
+  if (skip) {
+    safeLocalStorageSetItem(SKIP_SESSION_DELETE_CONFIRM_KEY, "1");
+  } else {
+    safeLocalStorageRemoveItem(SKIP_SESSION_DELETE_CONFIRM_KEY);
   }
 }
 
@@ -530,8 +561,8 @@ export function captureSessionImportBackup(): SessionImportBackup {
   const json = exportSessionStoreJson();
   let stored = false;
   try {
-    localStorage.setItem(SESSION_IMPORT_BACKUP_KEY, json);
-    stored = true;
+    const result = safeLocalStorageSetItem(SESSION_IMPORT_BACKUP_KEY, json);
+    stored = result.ok;
   } catch {
     stored = false;
   }

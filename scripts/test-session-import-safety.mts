@@ -231,14 +231,12 @@ function validSession(id = "s1") {
   localStorageStub.failWrites = true;
   const backup = captureSessionImportBackup();
   assert.equal(backup.stored, false, "backup download JSON remains available on quota error");
-  assert.throws(
-    () =>
-      saveSessionStore({
-        sessions: [validSession("next")],
-        activeSessionId: "next",
-      }),
-    /QuotaExceededError/,
-  );
+  const save = saveSessionStore({
+    sessions: [validSession("next")],
+    activeSessionId: "next",
+  });
+  assert.equal(save.ok, false);
+  assert.equal(save.ok === false && save.quotaExceeded, true);
 }
 
 console.log("test-session-import-safety: ok");
