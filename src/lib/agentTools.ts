@@ -1514,6 +1514,29 @@ export function planNeedsToolApproval(
   return false;
 }
 
+/**
+ * When a drafted plan claims no tools are needed, decide whether the turn can
+ * still complete as chat-only, or must force/replan tool execution because the
+ * user asked for a mutation (disk/shell change).
+ */
+export function mutationPlanNoToolsAction(opts: {
+  planNeedsTools: boolean;
+  userText: string;
+  createPath?: string | null;
+  hasOfficeIntent?: boolean;
+  shellIntent?: { readOnly: boolean } | null;
+}): "complete" | "force_execute" | "replan_or_execute" {
+  if (opts.planNeedsTools) return "complete";
+  if (opts.createPath || opts.hasOfficeIntent) return "force_execute";
+  if (
+    looksLikeMutationRequest(opts.userText) ||
+    (opts.shellIntent != null && !opts.shellIntent.readOnly)
+  ) {
+    return "replan_or_execute";
+  }
+  return "complete";
+}
+
 export function parseAgentPlan(text: string): {
   planText: string;
   steps: string[];
