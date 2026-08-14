@@ -1,5 +1,9 @@
 import type { AgentActivity, AgentFileChange } from "./agentTools";
 
+/** Stable empties so projections / selectors do not allocate a new [] each read. */
+export const EMPTY_AGENT_ACTIVITY: AgentActivity[] = [];
+export const EMPTY_AGENT_CHANGES: AgentFileChange[] = [];
+
 /** Project active-session agent UI from per-session maps. */
 export function projectAgentSessionUi(
   activeSessionId: string | null,
@@ -11,11 +15,11 @@ export function projectAgentSessionUi(
 } {
   return {
     agentActivity: activeSessionId
-      ? activityBySession[activeSessionId] ?? []
-      : [],
+      ? activityBySession[activeSessionId] ?? EMPTY_AGENT_ACTIVITY
+      : EMPTY_AGENT_ACTIVITY,
     agentChanges: activeSessionId
-      ? changesBySession[activeSessionId] ?? []
-      : [],
+      ? changesBySession[activeSessionId] ?? EMPTY_AGENT_CHANGES
+      : EMPTY_AGENT_CHANGES,
   };
 }
 

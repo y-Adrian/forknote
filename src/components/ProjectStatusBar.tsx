@@ -6,16 +6,10 @@ type ProjectStatusPart = "all" | "row" | "panels";
 /** Mid-turn agent tool log + file changes (hidden when the session is idle). */
 export function AgentActivityPanels() {
   const { t } = useLocale();
-  const agentActivity = useAppStore((s) =>
-    s.activeSessionId
-      ? s.agentActivityBySession[s.activeSessionId] ?? []
-      : [],
-  );
-  const agentChanges = useAppStore((s) =>
-    s.activeSessionId
-      ? s.agentChangesBySession[s.activeSessionId] ?? []
-      : [],
-  );
+  // Use store projections — never `?? []` inside the selector. A fresh [] each
+  // getSnapshot fails React's Object.is check and infinite-loops the UI (#361).
+  const agentActivity = useAppStore((s) => s.agentActivity);
+  const agentChanges = useAppStore((s) => s.agentChanges);
   const agentExecuting = useAppStore((s) => {
     const sid = s.activeSessionId;
     if (!sid) return false;
