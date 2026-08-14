@@ -7,6 +7,7 @@ import {
   resolveInitialUiFontPreference,
 } from "./lib/uiFont";
 import { initTextZoom } from "./lib/textZoom";
+import "./fonts.css";
 import "./index.css";
 
 applyUiFontPreference(resolveInitialUiFontPreference(), false);
