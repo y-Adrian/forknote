@@ -28,6 +28,10 @@ const {
   buildStartupFailure,
   startupError,
 } = require("../shared/electronStartupGuard.cjs");
+const {
+  terminateChildProcess,
+  shouldDetachSpawnedSidecar,
+} = require("../shared/processShutdown.cjs");
 
 /**
  * Floor must sit below the web shell’s narrow-sidebar breakpoint (768px in
@@ -251,6 +255,8 @@ async function ensureSidecar() {
   sidecarChild = spawn(process.execPath, [entry], {
     cwd,
     stdio: "inherit",
+    // New process group on POSIX so quit can signal the tree without hitting Electron.
+    detached: shouldDetachSpawnedSidecar(),
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
@@ -284,15 +290,30 @@ async function ensureSidecar() {
   );
 }
 
-function stopSidecar() {
-  if (!weStartedSidecar || !sidecarChild || sidecarChild.killed) return;
+const SIDECAR_QUIT_GRACE_MS = Number(
+  process.env.FORKNOTE_SIDECAR_QUIT_GRACE_MS || 2000,
+);
+
+/**
+ * SIGTERM the sidecar tree, wait, then SIGKILL after a bounded grace period.
+ * @param {number} [graceMs]
+ */
+async function stopSidecar(graceMs = SIDECAR_QUIT_GRACE_MS) {
+  if (!weStartedSidecar || !sidecarChild) return;
+  const child = sidecarChild;
   weStartedSidecar = false;
-  try {
-    sidecarChild.kill("SIGTERM");
-  } catch {
-    /* ignore */
-  }
   sidecarChild = null;
+  const result = await terminateChildProcess(child, graceMs);
+  console.log(`[forknote-desktop] sidecar shutdown: ${result}`);
+}
+
+function stopSidecarSyncBestEffort() {
+  if (!weStartedSidecar || !sidecarChild) return;
+  const child = sidecarChild;
+  weStartedSidecar = false;
+  sidecarChild = null;
+  // Failure / sync paths cannot await — still escalate quickly.
+  void terminateChildProcess(child, Math.min(500, SIDECAR_QUIT_GRACE_MS));
 }
 
 /**
@@ -430,7 +451,7 @@ function reportStartupFailureAndQuit(err, opts = {}) {
     }
   }
 
-  stopSidecar();
+  stopSidecarSyncBestEffort();
   stopUiServer();
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.destroy();
@@ -584,8 +605,23 @@ if (!hasSingleInstanceLock) {
     if (process.platform !== "darwin") app.quit();
   });
 
-  app.on("before-quit", () => {
-    stopSidecar();
-    stopUiServer();
+  let quitCleanupStarted = false;
+  app.on("before-quit", (event) => {
+    if (quitCleanupStarted) return;
+    // Always run bounded sidecar shutdown when we spawned it.
+    if (!weStartedSidecar || !sidecarChild) {
+      stopUiServer();
+      return;
+    }
+    event.preventDefault();
+    quitCleanupStarted = true;
+    void (async () => {
+      try {
+        await stopSidecar();
+      } finally {
+        stopUiServer();
+        app.exit(0);
+      }
+    })();
   });
 }
