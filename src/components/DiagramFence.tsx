@@ -18,6 +18,7 @@ import {
   resolvePlantumlServerUrl,
 } from "../lib/settings";
 import { renderPlantuml } from "../lib/sidecar";
+import { plantumlSvgToObjectUrl } from "../lib/sanitizePlantumlSvg";
 import { useTheme, type Theme } from "../lib/theme";
 import { useAppStore } from "../store/useAppStore";
 
@@ -440,8 +441,7 @@ const MermaidDiagram = memo(function MermaidDiagram({
 });
 
 type PlantumlVisual =
-  | { kind: "svg"; svg: string }
-  | { kind: "png"; src: string };
+  | { kind: "image"; src: string; revoke?: () => void };
 
 const PlantumlDiagram = memo(function PlantumlDiagram({
   source,
@@ -463,6 +463,13 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
   const renderGenRef = useRef(0);
   const visualHostRef = useRef<HTMLDivElement>(null);
   const copyImageTimerRef = useRef<number | null>(null);
+  const visualRevokeRef = useRef<(() => void) | null>(null);
+
+  const replaceVisual = (next: PlantumlVisual | null) => {
+    visualRevokeRef.current?.();
+    visualRevokeRef.current = next?.revoke ?? null;
+    setVisual(next);
+  };
 
   const copySource = async () => {
     try {
@@ -477,14 +484,11 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
   const handleCopyImage = () => {
     void (async () => {
       const host = visualHostRef.current;
-      const svgEl = host?.querySelector("svg") ?? null;
       const imgEl = host?.querySelector("img") ?? null;
-      const pngDataUrl =
-        visual?.kind === "png" ? visual.src : imgEl?.src ?? null;
       const result = await copyDiagramImage({
-        svgElement: svgEl,
-        imageElement: svgEl ? null : imgEl,
-        pngDataUrl: svgEl ? null : pngDataUrl,
+        svgElement: null,
+        imageElement: imgEl,
+        pngDataUrl: visual?.src ?? imgEl?.src ?? null,
         downloadName: "plantuml-diagram.png",
       });
       setCopyImageFeedback(result);
@@ -503,12 +507,14 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
       if (copyImageTimerRef.current != null) {
         window.clearTimeout(copyImageTimerRef.current);
       }
+      visualRevokeRef.current?.();
+      visualRevokeRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (mode === "off") {
-      setVisual(null);
+      replaceVisual(null);
       setError(null);
       return;
     }
@@ -534,10 +540,15 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
           );
           if (gen !== renderGenRef.current) return;
           if (result.format === "svg" && result.svg) {
-            setVisual({ kind: "svg", svg: result.svg });
+            const src = plantumlSvgToObjectUrl(result.svg);
+            replaceVisual({
+              kind: "image",
+              src,
+              revoke: () => URL.revokeObjectURL(src),
+            });
           } else if (result.format === "png" && result.imageBase64) {
-            setVisual({
-              kind: "png",
+            replaceVisual({
+              kind: "image",
               src: `data:image/png;base64,${result.imageBase64}`,
             });
           } else {
@@ -650,17 +661,9 @@ const PlantumlDiagram = memo(function PlantumlDiagram({
         onCopyImage={handleCopyImage}
         copyImageFeedback={copyImageFeedback}
       />
-      {visual.kind === "svg" ? (
-        <div
-          ref={visualHostRef}
-          className="fn-diagram-svg"
-          dangerouslySetInnerHTML={{ __html: visual.svg }}
-        />
-      ) : (
-        <div ref={visualHostRef} className="fn-diagram-svg">
-          <img src={visual.src} alt="PlantUML diagram" />
-        </div>
-      )}
+      <div ref={visualHostRef} className="fn-diagram-svg">
+        <img src={visual.src} alt="PlantUML diagram" />
+      </div>
     </div>
   );
 });
