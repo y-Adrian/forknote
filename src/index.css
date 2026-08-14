@@ -6318,6 +6318,16 @@ mark.branch-highlight:focus-visible {
   background: var(--ds-accent-soft);
 }
 
+.fn-context-menu-item.is-focused:not(.is-active) {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text);
+}
+
+.fn-archive-history-menu:focus {
+  outline: 2px solid color-mix(in srgb, var(--ds-accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
 .fn-context-menu-item.is-action {
   margin-top: 2px;
   border-top: 1px solid var(--ds-border);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { messagesAfterArchive } from "../lib/archive";
 import { countBranchesInThread } from "../lib/branches";
@@ -7,6 +7,7 @@ import {
   resolveThreadView,
 } from "../lib/conversationContext";
 import { useLocale } from "../lib/i18n";
+import { isActivationKey } from "../lib/keyboard";
 import {
   initMainThreadViewMode,
   setMainThreadViewMode,
@@ -249,6 +250,7 @@ export function MainPanel({
   const [compressSuggestDismissedFor, setCompressSuggestDismissedFor] =
     useState<NodeId | null>(null);
   const [archiveHistoryOpen, setArchiveHistoryOpen] = useState(false);
+  const [archiveHistoryActiveIndex, setArchiveHistoryActiveIndex] = useState(0);
   const [forkMapOpen, setForkMapOpen] = useState(false);
   const [threadViewMode, setThreadViewMode] = useState<MainThreadViewMode>(() =>
     initMainThreadViewMode(),
@@ -259,6 +261,10 @@ export function MainPanel({
   const closeAllBranchFloats = useAppStore((s) => s.closeAllBranchFloats);
   const scrollRef = useRef<HTMLDivElement>(null);
   const archiveHistoryRef = useRef<HTMLDivElement>(null);
+  const archiveHistoryBtnRef = useRef<HTMLButtonElement>(null);
+  const archiveHistoryListRef = useRef<HTMLDivElement>(null);
+  const archiveHistoryListId = useId();
+  const archiveHistoryOptionPrefix = useId();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipTitleBlurCommit = useRef(false);
   /** Preserve viewport across Live/Archive/Evolution remounts. */
@@ -284,6 +290,10 @@ export function MainPanel({
     [sessions, activeSessionId],
   );
   const archives = activeSession?.archives ?? [];
+  const archiveHistoryItems = useMemo(
+    () => [...archives].reverse(),
+    [archives],
+  );
   const resolvedContext = useMemo(
     () => resolveConversationContext(activeSession),
     [activeSession],
@@ -360,22 +370,45 @@ export function MainPanel({
 
   useEffect(() => {
     if (!archiveHistoryOpen) return;
+
+    const selectedIdx = archiveHistoryItems.findIndex(
+      (a) => a.id === activeArchive?.id,
+    );
+    setArchiveHistoryActiveIndex(selectedIdx >= 0 ? selectedIdx : 0);
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      archiveHistoryListRef.current?.focus();
+    });
+
+    const closeMenu = (restoreFocus: boolean) => {
+      setArchiveHistoryOpen(false);
+      if (restoreFocus) {
+        window.requestAnimationFrame(() => {
+          archiveHistoryBtnRef.current?.focus();
+        });
+      }
+    };
+
     const onPointerDown = (e: PointerEvent) => {
       const el = archiveHistoryRef.current;
       if (el && !el.contains(e.target as Node)) {
-        setArchiveHistoryOpen(false);
+        closeMenu(false);
       }
     };
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") setArchiveHistoryOpen(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeMenu(true);
+      }
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [archiveHistoryOpen]);
+  }, [archiveHistoryOpen, archiveHistoryItems, activeArchive?.id]);
 
   useEffect(() => {
     if (!renamingTitle) return;
@@ -620,6 +653,55 @@ export function MainPanel({
     if (!targetId) return;
     captureScrollAnchor();
     setContextMode("archive", targetId);
+  };
+
+  const closeArchiveHistory = useCallback((restoreFocus: boolean) => {
+    setArchiveHistoryOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        archiveHistoryBtnRef.current?.focus();
+      });
+    }
+  }, []);
+
+  const onArchiveHistoryListKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const count = archiveHistoryItems.length;
+    if (count === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setArchiveHistoryActiveIndex((i) => (i + 1) % count);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setArchiveHistoryActiveIndex((i) => (i - 1 + count) % count);
+      return;
+    }
+    if (e.key === "Home") {
+      e.preventDefault();
+      setArchiveHistoryActiveIndex(0);
+      return;
+    }
+    if (e.key === "End") {
+      e.preventDefault();
+      setArchiveHistoryActiveIndex(count - 1);
+      return;
+    }
+    if (isActivationKey(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const item = archiveHistoryItems[archiveHistoryActiveIndex];
+      if (!item) return;
+      switchToArchive(item.id);
+      closeArchiveHistory(true);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeArchiveHistory(true);
+    }
   };
 
   const switchToLiveConversation = () => {
@@ -1211,11 +1293,15 @@ export function MainPanel({
                         ref={archiveHistoryRef}
                       >
                         <button
+                          ref={archiveHistoryBtnRef}
                           type="button"
                           className={`fn-archive-btn fn-archive-history-btn${archiveHistoryOpen ? " is-open" : ""}`}
                           disabled={composerBusy}
                           aria-expanded={archiveHistoryOpen}
                           aria-haspopup="listbox"
+                          aria-controls={
+                            archiveHistoryOpen ? archiveHistoryListId : undefined
+                          }
                           title={t("main.archivesViewTitle")}
                           onClick={() => setArchiveHistoryOpen((open) => !open)}
                         >
@@ -1226,22 +1312,37 @@ export function MainPanel({
                         </button>
                         {archiveHistoryOpen ? (
                           <div
+                            id={archiveHistoryListId}
+                            ref={archiveHistoryListRef}
                             className="fn-context-menu fn-archive-history-menu"
                             role="listbox"
+                            tabIndex={0}
                             aria-label={t("main.archiveHistory")}
+                            aria-activedescendant={
+                              archiveHistoryItems[archiveHistoryActiveIndex]
+                                ? `${archiveHistoryOptionPrefix}-opt-${archiveHistoryActiveIndex}`
+                                : undefined
+                            }
+                            onKeyDown={onArchiveHistoryListKeyDown}
                           >
-                            {[...archives].reverse().map((a) => {
+                            {archiveHistoryItems.map((a, i) => {
                               const active = a.id === activeArchive?.id;
+                              const focused = i === archiveHistoryActiveIndex;
                               return (
                                 <button
                                   key={a.id}
+                                  id={`${archiveHistoryOptionPrefix}-opt-${i}`}
                                   type="button"
                                   role="option"
+                                  tabIndex={-1}
                                   aria-selected={active}
-                                  className={`fn-context-menu-item${active ? " is-active" : ""}`}
+                                  className={`fn-context-menu-item${active ? " is-active" : ""}${focused ? " is-focused" : ""}`}
+                                  onMouseEnter={() =>
+                                    setArchiveHistoryActiveIndex(i)
+                                  }
                                   onClick={() => {
                                     switchToArchive(a.id);
-                                    setArchiveHistoryOpen(false);
+                                    closeArchiveHistory(true);
                                   }}
                                 >
                                   <span className="fn-context-menu-title">
