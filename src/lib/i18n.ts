@@ -83,10 +83,6 @@ const en = {
   "common.enabled": "Enabled",
   "common.optional": "Optional",
   "common.submit": "Submit",
-  "common.expand": "Expand",
-  "common.collapse": "Collapse",
-  "common.expandAll": "Expand all",
-  "common.collapseAll": "Collapse all",
   "common.dragToMove": "Drag to move",
   "common.resizePanel": "Drag to resize",
 
@@ -782,21 +778,6 @@ const en = {
   "agent.activity.gitCommitMissingPaths": "git_commit missing paths",
   "agent.activity.gitCommit": "git commit ({n} path(s), exit {code})",
 
-  "comments.title": "Comments",
-  "comments.empty": "Drag-select text in an answer, then click “Clarify this”.",
-  "comments.badge": "Comment {n}",
-  "comments.collapseAnswer": "Collapse answer",
-  "comments.expandAnswer": "Expand answer",
-  "comments.nestedOne": "1 nested reply — expand to view",
-  "comments.nestedMany": "{count} nested replies — expand to view",
-
-  "tree.outline": "Outline",
-  "tree.mainConversation": "Main conversation",
-
-  "ask.aria": "Ask about selection",
-  "ask.title": "Ask about selection",
-  "ask.placeholder": "Enter your question…",
-  "ask.hint": "⌘/Ctrl + Enter to submit",
   "projectBar.changes": "Changes this turn",
 } as const;
 
@@ -816,10 +797,6 @@ const zh: Record<MessageKey, string> = {
   "common.enabled": "已开启",
   "common.optional": "可选",
   "common.submit": "提交",
-  "common.expand": "展开",
-  "common.collapse": "收起",
-  "common.expandAll": "全部展开",
-  "common.collapseAll": "全部收起",
   "common.dragToMove": "拖动移动",
   "common.resizePanel": "拖动调整大小",
 
@@ -1493,21 +1470,6 @@ const zh: Record<MessageKey, string> = {
   "agent.activity.gitCommitMissingPaths": "git_commit 缺少 paths",
   "agent.activity.gitCommit": "git commit（{n} 个路径，exit {code}）",
 
-  "comments.title": "批注",
-  "comments.empty": "在回答中拖选文字，然后点击「澄清此处」。",
-  "comments.badge": "批注 {n}",
-  "comments.collapseAnswer": "收起回答",
-  "comments.expandAnswer": "展开回答",
-  "comments.nestedOne": "1 条嵌套回复 — 展开查看",
-  "comments.nestedMany": "{count} 条嵌套回复 — 展开查看",
-
-  "tree.outline": "大纲",
-  "tree.mainConversation": "主对话",
-
-  "ask.aria": "针对选中内容提问",
-  "ask.title": "针对选中内容提问",
-  "ask.placeholder": "输入你的问题…",
-  "ask.hint": "⌘/Ctrl + Enter 提交",
   "projectBar.changes": "本轮变更",
 };
 
