@@ -4,7 +4,7 @@
  * Production: loopback UI server serves `dist/` and proxies `/sidecar` + `/openai`
  * (same relative paths as Vite). Dev (`ELECTRON_DEV=1`): load Vite at :5173.
  */
-const { app, BrowserWindow, Menu, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -18,6 +18,11 @@ const {
   buildDesktopAdditionalArguments,
   isDevToolsShortcut,
 } = require("../shared/desktopRuntimeConfig.cjs");
+const {
+  isForkNoteSidecarHealthPayload,
+  sidecarPortConflictLines,
+  decideSidecarStartupAction,
+} = require("../shared/sidecarStartupHealth.cjs");
 
 /**
  * Floor must sit below the web shell’s narrow-sidebar breakpoint (768px in
@@ -131,8 +136,14 @@ function sidecarHealthy() {
         },
       },
       (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          resolve(isForkNoteSidecarHealthPayload(res.statusCode, body));
+        });
       },
     );
     req.on("error", () => resolve(false));
@@ -143,6 +154,22 @@ function sidecarHealthy() {
   });
 }
 
+function failSidecarPortConflict() {
+  const lines = sidecarPortConflictLines(SIDECAR_HOST, SIDECAR_PORT);
+  for (const line of lines) {
+    console.error(`[forknote-desktop] ${line}`);
+  }
+  const message = lines.join("\n");
+  try {
+    dialog.showErrorBox("ForkNote sidecar port conflict", message);
+  } catch {
+    /* dialog may be unavailable very early; console already logged */
+  }
+  const err = new Error(message);
+  err.code = "FORKNOTE_SIDECAR_PORT_CONFLICT";
+  throw err;
+}
+
 async function ensureSidecar() {
   if (await sidecarHealthy()) {
     console.log(
@@ -150,11 +177,24 @@ async function ensureSidecar() {
     );
     return;
   }
+
   if (await isPortOpen(SIDECAR_PORT, SIDECAR_HOST)) {
-    // Port open but /health not OK yet — wait briefly.
+    // Port open but /health not OK yet — wait briefly for a still-booting sidecar.
     for (let i = 0; i < 20; i++) {
-      if (await sidecarHealthy()) return;
+      if (await sidecarHealthy()) {
+        console.log(
+          `[forknote-desktop] sidecar became healthy on http://${SIDECAR_HOST}:${SIDECAR_PORT}`,
+        );
+        return;
+      }
       await new Promise((r) => setTimeout(r, 100));
+    }
+    // Occupied by a non-ForkNote (or unhealthy) listener — do not spawn into it.
+    if (
+      decideSidecarStartupAction({ healthy: false, portOpen: true }) ===
+      "conflict"
+    ) {
+      failSidecarPortConflict();
     }
   }
 
@@ -419,10 +459,25 @@ if (!hasSingleInstanceLock) {
       app.dock.setIcon(appIcon);
     }
     buildAppMenu(allowDevSurfaces);
-    void createWindow(allowDevSurfaces);
+    void createWindow(allowDevSurfaces).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[forknote-desktop] startup failed: ${message}`);
+      if (err?.code !== "FORKNOTE_SIDECAR_PORT_CONFLICT") {
+        try {
+          dialog.showErrorBox("ForkNote failed to start", message);
+        } catch {
+          /* ignore */
+        }
+      }
+      app.quit();
+    });
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        void createWindow(allowDevSurfaces);
+        void createWindow(allowDevSurfaces).catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[forknote-desktop] startup failed: ${message}`);
+          app.quit();
+        });
       }
     });
   });
