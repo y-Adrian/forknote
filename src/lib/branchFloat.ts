@@ -26,6 +26,13 @@ export const FLOAT_Z_BASE = 220;
 export const FLOAT_Z_TOOLBAR_OFFSET = 40;
 export const FLOAT_Z_ASK_OFFSET = 50;
 
+/**
+ * Settings / Project / Archive (and other `.modal-backdrop`) sit above branch
+ * floats and their ask/toolbar overlays, but below session menus (~1200).
+ * Keep in sync with `--fn-z-modal` in `src/index.css`.
+ */
+export const MODAL_Z_INDEX = 1100;
+
 export function nextFloatZIndex(stack: BranchFloatEntry[]): number {
   if (stack.length === 0) return FLOAT_Z_BASE + 1;
   return Math.max(...stack.map((e) => e.zIndex)) + 1;

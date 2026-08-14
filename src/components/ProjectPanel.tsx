@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import { DEFAULT_SIDECAR_URL, pickProjectFolder } from "../lib/sidecar";
@@ -80,7 +81,7 @@ export function ProjectPanel({ open, onClose }: Props) {
     }
   };
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal project-modal"
@@ -185,6 +186,7 @@ export function ProjectPanel({ open, onClose }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

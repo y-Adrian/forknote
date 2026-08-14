@@ -1218,7 +1218,7 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal settings-modal system-settings-modal"
@@ -1290,6 +1290,7 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

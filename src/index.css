@@ -125,6 +125,9 @@
   --dur-base:           220ms;
   --dur-slow:           340ms;
 
+  /* Stacking: modals above branch floats (~220+), below session menus (~1200). */
+  --fn-z-modal:         1100;
+
   /* UI type scale (chrome only — not answer/markdown body) */
   --fn-text-ui-xs:      0.76rem;
   --fn-text-ui-sm:      0.82rem;
@@ -3157,7 +3160,7 @@ mark.branch-highlight:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--fn-z-modal);
   padding: 20px;
   animation: backdropIn var(--dur-base) ease both;
 }
