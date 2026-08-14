@@ -5,7 +5,9 @@
  * the URL explicitly names localhost, a loopback IP, or a private LAN IP
  * literal (RFC1918 / IPv6 ULA) for home-lab hosts. Hostnames that resolve to
  * private, special, metadata, or DNS-rebound addresses are never handed to the
- * HTTP client.
+ * HTTP client — except VPN/proxy fake-IP answers in 198.18.0.0/15, which map
+ * public API hostnames and must stay reachable (same carve-out as sidecar
+ * /net/*).
  */
 const dns = require("node:dns/promises");
 const net = require("node:net");
@@ -22,7 +24,9 @@ const BLOCKED_V4 = new net.BlockList();
   ["192.0.0.0", 24],
   ["192.0.2.0", 24],
   ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
+  // Note: do NOT block 198.18.0.0/15. VPN/proxy fake-IP modes (Clash, Surge, …)
+  // map public API hostnames there; treating them as special-use breaks the
+  // desktop /openai proxy while sidecar /net/* already allows the same range.
   ["198.51.100.0", 24],
   ["203.0.113.0", 24],
   ["224.0.0.0", 4],
