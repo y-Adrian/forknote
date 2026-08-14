@@ -16,6 +16,7 @@ import {
 } from "../lib/sessionShare";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
+import { AccessibleModal } from "./AccessibleModal";
 
 interface Props {
   sessionId: NodeId;
@@ -167,14 +168,12 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
   if (!session) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal fn-share-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="fn-share-title"
-      >
+    <AccessibleModal
+      open
+      onClose={onClose}
+      labelledBy="fn-share-title"
+      className="modal fn-share-modal"
+    >
         <header className="fn-share-header">
           <div>
             <h2 id="fn-share-title">{t("share.title")}</h2>
@@ -316,7 +315,6 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
             {t("share.exportHtml")}
           </button>
         </footer>
-      </div>
-    </div>
+    </AccessibleModal>
   );
 }

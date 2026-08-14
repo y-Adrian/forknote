@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { resolveConversationContext } from "../lib/conversationContext";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
+import { AccessibleModal } from "./AccessibleModal";
 import { MarkdownBody } from "./MarkdownBody";
 
 export function ArchivePanel() {
@@ -58,14 +58,13 @@ export function ArchivePanel() {
 
   const onClose = () => setArchivePanelOpen(false);
 
-  return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal fn-archive-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-labelledby="archive-panel-title"
-      >
+  return (
+    <AccessibleModal
+      open={open}
+      onClose={onClose}
+      labelledBy="archive-panel-title"
+      className="modal fn-archive-modal"
+    >
         <header className="fn-archive-modal-header">
           <div>
             <h2 id="archive-panel-title">{t("archive.title")}</h2>
@@ -177,8 +176,6 @@ export function ArchivePanel() {
             </>
           )}
         </div>
-      </div>
-    </div>,
-    document.body,
+    </AccessibleModal>
   );
 }

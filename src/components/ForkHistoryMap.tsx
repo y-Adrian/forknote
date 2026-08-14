@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { useLocale } from "../lib/i18n";
 import { isActivationKey } from "../lib/keyboard";
 import { useAppStore } from "../store/useAppStore";
 import type { BranchNode, ChatMessage, ThreadRoot } from "../types";
+import { AccessibleModal } from "./AccessibleModal";
 
 interface Props {
   thread: ThreadRoot;
@@ -115,17 +115,7 @@ function buildMapLayout(thread: ThreadRoot): {
 export function ForkHistoryMap({ thread, open, onClose, scrollRef }: Props) {
   const { t } = useLocale();
   const openBranchFloat = useAppStore((s) => s.openBranchFloat);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const layout = useMemo(() => buildMapLayout(thread), [thread]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -161,20 +151,14 @@ export function ForkHistoryMap({ thread, open, onClose, scrollRef }: Props) {
     });
   };
 
-  return createPortal(
-    <div
-      className="modal-backdrop fn-fork-map-backdrop"
-      onClick={onClose}
-      role="presentation"
+  return (
+    <AccessibleModal
+      open={open}
+      onClose={onClose}
+      labelledBy="fn-fork-map-title"
+      className="modal fn-fork-map-modal"
+      backdropClassName="modal-backdrop fn-fork-map-backdrop"
     >
-      <div
-        ref={dialogRef}
-        className="modal fn-fork-map-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="fn-fork-map-title"
-        onClick={(e) => e.stopPropagation()}
-      >
         <header className="ss-header">
           <h2 id="fn-fork-map-title">{t("fork.mapTitle")}</h2>
           <button
@@ -329,8 +313,6 @@ export function ForkHistoryMap({ thread, open, onClose, scrollRef }: Props) {
             {t("common.close")}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </AccessibleModal>
   );
 }

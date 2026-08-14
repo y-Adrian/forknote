@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { applyLocale, useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
@@ -29,6 +28,7 @@ import {
 } from "../lib/uiFont";
 import { useAppStore } from "../store/useAppStore";
 import type { ApiSettings, SettingsTab } from "../types";
+import { AccessibleModal } from "./AccessibleModal";
 import { ApiConnectionFields } from "./ApiConnectionFields";
 import { MemorySettingsPanel } from "./MemoryPanel";
 
@@ -477,44 +477,36 @@ function GeneralPanel({
         <p>{t("general.noAccountBody")}</p>
       </div>
 
-      {pendingLocale
-        ? createPortal(
-            <div
-              className="modal-backdrop fn-lang-confirm-backdrop"
+      {pendingLocale ? (
+        <AccessibleModal
+          open
+          onClose={() => setPendingLocale(null)}
+          ariaLabel={t("general.langConfirmAria")}
+          className="modal fn-lang-confirm-modal"
+          backdropClassName="modal-backdrop fn-lang-confirm-backdrop"
+        >
+          <h3>{t("general.langConfirmTitle")}</h3>
+          <p className="fn-lang-confirm-body">
+            {t("general.langConfirmBody", { lang: pendingLabel })}
+          </p>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn ghost"
               onClick={() => setPendingLocale(null)}
             >
-              <div
-                className="modal fn-lang-confirm-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-label={t("general.langConfirmAria")}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h3>{t("general.langConfirmTitle")}</h3>
-                <p className="fn-lang-confirm-body">
-                  {t("general.langConfirmBody", { lang: pendingLabel })}
-                </p>
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    onClick={() => setPendingLocale(null)}
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    onClick={confirmLanguageSwitch}
-                  >
-                    {t("common.ok")}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={confirmLanguageSwitch}
+            >
+              {t("common.ok")}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
     </div>
   );
 }
@@ -787,65 +779,57 @@ function DataPanel() {
 
       {status ? <p className="ss-status">{status}</p> : null}
 
-      {pendingImport
-        ? createPortal(
-            <div
-              className="modal-backdrop fn-import-confirm-backdrop"
+      {pendingImport ? (
+        <AccessibleModal
+          open
+          onClose={closePendingImport}
+          ariaLabel={t("data.importConfirmAria")}
+          className="modal fn-import-confirm-modal"
+          backdropClassName="modal-backdrop fn-import-confirm-backdrop"
+        >
+          <h3>{t("data.importConfirmTitle")}</h3>
+          <p className="fn-import-confirm-body">
+            {t("data.importConfirmBody", {
+              importCount: pendingImport.summary.count,
+              currentCount: sessions.length,
+              title: pendingImport.summary.activeTitle,
+              source: pendingImport.summary.source,
+            })}
+          </p>
+          <div className="ss-callout fn-import-backup-callout">
+            <strong>{t("data.importBackupTitle")}</strong>
+            <p>
+              {backupReady
+                ? t("data.importBackupReady")
+                : t("data.importBackupRequired")}
+            </p>
+          </div>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn ghost"
               onClick={closePendingImport}
             >
-              <div
-                className="modal fn-import-confirm-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-label={t("data.importConfirmAria")}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h3>{t("data.importConfirmTitle")}</h3>
-                <p className="fn-import-confirm-body">
-                  {t("data.importConfirmBody", {
-                    importCount: pendingImport.summary.count,
-                    currentCount: sessions.length,
-                    title: pendingImport.summary.activeTitle,
-                    source: pendingImport.summary.source,
-                  })}
-                </p>
-                <div className="ss-callout fn-import-backup-callout">
-                  <strong>{t("data.importBackupTitle")}</strong>
-                  <p>
-                    {backupReady
-                      ? t("data.importBackupReady")
-                      : t("data.importBackupRequired")}
-                  </p>
-                </div>
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    onClick={closePendingImport}
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    onClick={onBackupPendingImport}
-                  >
-                    {t("data.importBackup")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn danger"
-                    disabled={!backupReady}
-                    onClick={onConfirmImport}
-                  >
-                    {t("data.importConfirm")}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={onBackupPendingImport}
+            >
+              {t("data.importBackup")}
+            </button>
+            <button
+              type="button"
+              className="btn danger"
+              disabled={!backupReady}
+              onClick={onConfirmImport}
+            >
+              {t("data.importConfirm")}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
 
       <div className="ss-callout">
         <strong>{t("data.alsoStored")}</strong>
@@ -1218,14 +1202,13 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
 
   if (!open) return null;
 
-  return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal settings-modal system-settings-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-labelledby="settings-title"
-      >
+  return (
+    <AccessibleModal
+      open={open}
+      onClose={onClose}
+      labelledBy="settings-title"
+      className="modal settings-modal system-settings-modal"
+    >
         <header className="ss-header">
           <h2 id="settings-title">{t("settings.title")}</h2>
           <button
@@ -1289,8 +1272,6 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
             )}
           </div>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </AccessibleModal>
   );
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useLocale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import { DEFAULT_SIDECAR_URL, pickProjectFolder } from "../lib/sidecar";
 import { useAppStore } from "../store/useAppStore";
+import { AccessibleModal } from "./AccessibleModal";
 
 interface Props {
   open: boolean;
@@ -43,8 +43,6 @@ export function ProjectPanel({ open, onClose }: Props) {
     setBrowseError(null);
   }, [open, projectRoot, sidecarUrl]);
 
-  if (!open) return null;
-
   const connect = async () => {
     setBusy(true);
     setBrowseError(null);
@@ -81,112 +79,111 @@ export function ProjectPanel({ open, onClose }: Props) {
     }
   };
 
-  return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal project-modal"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-labelledby="project-title"
-      >
-        <h2 id="project-title">{t("projectPanel.title")}</h2>
-        <p className="hint">{t("projectPanel.lead")}</p>
+  if (!open) return null;
 
-        <label>
-          {t("projectPanel.path")}
-          <div className="fn-project-path-row">
-            <input
-              value={pathDraft}
-              onChange={(e) => setPathDraft(e.target.value)}
-              placeholder={t("projectPanel.pathPlaceholder")}
-              spellCheck={false}
-              autoFocus
-            />
-            <button
-              type="button"
-              className="btn ghost"
-              disabled={busy || browseBusy}
-              onClick={() => void browse()}
-            >
-              {browseBusy ? t("projectPanel.browsing") : t("projectPanel.browse")}
-            </button>
+  return (
+    <AccessibleModal
+      open={open}
+      onClose={onClose}
+      labelledBy="project-title"
+      className="modal project-modal"
+    >
+      <h2 id="project-title">{t("projectPanel.title")}</h2>
+      <p className="hint">{t("projectPanel.lead")}</p>
+
+      <label>
+        {t("projectPanel.path")}
+        <div className="fn-project-path-row">
+          <input
+            value={pathDraft}
+            onChange={(e) => setPathDraft(e.target.value)}
+            placeholder={t("projectPanel.pathPlaceholder")}
+            spellCheck={false}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="btn ghost"
+            disabled={busy || browseBusy}
+            onClick={() => void browse()}
+          >
+            {browseBusy ? t("projectPanel.browsing") : t("projectPanel.browse")}
+          </button>
+        </div>
+      </label>
+
+      {projectRoot && (
+        <p className="project-connected-hint">
+          {t("projectPanel.connected")} <code>{projectRoot}</code>
+        </p>
+      )}
+
+      <div className={`fn-project-advanced${advancedOpen ? " is-open" : ""}`}>
+        <button
+          type="button"
+          className="fn-project-advanced-toggle"
+          aria-expanded={advancedOpen}
+          onClick={() => setAdvancedOpen((v) => !v)}
+        >
+          <span>{t("projectPanel.advanced")}</span>
+          <span className="fn-project-advanced-chevron" aria-hidden>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </button>
+        {advancedOpen && (
+          <div className="fn-project-advanced-body">
+            <label>
+              {t("projectPanel.sidecarUrl")}
+              <input
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                placeholder={DEFAULT_SIDECAR_URL}
+                spellCheck={false}
+              />
+            </label>
+            <p className="fn-project-advanced-hint">
+              {t("projectPanel.sidecarUrlHint")}
+            </p>
           </div>
-        </label>
-
-        {projectRoot && (
-          <p className="project-connected-hint">
-            {t("projectPanel.connected")} <code>{projectRoot}</code>
-          </p>
         )}
-
-        <div className={`fn-project-advanced${advancedOpen ? " is-open" : ""}`}>
-          <button
-            type="button"
-            className="fn-project-advanced-toggle"
-            aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen((v) => !v)}
-          >
-            <span>{t("projectPanel.advanced")}</span>
-            <span className="fn-project-advanced-chevron" aria-hidden>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M6 9l6 6 6-6"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-          </button>
-          {advancedOpen && (
-            <div className="fn-project-advanced-body">
-              <label>
-                {t("projectPanel.sidecarUrl")}
-                <input
-                  value={urlDraft}
-                  onChange={(e) => setUrlDraft(e.target.value)}
-                  placeholder={DEFAULT_SIDECAR_URL}
-                  spellCheck={false}
-                />
-              </label>
-              <p className="fn-project-advanced-hint">
-                {t("projectPanel.sidecarUrlHint")}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {(browseError || projectError) && (
-          <p className="ds-error">{browseError || projectError}</p>
-        )}
-
-        <div className="modal-actions">
-          {projectRoot && (
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => {
-                disconnectProject();
-              }}
-            >
-              {t("projectPanel.disconnect")}
-            </button>
-          )}
-          <button type="button" className="btn ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={busy || browseBusy || !pathDraft.trim()}
-            onClick={() => void connect()}
-          >
-            {busy ? t("projectPanel.connecting") : t("projectPanel.connect")}
-          </button>
-        </div>
       </div>
-    </div>,
-    document.body,
+
+      {(browseError || projectError) && (
+        <p className="ds-error">{browseError || projectError}</p>
+      )}
+
+      <div className="modal-actions">
+        {projectRoot && (
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => {
+              disconnectProject();
+            }}
+          >
+            {t("projectPanel.disconnect")}
+          </button>
+        )}
+        <button type="button" className="btn ghost" onClick={onClose}>
+          {t("common.cancel")}
+        </button>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={busy || browseBusy || !pathDraft.trim()}
+          onClick={() => void connect()}
+        >
+          {busy ? t("projectPanel.connecting") : t("projectPanel.connect")}
+        </button>
+      </div>
+    </AccessibleModal>
   );
 }
