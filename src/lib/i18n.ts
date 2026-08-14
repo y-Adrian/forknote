@@ -127,13 +127,13 @@ const en = {
   "general.font.commonGroup": "Common fonts",
   "general.language": "Interface language",
   "general.languageDesc":
-    "UI chrome and model replies follow this language. Switching reloads the app so everything updates.",
+    "UI chrome and model replies follow this language. Switching updates the interface immediately without reloading.",
   "general.languageAria": "Interface language",
   "general.lang.en": "English",
   "general.lang.zh": "中文",
   "general.langConfirmTitle": "Switch language?",
   "general.langConfirmBody":
-    "The app will reload to apply {lang} everywhere.",
+    "Switch the interface to {lang}? Open drafts, composer text, and in-flight work are kept.",
   "general.langConfirmAria": "Confirm language switch",
   "general.clarify": "Clarify as you read",
   "general.clarifyDesc":
@@ -860,12 +860,13 @@ const zh: Record<MessageKey, string> = {
   "general.font.commonGroup": "常用字体",
   "general.language": "界面语言",
   "general.languageDesc":
-    "界面文案与模型回复均跟随此语言。切换后将刷新页面，以便全局生效。",
+    "界面文案与模型回复均跟随此语言。切换后立即生效，不会刷新页面。",
   "general.languageAria": "界面语言",
   "general.lang.en": "English",
   "general.lang.zh": "中文",
   "general.langConfirmTitle": "切换语言？",
-  "general.langConfirmBody": "应用将刷新，以便全局切换为{lang}。",
+  "general.langConfirmBody":
+    "将界面切换为{lang}？未保存的草稿、输入框内容和进行中的任务都会保留。",
   "general.langConfirmAria": "确认切换语言",
   "general.clarify": "边读边澄清",
   "general.clarifyDesc":
