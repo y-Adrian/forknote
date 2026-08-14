@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -216,7 +217,7 @@ export function SelectableMarkdown({
     return () => clearHighlights(el);
   }, [content, branches, loading]);
 
-  const handleMouseUp = useCallback(() => {
+  const syncToolbarFromSelection = useCallback(() => {
     if (disabled || loading) return;
     const el = containerRef.current;
     if (!el) return;
@@ -237,6 +238,36 @@ export function SelectableMarkdown({
     // Always use viewport coords — toolbar is always portaled as position:fixed
     setToolbar({ top: info.rect.bottom + 4, left: centerX });
   }, [disabled, dismissToolbar, loading]);
+
+  // Mouse: open on mouseup (selection is final).
+  const handleMouseUp = useCallback(() => {
+    syncToolbarFromSelection();
+  }, [syncToolbarFromSelection]);
+
+  // Touch/pen: selection often finalizes after the finger lifts; defer and also
+  // listen briefly via selectionchange so Clarify can open without a mouseup.
+  const touchSelectGraceUntilRef = useRef(0);
+  const handlePointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "mouse") return;
+      touchSelectGraceUntilRef.current = Date.now() + 600;
+      window.setTimeout(() => syncToolbarFromSelection(), 0);
+      window.setTimeout(() => syncToolbarFromSelection(), 120);
+    },
+    [syncToolbarFromSelection],
+  );
+
+  useEffect(() => {
+    const onSelectionChange = () => {
+      if (Date.now() > touchSelectGraceUntilRef.current) return;
+      if (popoverOpen) return;
+      syncToolbarFromSelection();
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, [popoverOpen, syncToolbarFromSelection]);
 
   const handleContentClick = useCallback(
     (e: MouseEvent) => {
@@ -316,6 +347,7 @@ export function SelectableMarkdown({
         ref={containerRef}
         className={`answer-body selectable${compact ? " answer-body-compact" : ""}${className ? ` ${className}` : ""}`}
         onMouseUp={handleMouseUp}
+        onPointerUp={handlePointerUp}
         onClick={handleContentClick}
       >
         {verdictTargetId ? (
