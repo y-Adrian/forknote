@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale } from "../lib/i18n";
 import {
   SHARE_HARD_LIMIT,
@@ -14,16 +14,23 @@ import {
   sharePayloadToHtml,
   type ShareableMessage,
 } from "../lib/sessionShare";
-import type { ChatSession } from "../types";
+import { useAppStore } from "../store/useAppStore";
+import type { NodeId } from "../types";
 
 interface Props {
-  session: ChatSession;
+  sessionId: NodeId;
   onClose: () => void;
 }
 
-export function ShareSessionDialog({ session, onClose }: Props) {
+export function ShareSessionDialog({ sessionId, onClose }: Props) {
   const { t } = useLocale();
-  const messages = useMemo(() => getShareableMessages(session), [session]);
+  const session = useAppStore((s) =>
+    s.sessions.find((item) => item.id === sessionId),
+  );
+  const messages = useMemo(
+    () => (session ? getShareableMessages(session) : []),
+    [session],
+  );
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(messages.map((m) => m.id)),
   );
@@ -33,7 +40,28 @@ export function ShareSessionDialog({ session, onClose }: Props) {
   const [warnSoft, setWarnSoft] = useState(false);
   const [copiedKind, setCopiedKind] = useState<"link" | "content" | null>(null);
 
-  const selectedCount = selected.size;
+  useEffect(() => {
+    if (!session) onClose();
+  }, [session, onClose]);
+
+  // Drop selections for messages that disappeared; keep new live messages unchecked.
+  useEffect(() => {
+    const liveIds = new Set(messages.map((m) => m.id));
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (liveIds.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [messages]);
+
+  const selectedCount = messages.reduce(
+    (count, msg) => count + (selected.has(msg.id) ? 1 : 0),
+    0,
+  );
   const allSelected =
     messages.length > 0 && selectedCount === messages.length;
 
@@ -68,7 +96,8 @@ export function ShareSessionDialog({ session, onClose }: Props) {
     messages.filter((m) => selected.has(m.id));
 
   const exportHtml = () => {
-    if (selectedCount === 0) {
+    if (!session) return;
+    if (selectedCount === 0 && messages.length > 0) {
       setError(t("share.noneSelected"));
       return;
     }
@@ -90,7 +119,8 @@ export function ShareSessionDialog({ session, onClose }: Props) {
   };
 
   const createLink = async () => {
-    if (selectedCount === 0) {
+    if (!session) return;
+    if (selectedCount === 0 && messages.length > 0) {
       setError(t("share.noneSelected"));
       return;
     }
@@ -129,9 +159,12 @@ export function ShareSessionDialog({ session, onClose }: Props) {
   };
 
   const copyMarkdown = () => {
+    if (!session) return;
     const md = sessionToShareMarkdown(session, selected);
     void copyText(md, "content");
   };
+
+  if (!session) return null;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -259,7 +292,7 @@ export function ShareSessionDialog({ session, onClose }: Props) {
               type="button"
               className="btn ghost"
               onClick={copyMarkdown}
-              disabled={selectedCount === 0}
+              disabled={messages.length > 0 && selectedCount === 0}
             >
               {copiedKind === "content"
                 ? t("share.copied")
@@ -269,7 +302,7 @@ export function ShareSessionDialog({ session, onClose }: Props) {
               type="button"
               className="btn ghost"
               onClick={() => void createLink()}
-              disabled={busy || selectedCount === 0 || messages.length === 0}
+              disabled={busy || (messages.length > 0 && selectedCount === 0)}
             >
               {busy ? t("share.creating") : t("share.createLink")}
             </button>
@@ -278,7 +311,7 @@ export function ShareSessionDialog({ session, onClose }: Props) {
             type="button"
             className="btn primary"
             onClick={exportHtml}
-            disabled={selectedCount === 0 || messages.length === 0}
+            disabled={messages.length > 0 && selectedCount === 0}
           >
             {t("share.exportHtml")}
           </button>
