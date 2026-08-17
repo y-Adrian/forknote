@@ -571,6 +571,7 @@ const en = {
   "composer.modelPlaceholder": "model id",
   "composer.modelTitle": "Model for this note (overrides Settings default)",
   "composer.modelAria": "Model for this note",
+  "composer.resizeAria": "Drag to resize input height",
 
   "network.toggleOff": "Network",
   "network.toggleOn": "Network",
@@ -1286,6 +1287,7 @@ const zh: Record<MessageKey, string> = {
   "composer.modelPlaceholder": "模型 ID",
   "composer.modelTitle": "本笔记使用的模型（覆盖设置中的默认）",
   "composer.modelAria": "本笔记模型",
+  "composer.resizeAria": "拖动调节输入框高度",
 
   "network.toggleOff": "联网",
   "network.toggleOn": "联网",
