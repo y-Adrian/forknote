@@ -4,15 +4,24 @@ import {
   useEffect,
   useId,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
   selectionRangeForCaret,
   type ComposerCaret,
 } from "../lib/composerFocus";
+import {
+  clampComposerHeight,
+  composerHeightMin,
+  readStoredComposerHeight,
+  resolveComposerHeight,
+  writeStoredComposerHeight,
+} from "../lib/composerHeight";
 import { handleComposerEnterKey } from "../lib/composerKeys";
 import { useLocale } from "../lib/i18n";
 import { activeAtQuery, listProjectFileHints } from "../lib/repoContext";
@@ -60,17 +69,55 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
   const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+  const resizeDragRef = useRef<{
+    pointerId: number;
+    startY: number;
+    originHeight: number;
+  } | null>(null);
+  const floorHeightRef = useRef<number | null>(null);
+  const resizingRef = useRef(false);
   const listboxId = useId();
   const optionIdPrefix = useId();
   const resolvedPlaceholder = placeholder ?? t("main.placeholderEmpty");
   const [cursor, setCursor] = useState(0);
   const [hints, setHints] = useState<string[]>([]);
   const [hintIndex, setHintIndex] = useState(0);
+  const [floorHeight, setFloorHeight] = useState<number | null>(() =>
+    readStoredComposerHeight(),
+  );
+  const [isResizing, setIsResizing] = useState(false);
   const at = projectRoot ? activeAtQuery(value, cursor) : null;
   const mentionOpen = Boolean(projectRoot && at && hints.length > 0);
   const activeOptionId = mentionOpen
     ? `${optionIdPrefix}-opt-${hintIndex}`
     : undefined;
+
+  floorHeightRef.current = floorHeight;
+
+  const applyTextareaHeight = useCallback(() => {
+    if (resizingRef.current) return;
+    const el = ref.current;
+    if (!el) return;
+    // Measure natural content height without fighting the previous inline size.
+    el.style.height = "0px";
+    const contentHeight = el.scrollHeight;
+    const next = resolveComposerHeight({
+      contentHeight,
+      floorHeight: floorHeightRef.current,
+      compact,
+    });
+    el.style.height = `${next}px`;
+  }, [compact]);
+
+  useLayoutEffect(() => {
+    applyTextareaHeight();
+  }, [applyTextareaHeight, value, floorHeight, compact]);
+
+  useEffect(() => {
+    const onResize = () => applyTextareaHeight();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [applyTextareaHeight]);
 
   useImperativeHandle(forwardedRef, () => ({
     focus: (opts) => {
@@ -82,6 +129,63 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setCursor(range.start);
     },
   }));
+
+  const endResizeDrag = useCallback((pointerId: number, target: Element) => {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    resizeDragRef.current = null;
+    resizingRef.current = false;
+    setIsResizing(false);
+    const el = ref.current;
+    if (el) {
+      const clamped = clampComposerHeight(el.offsetHeight, compact);
+      floorHeightRef.current = clamped;
+      setFloorHeight(clamped);
+      writeStoredComposerHeight(clamped);
+      el.style.height = `${clamped}px`;
+    }
+    try {
+      (target as HTMLElement).releasePointerCapture(pointerId);
+    } catch {
+      /* already released */
+    }
+  }, [compact]);
+
+  const onResizePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = ref.current;
+    if (!el) return;
+    const originHeight =
+      el.offsetHeight || composerHeightMin(compact);
+    resizeDragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      originHeight,
+    };
+    resizingRef.current = true;
+    setIsResizing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onResizePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const el = ref.current;
+    if (!el) return;
+    // Handle sits on the top edge: drag up → taller.
+    const next = clampComposerHeight(
+      drag.originHeight + (drag.startY - e.clientY),
+      compact,
+    );
+    el.style.height = `${next}px`;
+    floorHeightRef.current = next;
+  };
+
+  const onResizePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    endResizeDrag(e.pointerId, e.currentTarget);
+  };
 
   useEffect(() => {
     if (!projectRoot || !at) {
@@ -178,7 +282,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
   return (
     <form
-      className={`fn-composer${compact ? " is-compact" : " is-hero"}`}
+      className={`fn-composer${compact ? " is-compact" : " is-hero"}${isResizing ? " is-resizing" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         trySubmit();
@@ -206,6 +310,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       ) : null}
 
       <div className="fn-composer-input-wrap">
+        <div
+          className="fn-composer-resize"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t("composer.resizeAria")}
+          title={t("composer.resizeAria")}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+          onPointerCancel={onResizePointerUp}
+        />
         <textarea
           ref={ref}
           rows={compact ? 1 : 3}
