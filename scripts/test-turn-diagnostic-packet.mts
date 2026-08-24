@@ -111,6 +111,10 @@ const packet = buildTurnDiagnosticPacket({
 
 assert.match(packet, /ForkNote Turn Diagnostic/);
 assert.match(packet, /Problem observed/);
+assert.match(packet, /Automatic Analysis \(heuristic\)/);
+assert.match(packet, /previousUserIntent: conversation-diagnostic/);
+assert.match(packet, /assistantActualIntent: conversation-diagnostic/);
+assert.match(packet, /alignment: match/);
 assert.match(packet, /previousUser: user u1/);
 assert.match(packet, /targetMessage: assistant a1/);
 assert.match(packet, /renderMode: full-preview/);
@@ -128,6 +132,52 @@ assert.match(packet, /src\/App\.tsx/);
 assert.doesNotMatch(packet, /SECRET_SHOULD_NOT_APPEAR/);
 assert.doesNotMatch(packet, /GLOBAL_SECRET_SHOULD_NOT_APPEAR/);
 assert.doesNotMatch(packet, /apiKey/i);
+
+const driftThread: ThreadRoot = {
+  id: "thread_drift",
+  createdAt: 1,
+  messages: [
+    {
+      id: "u2",
+      role: "user",
+      content: "告诉我现在你了解到的信息",
+      children: [],
+      createdAt: 1,
+    },
+    {
+      id: "a2",
+      role: "assistant",
+      content: "报错来自 cmake/toolchain.cmake，SYSROOT_DIR 变量为空。",
+      children: [],
+      createdAt: 2,
+    },
+  ],
+};
+
+const driftPacket = buildTurnDiagnosticPacket({
+  session: { ...session, id: "s2", thread: driftThread },
+  thread: driftThread,
+  targetMessageId: "a2",
+  projectRoot: "/Users/me/project",
+  sidecarUrl: "/sidecar",
+  sourceMode: false,
+  loadingMain: false,
+  loadingArchive: false,
+  loadingCompress: false,
+  loadingBranchId: null,
+  pendingFileIncludes: [],
+  agentActivity: [],
+  agentChanges: [],
+  settings: null,
+  generatedAt: Date.parse("2026-08-24T00:00:00.000Z"),
+});
+
+assert.match(driftPacket, /previousUserIntent: project-understanding-summary/);
+assert.match(driftPacket, /assistantActualIntent: build-error-troubleshooting/);
+assert.match(driftPacket, /alignment: mismatch/);
+assert.match(driftPacket, /suspectedIssue: answer drift \/ stale context injection/);
+assert.match(driftPacket, /groundingRisk: high/);
+assert.match(driftPacket, /answerMentionsUnseenBuildIssue: yes/);
 
 const actions = readFileSync("src/components/MessageActions.tsx", "utf8");
 assert.ok(actions.includes("onDiagnose"), "MessageActions exposes diagnose action");

@@ -14,6 +14,12 @@ import type {
 const SNIP = 1600;
 const SMALL_SNIP = 420;
 const NEARBY_RADIUS = 2;
+const BUILD_ERROR_RE =
+  /sysroot|cmake|toolchain|configure|编译|交叉编译|链接|报错|error|failed/i;
+const PROJECT_SUMMARY_RE =
+  /了解到的信息|现在.*了解|项目.*信息|项目.*现状|项目目标|当前现状|模块|架构|总结/i;
+const CONVERSATION_DEBUG_RE =
+  /对话.*逻辑|逻辑.*不对|诊断|上下文|记忆|串线|错位|回答.*问题/i;
 
 function truncate(text: string | null | undefined, max = SNIP): string {
   const t = (text ?? "").trim();
@@ -89,6 +95,76 @@ function renderModeFor(options: {
   return "full-preview";
 }
 
+function classifyUserIntent(content: string | null | undefined): string {
+  const text = content ?? "";
+  if (!text.trim()) return "unknown";
+  if (CONVERSATION_DEBUG_RE.test(text)) return "conversation-diagnostic";
+  if (PROJECT_SUMMARY_RE.test(text)) return "project-understanding-summary";
+  if (BUILD_ERROR_RE.test(text)) return "build-error-troubleshooting";
+  return "general-question";
+}
+
+function classifyAssistantIntent(content: string | null | undefined): string {
+  const text = content ?? "";
+  if (!text.trim()) return "unknown";
+  if (BUILD_ERROR_RE.test(text)) return "build-error-troubleshooting";
+  if (CONVERSATION_DEBUG_RE.test(text)) return "conversation-diagnostic";
+  if (PROJECT_SUMMARY_RE.test(text)) return "project-understanding-summary";
+  return "general-answer";
+}
+
+function intentAlignment(userIntent: string, assistantIntent: string): string {
+  if (userIntent === "unknown" || assistantIntent === "unknown") return "unknown";
+  if (userIntent === assistantIntent) return "match";
+  if (userIntent === "general-question" || assistantIntent === "general-answer") {
+    return "unclear";
+  }
+  return "mismatch";
+}
+
+function automaticAnalysis(options: {
+  prevUser: ChatMessage | null;
+  target: ChatMessage | null;
+  recentActivity: AgentActivity[];
+  recentChanges: AgentFileChange[];
+}): string[] {
+  const previousUserIntent = classifyUserIntent(options.prevUser?.content);
+  const assistantActualIntent = classifyAssistantIntent(options.target?.content);
+  const alignment = intentAlignment(previousUserIntent, assistantActualIntent);
+  const userText = options.prevUser?.content ?? "";
+  const assistantText = options.target?.content ?? "";
+  const assistantMentionsBuildIssue = BUILD_ERROR_RE.test(assistantText);
+  const userAskedBuildIssue = BUILD_ERROR_RE.test(userText);
+  const answerMentionsUnseenBuildIssue =
+    assistantMentionsBuildIssue && !userAskedBuildIssue;
+  const usedRecentTools = options.recentActivity.length > 0;
+  const recentFileChanges = options.recentChanges.length > 0;
+  const groundingRisk =
+    alignment === "mismatch" || (answerMentionsUnseenBuildIssue && !usedRecentTools)
+      ? "high"
+      : usedRecentTools || recentFileChanges
+        ? "medium"
+        : "low";
+  const suspectedIssue =
+    alignment === "mismatch"
+      ? "answer drift / stale context injection"
+      : answerMentionsUnseenBuildIssue
+        ? "possible stale technical context"
+        : "none obvious";
+
+  return [
+    "## Automatic Analysis (heuristic)",
+    `- previousUserIntent: ${previousUserIntent}`,
+    `- assistantActualIntent: ${assistantActualIntent}`,
+    `- alignment: ${alignment}`,
+    `- suspectedIssue: ${suspectedIssue}`,
+    `- groundingRisk: ${groundingRisk}`,
+    `- usedRecentTools: ${bool(usedRecentTools)}`,
+    `- recentFileChanges: ${bool(recentFileChanges)}`,
+    `- answerMentionsUnseenBuildIssue: ${bool(answerMentionsUnseenBuildIssue)}`,
+  ];
+}
+
 export function buildTurnDiagnosticPacket(options: {
   session: ChatSession | null | undefined;
   thread: ThreadRoot | null | undefined;
@@ -136,6 +212,12 @@ export function buildTurnDiagnosticPacket(options: {
   const renderMode = renderModeFor({ targetIsTail, sourceMode, loadingMain });
   const sessionApi = session?.api;
   const effectiveModel = sessionApi?.model?.trim() || settings?.model?.trim() || "(empty)";
+  const analysis = automaticAnalysis({
+    prevUser,
+    target,
+    recentActivity,
+    recentChanges,
+  });
 
   return [
     "# ForkNote Turn Diagnostic",
@@ -148,6 +230,8 @@ export function buildTurnDiagnosticPacket(options: {
     "- Expected behavior: (fill in what should have happened)",
     "- Actual behavior: (fill in what happened instead)",
     "- Suspected area: (prompt / memory / archive / tools / rendering / UI state / unsure)",
+    "",
+    ...analysis,
     "",
     "## Target",
     `- generatedAt: ${generated}`,
