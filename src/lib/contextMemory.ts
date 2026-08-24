@@ -67,6 +67,7 @@ const SECTION_MAX = 560;
 const CHUNK_MAX = 420;
 /** Keep memory injection lean — extra chunks dilute the user's latest goal. */
 const CHUNK_TOP_K = 3;
+const MAX_CODING_MEMORY_ENTRIES = 80;
 
 export function resolveMemoryDir(
   settings: ApiSettings,
@@ -617,6 +618,40 @@ export function formatLocalMemoryAddendum(
   ].join("\n");
 }
 
+export function normalizeCodingMemoryNote(note: string): string {
+  return note
+    .replace(/^\s*[-*]\s*(?:\[[^\]]+\]\s*)?/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function splitCodingMemoryEntries(coding: string): string[] {
+  return coding
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+export function mergeCodingMemoryNote(
+  existingCoding: string | null | undefined,
+  note: string,
+  now: number = Date.now(),
+): string {
+  const normalizedNote = normalizeCodingMemoryNote(note);
+  if (!normalizedNote) return (existingCoding ?? "").trim();
+
+  const entries = splitCodingMemoryEntries(existingCoding ?? "");
+  if (entries.some((entry) => normalizeCodingMemoryNote(entry) === normalizedNote)) {
+    return entries.slice(-MAX_CODING_MEMORY_ENTRIES).join("\n\n");
+  }
+
+  const stamp = new Date(now).toISOString().slice(0, 19).replace("T", " ");
+  const entry = `- [${stamp}] ${note.replace(/\s+/g, " ").trim()}`;
+  return [...entries, entry].slice(-MAX_CODING_MEMORY_ENTRIES).join("\n\n");
+}
+
 /** Append a dated note to CODING.md (project memory). */
 export async function appendCodingMemoryNote(options: {
   note: string;
@@ -644,9 +679,7 @@ export async function appendCodingMemoryNote(options: {
       dir,
     } satisfies ContextMemoryPack);
 
-  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-  const entry = `- [${stamp}] ${note.replace(/\s+/g, " ").trim()}`;
-  const coding = [existing.coding?.trim(), entry].filter(Boolean).join("\n\n");
+  const coding = mergeCodingMemoryNote(existing.coding, note);
   const saved = await saveContextMemoryPack({
     pack: { ...existing, coding },
     settings: options.settings,
