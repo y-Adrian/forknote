@@ -29,6 +29,7 @@ import {
   isChatOnlyDiagramAsk,
   looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
+  looksLikeProjectGroundedAsk,
   mutationPlanNoToolsAction,
   shouldPreferPlainChatTurn,
   multiStepFollowUpHint,
@@ -182,6 +183,16 @@ function thinkingSecondsFromTiming(
     timing.firstVisibleContentAt ?? 0,
   );
   return Math.max(1, Math.round((endAt - startAt) / 1000));
+}
+
+/** Plain-chat asks that still need injected memory/project orientation. */
+export function shouldInjectProjectPackForPlainChat(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (looksLikeProjectGroundedAsk(t)) return true;
+  return /(?:之前|先前|前面|刚才|上次|历史|记录|记忆|归档|总结|结论|决策|做了什么|我们做过什么|操作记录|memory|history|previous|earlier|last time|what did we do|what have we done|decision|archive|summary)/i.test(
+    t,
+  );
 }
 
 /** Stream a plain chat reply with tools schema omitted (no plan / write path). */
@@ -355,6 +366,10 @@ export async function runAgentTurn(
       : preferPlainChat && allowNetworkTools
         ? buildNetworkToolsSystem(locale === "zh" ? "zh" : "en")
         : null;
+  const injectProjectPackForPlainChat =
+    Boolean(projectRoot) &&
+    preferPlainChat &&
+    shouldInjectProjectPackForPlainChat(trimmed);
 
   const memoryAddendum = await buildAgentMemoryAddendum({
     settings,
@@ -364,7 +379,7 @@ export async function runAgentTurn(
     sidecarUrl,
     signal,
     includeFiles: options.includeFiles,
-    omitProjectPack: preferPlainChat,
+    omitProjectPack: preferPlainChat && !injectProjectPackForPlainChat,
   });
 
   if (signal.aborted || !isOwned()) {

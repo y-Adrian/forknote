@@ -21,6 +21,7 @@ import {
   resolveShellIntent,
   shouldPreferPlainChatTurn,
 } from "../src/lib/agentTools.ts";
+import { shouldInjectProjectPackForPlainChat } from "../src/lib/agentTurn.ts";
 
 const agentTurnSrc = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../src/lib/agentTurn.ts"),
@@ -41,8 +42,10 @@ assert.ok(
   "runAgentTurn uses shouldPreferPlainChatTurn",
 );
 assert.ok(
-  /omitProjectPack:\s*preferPlainChat/.test(agentTurnSrc),
-  "plain-chat turns omit project memory pack",
+  /omitProjectPack:\s*preferPlainChat\s*&&\s*!injectProjectPackForPlainChat/.test(
+    agentTurnSrc,
+  ),
+  "plain-chat turns omit project memory unless memory/project context is requested",
 );
 assert.ok(
   /preferPlainChat/.test(agentTurnSrc) &&
@@ -317,6 +320,16 @@ assert.equal(
   shouldPreferPlainChatTurn("解释一下项目结构怎么设计比较好", {}),
   true,
   "conceptual structure advice stays plain chat",
+);
+assert.equal(
+  shouldInjectProjectPackForPlainChat("之前做了什么？总结一下先前结论"),
+  true,
+  "history asks still inject project memory in plain chat",
+);
+assert.equal(
+  shouldInjectProjectPackForPlainChat("随便写一段 Python 代码"),
+  false,
+  "generic plain chat does not inject project memory",
 );
 
 console.log("smoke-answer-only-intent: ok");
