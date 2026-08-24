@@ -10,18 +10,34 @@ interface Props {
   onEdit?: () => void;
   /** Fired after a successful copy (e.g. passive-use feedback signal). */
   onCopy?: () => void;
+  onDiagnose?: () => Promise<boolean> | boolean;
   align?: "start" | "end";
 }
 
-export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
+export function MessageActions({
+  text,
+  onEdit,
+  onCopy,
+  onDiagnose,
+  align = "end",
+}: Props) {
   const { t } = useLocale();
   const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
+  const [diagnoseFeedback, setDiagnoseFeedback] =
+    useState<CopyTextFeedback>("idle");
 
   const copy = async () => {
     const ok = await copyTextToClipboard(text);
     if (ok) onCopy?.();
     setFeedback(ok ? "copied" : "failed");
     window.setTimeout(() => setFeedback("idle"), 1400);
+  };
+
+  const diagnose = async () => {
+    if (!onDiagnose) return;
+    const ok = await onDiagnose();
+    setDiagnoseFeedback(ok ? "copied" : "failed");
+    window.setTimeout(() => setDiagnoseFeedback("idle"), 1400);
   };
 
   const label =
@@ -103,6 +119,55 @@ export function MessageActions({ text, onEdit, onCopy, align = "end" }: Props) {
               strokeLinecap="round"
             />
           </svg>
+        </button>
+      ) : null}
+      {onDiagnose ? (
+        <button
+          type="button"
+          className={`fn-msg-action${diagnoseFeedback === "failed" ? " is-copy-failed" : ""}`}
+          onClick={() => void diagnose()}
+          aria-label={
+            diagnoseFeedback === "copied"
+              ? t("chat.diagnoseCopied")
+              : diagnoseFeedback === "failed"
+                ? t("chat.copyFailed")
+                : t("chat.diagnose")
+          }
+          title={
+            diagnoseFeedback === "copied"
+              ? t("chat.diagnoseCopied")
+              : diagnoseFeedback === "failed"
+                ? t("chat.copyFailed")
+                : t("chat.diagnoseTitle")
+          }
+        >
+          {diagnoseFeedback === "copied" ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M5 12.5l4.5 4.5L19 7.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M12 3v3M12 18v3M4.22 5.64l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 18.36l2.12-2.12M17.66 6.34l2.12-2.12"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <circle
+                cx="12"
+                cy="12"
+                r="3.5"
+                stroke="currentColor"
+                strokeWidth="1.6"
+              />
+            </svg>
+          )}
         </button>
       ) : null}
     </div>

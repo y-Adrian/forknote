@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { KeyboardEvent } from "react";
 import { messagesAfterArchive } from "../lib/archive";
 import { countBranchesInThread } from "../lib/branches";
+import { copyTextToClipboard } from "../lib/clipboard";
+import { buildTurnDiagnosticPacket } from "../lib/conversationDiagnostic";
 import {
   resolveConversationContext,
   resolveThreadView,
@@ -680,6 +682,34 @@ export function MainPanel({
     [recordPassiveCopy],
   );
 
+  const diagnoseMessage = useCallback(async (messageId: NodeId) => {
+    const state = useAppStore.getState();
+    const session = state.sessions.find((s) => s.id === state.activeSessionId);
+    const activeId = state.activeSessionId;
+    const packet = buildTurnDiagnosticPacket({
+      session,
+      thread: state.thread,
+      targetMessageId: messageId,
+      projectRoot: state.projectRoot,
+      sidecarUrl: state.sidecarUrl,
+      sourceMode,
+      loadingMain: Boolean(activeId && state.loadingMainBySession[activeId]),
+      loadingArchive: state.loadingArchiveSessionId === activeId,
+      loadingCompress: state.loadingCompressSessionId === activeId,
+      loadingBranchId: activeId
+        ? state.loadingBranchBySession[activeId] ?? null
+        : null,
+      pendingFileIncludes: state.pendingFileIncludes,
+      agentActivity: activeId
+        ? state.agentActivityBySession[activeId] ?? []
+        : [],
+      agentChanges: activeId
+        ? state.agentChangesBySession[activeId] ?? []
+        : [],
+    });
+    return copyTextToClipboard(packet);
+  }, [sourceMode]);
+
   const editUserMessage = useCallback((text: string) => {
     lastSentPromptRef.current = text;
     focusComposerAfterEditRef.current = true;
@@ -913,6 +943,7 @@ export function MainPanel({
             onAskBranch={askBranch}
             onEditUserMessage={editUserMessage}
             onCopyMessage={copyMessage}
+            onDiagnoseMessage={diagnoseMessage}
             onSwitchToLiveConversation={switchToLiveConversation}
           />
 

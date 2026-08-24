@@ -121,6 +121,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   onToggleBranch,
   onAskBranch,
   onCopyMessage,
+  onDiagnoseMessage,
   pendingInline,
   pendingInlineAssistantId,
 }: {
@@ -134,6 +135,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   onToggleBranch: (branchId: NodeId | null) => void;
   onAskBranch: AskBranch;
   onCopyMessage: (messageId: NodeId) => void;
+  onDiagnoseMessage: (messageId: NodeId) => Promise<boolean>;
   pendingInline: boolean;
   pendingInlineAssistantId: string | null | undefined;
 }) {
@@ -187,6 +189,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               text={msg.content}
               align="start"
               onCopy={() => onCopyMessage(msg.id)}
+              onDiagnose={() => onDiagnoseMessage(msg.id)}
             />
             {loadingMain && isTail && isAgentTurnPlaceholder(msg.content) ? (
               <TurnBusyIndicator label={t("chat.generating")} />
@@ -232,6 +235,7 @@ export interface MainChatMessageListProps {
   onAskBranch: AskBranch;
   onEditUserMessage: (text: string) => void;
   onCopyMessage: (messageId: NodeId) => void;
+  onDiagnoseMessage: (messageId: NodeId) => Promise<boolean>;
   onSwitchToLiveConversation: () => void;
 }
 
@@ -259,6 +263,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
   onAskBranch,
   onEditUserMessage,
   onCopyMessage,
+  onDiagnoseMessage,
   onSwitchToLiveConversation,
 }: MainChatMessageListProps) {
   const { t } = useLocale();
@@ -353,6 +358,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
               onToggleBranch={onToggleBranch}
               onAskBranch={onAskBranch}
               onCopyMessage={onCopyMessage}
+              onDiagnoseMessage={onDiagnoseMessage}
               pendingInline={pendingInline}
               pendingInlineAssistantId={pendingInlineAssistantId}
             />
