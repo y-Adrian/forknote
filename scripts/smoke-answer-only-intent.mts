@@ -296,8 +296,12 @@ for (const q of [
   "当前项目可以用于哪些场景",
   "这个项目有哪些应用场景",
   "当前项目适合做什么",
+  "我可以做哪些延伸",
+  "还有哪些拓展方向",
+  "这个还能怎么扩展",
   "what next steps do you suggest for this project",
   "what use cases does this project support",
+  "what else can we build",
 ]) {
   assert.ok(
     looksLikeProjectContextAdviceRequest(q),
@@ -319,6 +323,12 @@ for (const q of [
     `context advice injects project pack: ${q}`,
   );
 }
+
+assert.equal(
+  hasAgentWorkSignal("我可以做哪些延伸"),
+  false,
+  "contextual extension advice is not project work",
+);
 
 for (const q of [
   "帮我检查代码后给项目优化建议",

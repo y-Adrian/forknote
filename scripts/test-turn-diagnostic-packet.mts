@@ -193,7 +193,7 @@ const adviceDriftThread: ThreadRoot = {
     {
       id: "u3",
       role: "user",
-      content: "当前项目可以用于哪些场景",
+      content: "我可以做哪些延伸",
       children: [],
       createdAt: 1,
     },

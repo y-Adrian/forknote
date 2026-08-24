@@ -2702,11 +2702,15 @@ export function looksLikeProjectContextAdviceRequest(userText: string): boolean 
       t,
     ) ||
     /\b(?:this|current|our|the)\s+(?:project|repo|codebase)\b/i.test(t);
+  const contextualFollowupAdvice =
+    /(?:我|我们|它|这个|这些)?(?:还)?可以做哪些(?:延伸|拓展|扩展)|(?:还有|还可以|还能|可以)?(?:怎么|如何)?(?:延伸|拓展|扩展)|(?:延伸|拓展|扩展)(?:方向|空间|路线|建议|思路)|what\s+else\s+can\s+(?:i|we)\s+(?:build|extend|add)|(?:extension|expansion)\s+(?:ideas?|directions?)/i.test(
+      t,
+    );
   const adviceAsk =
     /建议|优化建议|改进|下一步|后续|怎么(?:做|推进|演进|优化)|如何(?:推进|演进|优化|改进)|方向|路线|规划|优先级|可以做什么|能做什么|用途|应用场景|使用场景|落地场景|适用场景|用于(?:哪些|什么|哪类)?场景|可以用(?:于|来)|能用(?:于|来)|适合(?:用(?:于|来)|做什么|哪些场景)|recommend|suggest|advice|next\s+steps?|roadmap|priorit|use\s*cases?|what\s+(?:can|could)\s+(?:it|this|the\s+project)\s+be\s+used\s+for/i.test(
       t,
     );
-  return projectContext && adviceAsk;
+  return contextualFollowupAdvice || (projectContext && adviceAsk);
 }
 
 /** Asks that need the bound project (keep tools / memory available). */
