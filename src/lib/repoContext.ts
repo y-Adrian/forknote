@@ -3,13 +3,20 @@
  * Not a full IDE index — shallow list + recent paths only.
  */
 
-import { listDir, readFile, type FsEntry } from "./sidecar";
+import {
+  listDir,
+  readFile,
+  semanticSearch,
+  type FsEntry,
+  type SemanticHit,
+} from "./sidecar";
 
 export const RECENT_FILES_STORAGE_KEY = "forknote-recent-files";
 const MAX_RECENT = 24;
 const MAX_HINTS = 20;
 const FILE_INJECT_MAX = 4500;
 const MAX_INCLUDE_FILES = 4;
+const MAX_AUTO_DISCOVERED = 3;
 
 /** How long a shallow listing stays reusable per project root. */
 export const PROJECT_FILE_HINT_TTL_MS = 8_000;
@@ -326,4 +333,45 @@ export async function buildIncludedFilesAddendum(options: {
     "",
     ...blocks,
   ].join("\n");
+}
+
+export function formatDiscoveredCodeAddendum(hits: SemanticHit[]): string | null {
+  const picked = hits.slice(0, MAX_AUTO_DISCOVERED);
+  if (picked.length === 0) return null;
+  return [
+    "【仓库相关代码 · 自动发现】",
+    "- 基于本轮问题用轻量代码检索选出的候选片段；这不是完整索引，编辑前仍需读取源文件确认。",
+    "",
+    ...picked.map((hit) => {
+      const preview = hit.preview.trim().slice(0, 900);
+      return [
+        `### ${hit.path}:${hit.startLine}-${hit.endLine} · ${hit.title}`,
+        "```",
+        preview,
+        "```",
+      ].join("\n");
+    }),
+  ].join("\n");
+}
+
+export async function buildDiscoveredCodeAddendum(options: {
+  query: string;
+  projectRoot: string | null;
+  sidecarUrl: string;
+  signal?: AbortSignal;
+}): Promise<string | null> {
+  const { query, projectRoot, sidecarUrl, signal } = options;
+  if (!projectRoot || !query.trim()) return null;
+  try {
+    const { hits } = await semanticSearch(
+      query,
+      { path: ".", limit: MAX_AUTO_DISCOVERED },
+      sidecarUrl,
+      signal,
+      projectRoot,
+    );
+    return formatDiscoveredCodeAddendum(hits);
+  } catch {
+    return null;
+  }
 }

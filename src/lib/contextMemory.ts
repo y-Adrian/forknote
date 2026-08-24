@@ -17,6 +17,7 @@ import {
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import {
+  buildDiscoveredCodeAddendum,
   buildIncludedFilesAddendum,
   extractAtFileMentions,
   mergeIncludePaths,
@@ -765,6 +766,14 @@ export async function buildAgentMemoryAddendum(options: {
         paths, projectRoot, sidecarUrl, signal,
       });
       if (files) layers.push({ kind: "files", text: files });
+    } else if (!omitProjectPack) {
+      const discovered = await buildDiscoveredCodeAddendum({
+        query,
+        projectRoot,
+        sidecarUrl,
+        signal,
+      });
+      if (discovered) layers.push({ kind: "files", text: discovered });
     }
   }
   return assembleMemoryLayers(layers);
