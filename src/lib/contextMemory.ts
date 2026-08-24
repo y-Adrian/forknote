@@ -53,10 +53,12 @@ import type {
 
 export const MEMORY_FILES = ["SUMMARY.md", "TASKS.md", "DECISIONS.md"] as const;
 export type MemoryFileName = (typeof MEMORY_FILES)[number];
+/** Deterministic project overview written on project bind. */
+export const PROJECT_MEMORY_FILE = "PROJECT.md";
 /** Agent-maintained coding conventions / failures (not LLM-compressed). */
 export const CODING_MEMORY_FILE = "CODING.md";
 
-/** Project-relative folder holding SUMMARY.md / TASKS.md / DECISIONS.md / CODING.md */
+/** Project-relative folder holding PROJECT.md / SUMMARY.md / TASKS.md / DECISIONS.md / CODING.md */
 export const DEFAULT_MEMORY_DIR = ".forknote/memory";
 
 const FILE_MAX_INJECT = 1400;
@@ -196,7 +198,7 @@ export function parseCompressedOutput(raw: string): ContextMemoryPack {
 
 function memoryPath(
   dir: string,
-  file: MemoryFileName | typeof CODING_MEMORY_FILE,
+  file: MemoryFileName | typeof PROJECT_MEMORY_FILE | typeof CODING_MEMORY_FILE,
 ): string {
   return `${dir}/${file}`;
 }
@@ -220,7 +222,7 @@ type MemoryFileRead = { content: string; mtimeMs?: number };
 
 async function readMemoryFile(
   dir: string,
-  file: MemoryFileName | typeof CODING_MEMORY_FILE,
+  file: MemoryFileName | typeof PROJECT_MEMORY_FILE | typeof CODING_MEMORY_FILE,
   sidecarUrl: string,
   signal: AbortSignal | undefined,
   projectRoot: string,
@@ -257,29 +259,34 @@ export async function loadContextMemoryPack(options: {
 
   if (projectRoot) {
     try {
-      const [summaryRes, tasksRes, decisionsRes, codingRes] = await Promise.all([
+      const [projectRes, summaryRes, tasksRes, decisionsRes, codingRes] = await Promise.all([
+        readMemoryFile(dir, PROJECT_MEMORY_FILE, sidecarUrl, signal, projectRoot),
         readMemoryFile(dir, "SUMMARY.md", sidecarUrl, signal, projectRoot),
         readMemoryFile(dir, "TASKS.md", sidecarUrl, signal, projectRoot),
         readMemoryFile(dir, "DECISIONS.md", sidecarUrl, signal, projectRoot),
         readMemoryFile(dir, CODING_MEMORY_FILE, sidecarUrl, signal, projectRoot),
       ]);
+      const project = projectRes.content;
       const summary = summaryRes.content;
       const tasks = tasksRes.content;
       const decisions = decisionsRes.content;
       const coding = codingRes.content;
       if (
+        project.trim() ||
         summary.trim() ||
         tasks.trim() ||
         decisions.trim() ||
         coding.trim()
       ) {
         return {
+          project,
           summary,
           tasks,
           decisions,
           coding,
           // Only content-bearing files contribute to freshness.
           updatedAt: resolveMemoryPackUpdatedAt([
+            project.trim() ? projectRes.mtimeMs : undefined,
             summary.trim() ? summaryRes.mtimeMs : undefined,
             tasks.trim() ? tasksRes.mtimeMs : undefined,
             decisions.trim() ? decisionsRes.mtimeMs : undefined,
@@ -300,6 +307,7 @@ export async function loadContextMemoryPack(options: {
     (local.summary?.trim() ||
       local.tasks?.trim() ||
       local.decisions?.trim() ||
+      local.project?.trim() ||
       local.coding?.trim())
   ) {
     return { ...local, storage: "local" };
@@ -326,7 +334,7 @@ export async function saveContextMemoryPack(options: {
   if (projectRoot) {
     try {
       await mkdir(dir, sidecarUrl, signal, projectRoot);
-      await Promise.all([
+      const writes = [
         writeFile(
           memoryPath(dir, "SUMMARY.md"),
           pack.summary,
@@ -355,7 +363,19 @@ export async function saveContextMemoryPack(options: {
           signal,
           projectRoot,
         ),
-      ]);
+      ];
+      if (pack.project != null) {
+        writes.push(
+          writeFile(
+            memoryPath(dir, PROJECT_MEMORY_FILE),
+            pack.project,
+            sidecarUrl,
+            signal,
+            projectRoot,
+          ),
+        );
+      }
+      await Promise.all(writes);
       return { ...pack, storage: "project" };
     } catch (e) {
       console.warn("[contextMemory] project write failed; keeping local", e);
@@ -457,6 +477,7 @@ function scoreChunkBm25(
   }
 
   // Soft boosts
+  if (chunk.source === PROJECT_MEMORY_FILE) score *= 1.35;
   if (chunk.source === "CODING.md") score *= 1.25;
   if (chunk.source === "TASKS.md") score *= 1.05;
   if (chunk.source === "DECISIONS.md") score *= 1.08;
@@ -470,6 +491,7 @@ export function selectRelevantMemoryExcerpts(
 ): string {
   const queryTokens = tokenize(query);
   const sections: { title: string; body: string }[] = [
+    { title: PROJECT_MEMORY_FILE, body: pack.project ?? "" },
     { title: "CODING.md", body: pack.coding ?? "" },
     { title: "SUMMARY.md", body: pack.summary },
     { title: "TASKS.md", body: pack.tasks },
@@ -521,7 +543,7 @@ export function selectRelevantMemoryExcerpts(
     bySource.set(p.source, list);
   }
 
-  const order = ["CODING.md", "SUMMARY.md", "TASKS.md", "DECISIONS.md"];
+  const order = [PROJECT_MEMORY_FILE, "CODING.md", "SUMMARY.md", "TASKS.md", "DECISIONS.md"];
   const blocks: string[] = [];
   for (const title of order) {
     const parts = bySource.get(title);
@@ -543,8 +565,9 @@ export function formatLocalMemoryAddendum(
       ? `项目目录 ${pack.dir || DEFAULT_MEMORY_DIR}/`
       : "本笔记 localStorage 草稿";
   return [
-    `【项目记忆包 · 本地】（来自 ${where} 的 CODING / SUMMARY / TASKS / DECISIONS）`,
+    `【项目记忆包 · 本地】（来自 ${where} 的 PROJECT / CODING / SUMMARY / TASKS / DECISIONS）`,
     "- 下列为压缩后的跨轮上下文；与当前会话消息冲突时以当前会话为准。",
+    "- PROJECT.md 存放自动项目学习概览，用于快速恢复项目结构与入口。",
     "- CODING.md 存放编码约定与失败教训，优先遵守。",
     "- 仅作背景参考：必须对准用户最新目标作答；勿因记忆包展开旧任务、冗长背景或无关「顺便」工作。",
     "- 不要声称你「天生」记得这些；它们是注入的。",

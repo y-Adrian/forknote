@@ -222,6 +222,12 @@ export type SessionApiOverride = Partial<{
 
 /** LLM-compressed long-term context for agent recovery */
 export interface ContextMemoryPack {
+  /**
+   * Deterministic project learning notes: stack, entrypoints, notable files,
+   * and repo layout. Stored as PROJECT.md under the memory dir when a project
+   * is bound.
+   */
+  project?: string;
   summary: string;
   tasks: string;
   decisions: string;

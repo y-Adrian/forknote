@@ -94,6 +94,7 @@ import {
   truncateAdoptSummary,
 } from "../lib/adoptBranch";
 import { parseAnswerPoints, parseBranchReplyVerdictTarget } from "../lib/points";
+import { saveProjectLearningPack } from "../lib/projectLearning";
 import { createFeedbackEvent } from "../lib/feedback";
 import {
   persistFeedbackIntoUserModel,
@@ -1016,6 +1017,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { sidecarUrl, activeSessionId: bindingSessionId } = get();
     try {
       const { root } = await sidecarOpenProject(path, sidecarUrl);
+      try {
+        await saveProjectLearningPack({
+          settings: get().settings,
+          projectRoot: root,
+          sidecarUrl,
+        });
+      } catch (e) {
+        console.warn("[projectLearning] failed to refresh project pack", e);
+      }
       saveProjectPrefs({ lastPath: root, sidecarUrl });
       const { sessions, activeSessionId } = get();
       const nextSessions = patchSessionProject(
