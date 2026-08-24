@@ -29,10 +29,8 @@ interface Props {
   /** Skip adopted-note cards (used inside the card body itself). */
   skipAdoptedSplit?: boolean;
   /**
-   * While the assistant reply is still streaming, render plain text (no
-   * ReactMarkdown) so each token does not reparse the full answer. Full
-   * remark parse runs once when streaming ends. Diagram fences still defer
-   * via context when a completed body remounts with streaming leftovers.
+   * While the assistant reply is still streaming, render a repaired live
+   * Markdown preview. Diagram fences still defer heavy rendering via context.
    */
   streaming?: boolean;
 }
@@ -255,10 +253,9 @@ const MARKDOWN_COMPONENTS: Components = {
 };
 
 /**
- * Markdown updates in place. While `streaming`, use a lightweight plain-text
- * mount (see `planMarkdownRender`) so token deltas do not reparse the full
- * tree. When streaming ends, ReactMarkdown runs once. Completed diagram fences
- * still defer via `MarkdownStreamingContext` when needed.
+ * Markdown updates in place. While `streaming`, render a repaired live preview
+ * so Markdown syntax does not leak as raw text. Completed diagram fences still
+ * defer via `MarkdownStreamingContext` when needed.
  */
 export const MarkdownBody = memo(function MarkdownBody({
   content,
@@ -269,17 +266,6 @@ export const MarkdownBody = memo(function MarkdownBody({
   const plan = planMarkdownRender(content, streaming);
   if (plan.mode === "empty") {
     return <p className="muted">{t("chat.generating")}</p>;
-  }
-
-  if (plan.mode === "stream-plain") {
-    return (
-      <div
-        className="fn-markdown-mount fn-markdown-streaming"
-        data-fn-md-mode="stream"
-      >
-        {plan.text}
-      </div>
-    );
   }
 
   let markdown = plan.markdown;
@@ -314,7 +300,10 @@ export const MarkdownBody = memo(function MarkdownBody({
 
   return (
     <MarkdownStreamingContext.Provider value={streaming}>
-      <div className="fn-markdown-mount" data-fn-md-mode="full">
+      <div
+        className={`fn-markdown-mount${plan.mode === "stream-preview" ? " fn-markdown-streaming" : ""}`}
+        data-fn-md-mode={plan.mode === "stream-preview" ? "stream-preview" : "full"}
+      >
         <ReactMarkdown
           remarkPlugins={MARKDOWN_REMARK_PLUGINS}
           urlTransform={forknoteUrlTransform}

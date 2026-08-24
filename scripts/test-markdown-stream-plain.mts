@@ -1,16 +1,17 @@
 /**
- * Probe #351: while streaming, chat markdown must stay on a lightweight plain
- * mount — not reparse the full answer with ReactMarkdown on every token.
- * Full parse is reserved for the completed reply.
+ * Probe #351: while streaming, chat markdown should render as a live preview
+ * instead of leaking raw Markdown source. Heavy diagram rendering is still
+ * deferred by component context.
  *
  * Usage: npx tsx scripts/test-markdown-stream-plain.mts
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { planMarkdownRender } from "../src/lib/markdownStream.ts";
+import {
+  closeUnterminatedFence,
+  planMarkdownRender,
+} from "../src/lib/markdownStream.ts";
 
-// Prove the failure mode the fix targets: a growing answer under the old
-// strategy would request a full parse on every token.
 const tokens = [
   "Here",
   "Here is",
@@ -20,21 +21,24 @@ const tokens = [
   "Here is a **bold** list:\n\n1. one\n2. two\n\n```js\nconsole.log(1)\n```",
 ];
 
-let fullWhileStreaming = 0;
 for (const text of tokens) {
   const plan = planMarkdownRender(text, true);
-  if (plan.mode === "full") fullWhileStreaming += 1;
   assert.equal(
     plan.mode,
-    "stream-plain",
-    `streaming token must stay stream-plain, got ${plan.mode}`,
+    "stream-preview",
+    `streaming token must use live preview, got ${plan.mode}`,
   );
-  assert.equal(plan.text, text);
+  assert.equal(plan.markdown, text);
 }
+
+const openFence = "```ts\nconst x = 1;";
+assert.equal(closeUnterminatedFence(openFence), `${openFence}\n\`\`\``);
+const repairedPlan = planMarkdownRender(openFence, true);
+assert.equal(repairedPlan.mode, "stream-preview");
+assert.equal(repairedPlan.markdown, `${openFence}\n\`\`\``);
 assert.equal(
-  fullWhileStreaming,
-  0,
-  "streaming path must never request a full Markdown parse",
+  closeUnterminatedFence("```ts\nconst x = 1;\n```"),
+  "```ts\nconst x = 1;\n```",
 );
 
 const done = planMarkdownRender(tokens[tokens.length - 1]!, false);
@@ -50,14 +54,14 @@ assert.ok(
   "MarkdownBody must consult the stream plan",
 );
 assert.ok(
-  body.includes("fn-markdown-streaming") || body.includes("stream-plain"),
-  "MarkdownBody must render the lightweight stream mount",
+  body.includes("fn-markdown-streaming") &&
+    body.includes("stream-preview") &&
+    body.includes("ReactMarkdown"),
+  "MarkdownBody must render live Markdown preview while streaming",
 );
 assert.ok(
-  /if \(plan\.mode === "stream-plain"\)[\s\S]*return[\s\S]*fn-markdown-streaming/.test(
-    body,
-  ),
-  "stream-plain must short-circuit before ReactMarkdown",
+  !/if \(plan\.mode === "stream-plain"\)/.test(body),
+  "streaming must not short-circuit to raw plain text",
 );
 
 const pointized = readFileSync("src/components/PointizedAnswer.tsx", "utf8");
@@ -69,8 +73,8 @@ assert.ok(
 const css = readFileSync("src/index.css", "utf8");
 assert.ok(
   css.includes(".fn-markdown-streaming"),
-  "stream mount needs pre-wrap styling",
+  "stream preview mount needs explicit styling hook",
 );
 
-console.log("[PASS] streaming markdown stays plain until completion");
+console.log("[PASS] streaming markdown renders as live preview");
 console.log("test-markdown-stream-plain: ok");
