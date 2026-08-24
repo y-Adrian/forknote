@@ -2675,10 +2675,21 @@ export function looksLikeChatDiagramRequest(userText: string): boolean {
   );
 }
 
+/** User asks the agent to summarize what it already knows, not to inspect more. */
+export function looksLikeProjectUnderstandingSummaryRequest(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (hasExplicitRepoActionSignal(t)) return false;
+  return /(?:告诉我|说(?:一)?下|总结(?:一下)?|概括(?:一下)?|梳理(?:一下)?)?(?:现在|当前|目前|到现在)?(?:你)?(?:已经|已)?(?:了解|知道|掌握)(?:到)?(?:的)?(?:项目)?(?:信息|情况|内容)|(?:当前|目前|现在)(?:项目)?(?:你)?(?:了解|知道)(?:了)?(?:什么|哪些)|(?:当前|目前|现在)(?:项目)?(?:已知|认知|理解|认识|上下文)(?:信息|情况|内容|总结)?|(?:项目目标|当前现状|项目现状)(?:总结|梳理)?|what\s+(?:do\s+you\s+know|have\s+you\s+learned|do\s+you\s+understand)\s+(?:so\s+far|about\s+(?:this\s+)?(?:project|repo|codebase))|summari[sz]e\s+(?:what\s+you\s+know|your\s+understanding|the\s+current\s+project\s+context)/i.test(
+    t,
+  );
+}
+
 /** Asks that need the bound project (keep tools / memory available). */
 export function looksLikeProjectGroundedAsk(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
+  if (looksLikeProjectUnderstandingSummaryRequest(t)) return false;
   // Require deixis / clear repo reference so bare「项目结构怎么设计」stays chat-only.
   return /(?:本|此|该|当前|这个)项目(?:的|里|中)?(?:代码|结构|目录|文件)?|在项目(?:里|中)|源代码|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)|看看代码|读(?:一下)?代码|代码(?:里|中)|报错|为什么.*错/i.test(
     t,
@@ -2741,6 +2752,7 @@ export function shouldPreferPlainChatTurn(
   },
 ): boolean {
   if (isChatOnlyDiagramAsk(userText)) return true;
+  if (looksLikeProjectUnderstandingSummaryRequest(userText)) return true;
   if (opts.createPath || opts.officeIntent || opts.shellIntent || opts.exploreIntent) {
     return false;
   }

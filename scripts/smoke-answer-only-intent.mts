@@ -18,6 +18,7 @@ import {
   looksLikeChatDiagramRequest,
   looksLikeMutationRequest,
   looksLikeProjectGroundedAsk,
+  looksLikeProjectUnderstandingSummaryRequest,
   resolveShellIntent,
   shouldPreferPlainChatTurn,
 } from "../src/lib/agentTools.ts";
@@ -71,6 +72,19 @@ assert.ok(
   /Default to a ```mermaid fence/.test(agentTurnSrc) &&
     /默认且优先使用 ```mermaid 围栏/.test(agentTurnSrc),
   "diagram plain-chat system must default to mermaid (live preview)",
+);
+assert.ok(
+  /projectUnderstandingSummaryAsk/.test(agentTurnSrc) &&
+    /forcePlainNoTools/.test(agentTurnSrc) &&
+    /networkOnlyTurn\s*=\s*\n?\s*preferPlainChat\s*&&\s*allowNetworkTools\s*&&\s*!forcePlainNoTools/.test(
+      agentTurnSrc,
+    ),
+  "project-understanding summaries must stay no-tools even when Network is on",
+);
+assert.ok(
+  /询问你当前已了解/.test(agentTurnSrc) &&
+    /禁止继续历史里的构建、CMake、SSH/.test(agentTurnSrc),
+  "summary ask prompt must forbid stale build/tool-task continuation",
 );
 assert.ok(
   !/prefer ```mermaid or ```plantuml/.test(agentTurnSrc) &&
@@ -240,6 +254,33 @@ assert.ok(
   "blogger ask prefers plain chat",
 );
 assert.ok(looksLikeAnswerOnlyRequest(bloggerAsk), "blogger ask is answer-only");
+
+for (const q of [
+  "告诉我现在你了解到的信息",
+  "说一下目前你已经了解的项目情况",
+  "总结一下当前已知信息",
+  "what do you know about this project so far",
+]) {
+  assert.ok(
+    looksLikeProjectUnderstandingSummaryRequest(q),
+    `project understanding summary: ${q}`,
+  );
+  assert.equal(
+    looksLikeProjectGroundedAsk(q),
+    false,
+    `summary ask is not project-grounded work: ${q}`,
+  );
+  assert.ok(
+    shouldPreferPlainChatTurn(q, {}),
+    `summary ask prefers plain chat: ${q}`,
+  );
+  assert.equal(inferExploreIntent(q), null, `summary ask is not explore: ${q}`);
+  assert.equal(
+    shouldInjectProjectPackForPlainChat(q),
+    true,
+    `summary ask injects project pack: ${q}`,
+  );
+}
 
 // Relevance: inventory-shaped explore only — not bare「项目」/ advice.
 for (const q of [

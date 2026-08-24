@@ -2,6 +2,11 @@ import type {
   AgentActivity,
   AgentFileChange,
 } from "./agentTools";
+import {
+  isChatOnlyDiagramAsk,
+  looksLikeProjectUnderstandingSummaryRequest,
+  shouldPreferPlainChatTurn,
+} from "./agentTools";
 import type {
   ApiSettings,
   ArchiveSnapshot,
@@ -165,6 +170,53 @@ function automaticAnalysis(options: {
   ];
 }
 
+function inferredAgentRoute(options: {
+  previousUserText: string;
+  projectRoot: string | null;
+  settings?: ApiSettings | null;
+}): string[] {
+  const text = options.previousUserText;
+  const projectUnderstandingSummary =
+    looksLikeProjectUnderstandingSummaryRequest(text);
+  const chatOnlyDiagram = isChatOnlyDiagramAsk(text);
+  const forcePlainNoTools = projectUnderstandingSummary || chatOnlyDiagram;
+  const preferPlainChat =
+    !options.projectRoot ||
+    forcePlainNoTools ||
+    shouldPreferPlainChatTurn(text, {});
+  const networkEnabled = options.settings?.agentAllowNetwork === true;
+  const terminalEnabled = options.settings?.agentAllowTerminal !== false;
+  const networkOnlyTurn =
+    preferPlainChat && networkEnabled && !forcePlainNoTools;
+  const turnMode = forcePlainNoTools
+    ? "plain-chat/no-tools"
+    : networkOnlyTurn
+      ? "plain-chat/network-tools"
+      : preferPlainChat
+        ? "plain-chat/no-tools"
+        : "project-agent/tools";
+  const availableTools = forcePlainNoTools
+    ? "(none)"
+    : networkOnlyTurn
+      ? "web_search, web_fetch"
+      : options.projectRoot
+        ? terminalEnabled
+          ? "project tools + run_terminal"
+          : "project tools (run_terminal disabled)"
+        : "(none)";
+
+  return [
+    "## Agent Route (inferred)",
+    `- turnMode: ${turnMode}`,
+    `- preferPlainChat: ${bool(preferPlainChat)}`,
+    `- forcePlainNoTools: ${bool(forcePlainNoTools)}`,
+    `- projectUnderstandingSummary: ${bool(projectUnderstandingSummary)}`,
+    `- chatOnlyDiagram: ${bool(chatOnlyDiagram)}`,
+    `- networkOnlyTurn: ${bool(networkOnlyTurn)}`,
+    `- availableTools: ${availableTools}`,
+  ];
+}
+
 export function buildTurnDiagnosticPacket(options: {
   session: ChatSession | null | undefined;
   thread: ThreadRoot | null | undefined;
@@ -218,6 +270,11 @@ export function buildTurnDiagnosticPacket(options: {
     recentActivity,
     recentChanges,
   });
+  const route = inferredAgentRoute({
+    previousUserText: prevUser?.content ?? "",
+    projectRoot,
+    settings,
+  });
 
   return [
     "# ForkNote Turn Diagnostic",
@@ -232,6 +289,8 @@ export function buildTurnDiagnosticPacket(options: {
     "- Suspected area: (prompt / memory / archive / tools / rendering / UI state / unsure)",
     "",
     ...analysis,
+    "",
+    ...route,
     "",
     "## Target",
     `- generatedAt: ${generated}`,
