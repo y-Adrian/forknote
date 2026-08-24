@@ -61,7 +61,8 @@ export const CODING_MEMORY_FILE = "CODING.md";
 /** Project-relative folder holding PROJECT.md / SUMMARY.md / TASKS.md / DECISIONS.md / CODING.md */
 export const DEFAULT_MEMORY_DIR = ".forknote/memory";
 
-const FILE_MAX_INJECT = 1400;
+const FILE_MAX_INJECT = 3000;
+const CORE_MEMORY_SECTION_MAX = 520;
 const SECTION_MAX = 560;
 const CHUNK_MAX = 420;
 /** Keep memory injection lean — extra chunks dilute the user's latest goal. */
@@ -446,6 +447,38 @@ function termFreq(tokens: string[], term: string): number {
   return n;
 }
 
+function firstMemoryChunk(source: string, body: string): string | null {
+  const chunks = chunkMemoryDocument(source, body)
+    .map((c) => c.body.trim())
+    .filter(Boolean);
+  if (chunks.length === 0) return null;
+  let out = "";
+  for (const chunk of chunks) {
+    const next = out ? `${out}\n${chunk}` : chunk;
+    if (next.length > CORE_MEMORY_SECTION_MAX) break;
+    out = next;
+  }
+  if (!out) out = chunks[0]!.slice(0, CORE_MEMORY_SECTION_MAX);
+  return out.length > CORE_MEMORY_SECTION_MAX
+    ? `${out.slice(0, CORE_MEMORY_SECTION_MAX)}…`
+    : out;
+}
+
+/** Small always-on context so lexical ranking cannot drop core constraints. */
+export function selectCoreMemoryExcerpts(pack: ContextMemoryPack): string {
+  const sections: Array<{ title: string; body: string | undefined }> = [
+    { title: PROJECT_MEMORY_FILE, body: pack.project },
+    { title: CODING_MEMORY_FILE, body: pack.coding },
+    { title: "DECISIONS.md", body: pack.decisions },
+  ];
+  const blocks: string[] = [];
+  for (const section of sections) {
+    const body = firstMemoryChunk(section.title, section.body ?? "");
+    if (body) blocks.push(`### ${section.title}\n${body}`);
+  }
+  return blocks.join("\n\n");
+}
+
 /**
  * Lightweight BM25-ish rank over memory chunks (no external deps).
  * Falls back to a light prior when the query has no tokens.
@@ -558,7 +591,15 @@ export function formatLocalMemoryAddendum(
   pack: ContextMemoryPack,
   query: string,
 ): string | null {
-  const excerpts = selectRelevantMemoryExcerpts(pack, query);
+  const core = selectCoreMemoryExcerpts(pack);
+  const relevant = selectRelevantMemoryExcerpts(pack, query);
+  const excerpts = [
+    core ? `## 核心记忆\n${core}` : "",
+    relevant ? `## 相关检索\n${relevant}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, FILE_MAX_INJECT);
   if (!excerpts.trim()) return null;
   const where =
     pack.storage === "project"

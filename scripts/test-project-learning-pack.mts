@@ -6,7 +6,10 @@
  */
 import assert from "node:assert/strict";
 import { buildProjectLearningMarkdown } from "../src/lib/projectLearning.ts";
-import { formatLocalMemoryAddendum } from "../src/lib/contextMemory.ts";
+import {
+  formatLocalMemoryAddendum,
+  selectCoreMemoryExcerpts,
+} from "../src/lib/contextMemory.ts";
 import type { ContextMemoryPack } from "../src/types.ts";
 
 const markdown = buildProjectLearningMarkdown({
@@ -48,16 +51,25 @@ const pack: ContextMemoryPack = {
   project: markdown,
   summary: "",
   tasks: "",
-  decisions: "",
-  coding: "",
+  decisions: "## Architecture\n- Keep project learning deterministic.",
+  coding: "- Prefer search_replace for small edits.",
   updatedAt: Date.now(),
   storage: "project",
   dir: ".forknote/memory",
 };
+const core = selectCoreMemoryExcerpts(pack);
+assert.ok(core.includes("PROJECT.md"));
+assert.ok(core.includes("CODING.md"));
+assert.ok(core.includes("DECISIONS.md"));
+
 const injected = formatLocalMemoryAddendum(pack, "src main tsx entrypoints");
 assert.ok(injected?.includes("PROJECT.md"));
 assert.ok(injected?.includes("Entrypoints"));
 assert.ok(injected?.includes("src/main.tsx"));
+
+const unrelated = formatLocalMemoryAddendum(pack, "totally unrelated words");
+assert.ok(unrelated?.includes("Keep project learning deterministic"));
+assert.ok(unrelated?.includes("Prefer search_replace"));
 
 console.log("[PASS] project learning pack");
 console.log("test-project-learning-pack: ok");
