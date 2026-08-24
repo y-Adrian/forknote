@@ -58,6 +58,12 @@ const VERDICT_OPTIONS: Array<{
   { value: "reject", icon: "✗", titleKey: "verdict.reject" },
 ];
 
+function canInlineVerdictActions(markdown: string): boolean {
+  const text = stripLeakedFeedbackMeta(markdown).trim();
+  if (!text || text.includes("\n")) return false;
+  return !/^(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s|```|~~~|\|)/.test(text);
+}
+
 function PointHypothesisConfirm({
   signal,
   content,
@@ -269,13 +275,16 @@ export function PointizedAnswer({
         const verdict = verdicts?.[point.index];
         const truncated = cut != null && point.index > cut && !verdict;
         const needsHypo = verdict === "unsure" || verdict === "reject";
+        const inlineActions =
+          !truncated && !needsHypo && canInlineVerdictActions(point.content);
+        const pointBlockClass = `point-block${inlineActions ? " can-inline-actions" : ""}${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`;
         return (
           <div
             key={point.index}
             className={`point-row${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}
             data-point-index={point.index}
           >
-            <div className={`point-block${verdict ? ` is-${verdict}` : ""}${truncated ? " is-truncated" : ""}`}>
+            <div className={pointBlockClass}>
               <div className="point-content">
                 <LazyMarkdownBody
                   content={stripLeakedFeedbackMeta(point.content)}

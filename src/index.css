@@ -2128,6 +2128,25 @@ body {
   transition: opacity var(--dur-fast) ease;
 }
 
+.point-block.can-inline-actions .point-content,
+.point-block.can-inline-actions .fn-lazy-md,
+.point-block.can-inline-actions .point-content .fn-markdown-mount {
+  display: inline;
+}
+
+.point-block.can-inline-actions .point-content .fn-markdown-mount > p {
+  display: inline;
+}
+
+.point-block.can-inline-actions .point-verdict-group {
+  display: inline-flex;
+  justify-content: flex-start;
+  margin-top: 0;
+  margin-left: 10px;
+  vertical-align: baseline;
+  transform: translateY(2px);
+}
+
 .point-row:hover .point-verdict-group,
 .point-row.is-accept .point-verdict-group,
 .point-row.is-unsure .point-verdict-group,
