@@ -2140,11 +2140,18 @@ body {
 
 .point-block.can-inline-actions .point-verdict-group {
   display: inline-flex;
-  justify-content: flex-start;
+  float: right;
+  justify-content: flex-end;
   margin-top: 0;
-  margin-left: 10px;
+  margin-left: 12px;
   vertical-align: baseline;
   transform: translateY(2px);
+}
+
+.point-block.can-inline-actions::after {
+  content: "";
+  display: block;
+  clear: both;
 }
 
 .point-row:hover .point-verdict-group,

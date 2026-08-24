@@ -42,4 +42,14 @@ assert(
   "Verdict controls should remain clickable controls while flowing inline.",
 );
 
+assert(
+  css.includes("float: right"),
+  "Inline verdict controls should stay aligned to the right edge.",
+);
+
+assert(
+  css.includes("clear: both"),
+  "Inline verdict controls should be cleared when they wrap to their own line.",
+);
+
 console.log("inline point actions layout guard passed");
