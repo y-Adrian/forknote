@@ -17,6 +17,7 @@ import {
   looksLikeAnswerOnlyRequest,
   looksLikeChatDiagramRequest,
   looksLikeMutationRequest,
+  looksLikeProjectContextAdviceRequest,
   looksLikeProjectGroundedAsk,
   looksLikeProjectUnderstandingSummaryRequest,
   resolveShellIntent,
@@ -79,12 +80,17 @@ assert.ok(
     /networkOnlyTurn\s*=\s*\n?\s*preferPlainChat\s*&&\s*allowNetworkTools\s*&&\s*!forcePlainNoTools/.test(
       agentTurnSrc,
     ),
-  "project-understanding summaries must stay no-tools even when Network is on",
+  "forced plain turns must stay no-tools even when Network is on",
 );
 assert.ok(
   /询问你当前已了解/.test(agentTurnSrc) &&
     /禁止继续历史里的构建、CMake、SSH/.test(agentTurnSrc),
   "summary ask prompt must forbid stale build/tool-task continuation",
+);
+assert.ok(
+  /基于当前项目上下文给建议/.test(agentTurnSrc) &&
+    /依据有限，再给保守建议/.test(agentTurnSrc),
+  "project-context advice prompt must forbid stale tool-task continuation",
 );
 assert.ok(
   !/prefer ```mermaid or ```plantuml/.test(agentTurnSrc) &&
@@ -279,6 +285,46 @@ for (const q of [
     shouldInjectProjectPackForPlainChat(q),
     true,
     `summary ask injects project pack: ${q}`,
+  );
+}
+
+for (const q of [
+  "针对项目，你有什么建议",
+  "基于这个项目，有什么优化建议",
+  "结合当前项目现状给建议",
+  "你觉得这个项目下一步怎么做",
+  "what next steps do you suggest for this project",
+]) {
+  assert.ok(
+    looksLikeProjectContextAdviceRequest(q),
+    `project context advice: ${q}`,
+  );
+  assert.equal(
+    looksLikeProjectGroundedAsk(q),
+    false,
+    `context advice is not project-grounded work: ${q}`,
+  );
+  assert.ok(
+    shouldPreferPlainChatTurn(q, {}),
+    `context advice prefers plain chat: ${q}`,
+  );
+  assert.equal(inferExploreIntent(q), null, `context advice is not explore: ${q}`);
+  assert.equal(
+    shouldInjectProjectPackForPlainChat(q),
+    true,
+    `context advice injects project pack: ${q}`,
+  );
+}
+
+for (const q of [
+  "帮我检查代码后给项目优化建议",
+  "读取仓库后针对项目给建议",
+  "analyze the code and suggest improvements",
+]) {
+  assert.equal(
+    looksLikeProjectContextAdviceRequest(q),
+    false,
+    `inspection advice keeps tools available: ${q}`,
   );
 }
 

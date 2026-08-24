@@ -2685,11 +2685,36 @@ export function looksLikeProjectUnderstandingSummaryRequest(userText: string): b
   );
 }
 
+/** User wants advice from the current project context, not fresh repo work. */
+export function looksLikeProjectContextAdviceRequest(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  if (hasExplicitRepoActionSignal(t)) return false;
+  if (
+    /(?:读取|打开|查看|看看|检查|排查|调试|分析(?:一下)?(?:代码|仓库|文件)|读(?:一下)?(?:代码|仓库|文件)|list_dir|read_file|run_terminal|glob_files|search_files|\bread\b|\bopen\b|\binspect\b|\banaly[sz]e\s+(?:the\s+)?(?:code|repo|repository|files))/i.test(
+      t,
+    )
+  ) {
+    return false;
+  }
+  const projectContext =
+    /(?:针对|基于|结合|围绕|从)(?:当前|目前|这个|该|本|现有)?项目|(?:当前|目前|这个|该|本|现有)项目|项目(?:现状|目标|上下文|背景|信息)/i.test(
+      t,
+    ) ||
+    /\b(?:this|current|our|the)\s+(?:project|repo|codebase)\b/i.test(t);
+  const adviceAsk =
+    /建议|优化建议|改进|下一步|后续|怎么(?:做|推进|演进|优化)|如何(?:推进|演进|优化|改进)|方向|路线|规划|优先级|recommend|suggest|advice|next\s+steps?|roadmap|priorit/i.test(
+      t,
+    );
+  return projectContext && adviceAsk;
+}
+
 /** Asks that need the bound project (keep tools / memory available). */
 export function looksLikeProjectGroundedAsk(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
   if (looksLikeProjectUnderstandingSummaryRequest(t)) return false;
+  if (looksLikeProjectContextAdviceRequest(t)) return false;
   // Require deixis / clear repo reference so bare「项目结构怎么设计」stays chat-only.
   return /(?:本|此|该|当前|这个)项目(?:的|里|中)?(?:代码|结构|目录|文件)?|在项目(?:里|中)|源代码|仓库|代码库|codebase|this\s+(?:repo|project|codebase)|our\s+(?:code|project|repo|codebase)|基于(?:现有)?(?:代码|项目|仓库)|根据(?:现有)?(?:代码|项目|仓库)|from\s+(?:the\s+)?(?:repo|codebase|project)|看看代码|读(?:一下)?代码|代码(?:里|中)|报错|为什么.*错/i.test(
     t,
@@ -2753,6 +2778,7 @@ export function shouldPreferPlainChatTurn(
 ): boolean {
   if (isChatOnlyDiagramAsk(userText)) return true;
   if (looksLikeProjectUnderstandingSummaryRequest(userText)) return true;
+  if (looksLikeProjectContextAdviceRequest(userText)) return true;
   if (opts.createPath || opts.officeIntent || opts.shellIntent || opts.exploreIntent) {
     return false;
   }

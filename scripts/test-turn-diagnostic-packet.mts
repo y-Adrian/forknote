@@ -186,6 +186,53 @@ assert.match(driftPacket, /projectUnderstandingSummary: yes/);
 assert.match(driftPacket, /networkOnlyTurn: no/);
 assert.match(driftPacket, /availableTools: \(none\)/);
 
+const adviceDriftThread: ThreadRoot = {
+  id: "thread_advice_drift",
+  createdAt: 1,
+  messages: [
+    {
+      id: "u3",
+      role: "user",
+      content: "针对项目，你有什么建议",
+      children: [],
+      createdAt: 1,
+    },
+    {
+      id: "a3",
+      role: "assistant",
+      content: "我无法调用 read_file。要继续修复 SYSROOT_DIR，请贴出 CMake 输出。",
+      children: [],
+      createdAt: 2,
+    },
+  ],
+};
+
+const adviceDriftPacket = buildTurnDiagnosticPacket({
+  session: { ...session, id: "s3", thread: adviceDriftThread },
+  thread: adviceDriftThread,
+  targetMessageId: "a3",
+  projectRoot: "/Users/me/project",
+  sidecarUrl: "/sidecar",
+  sourceMode: false,
+  loadingMain: false,
+  loadingArchive: false,
+  loadingCompress: false,
+  loadingBranchId: null,
+  pendingFileIncludes: [],
+  agentActivity: [],
+  agentChanges: [],
+  settings: { agentAllowNetwork: true, agentAllowTerminal: true },
+  generatedAt: Date.parse("2026-08-24T00:00:00.000Z"),
+});
+
+assert.match(adviceDriftPacket, /previousUserIntent: project-context-advice/);
+assert.match(adviceDriftPacket, /assistantActualIntent: build-error-troubleshooting/);
+assert.match(adviceDriftPacket, /alignment: mismatch/);
+assert.match(adviceDriftPacket, /turnMode: plain-chat\/no-tools/);
+assert.match(adviceDriftPacket, /projectContextAdvice: yes/);
+assert.match(adviceDriftPacket, /networkOnlyTurn: no/);
+assert.match(adviceDriftPacket, /availableTools: \(none\)/);
+
 const actions = readFileSync("src/components/MessageActions.tsx", "utf8");
 assert.ok(actions.includes("onDiagnose"), "MessageActions exposes diagnose action");
 const list = readFileSync("src/components/MainChatMessageList.tsx", "utf8");

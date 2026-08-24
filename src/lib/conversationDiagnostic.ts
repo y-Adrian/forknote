@@ -4,6 +4,7 @@ import type {
 } from "./agentTools";
 import {
   isChatOnlyDiagramAsk,
+  looksLikeProjectContextAdviceRequest,
   looksLikeProjectUnderstandingSummaryRequest,
   shouldPreferPlainChatTurn,
 } from "./agentTools";
@@ -23,6 +24,8 @@ const BUILD_ERROR_RE =
   /sysroot|cmake|toolchain|configure|编译|交叉编译|链接|报错|error|failed/i;
 const PROJECT_SUMMARY_RE =
   /了解到的信息|现在.*了解|项目.*信息|项目.*现状|项目目标|当前现状|模块|架构|总结/i;
+const PROJECT_ADVICE_RE =
+  /针对.*项目.*建议|项目.*建议|优化建议|下一步|后续.*(?:推进|演进)|项目.*(?:方向|路线|规划|优先级)|project.*(?:advice|next steps?|roadmap|suggest|recommend)/i;
 const CONVERSATION_DEBUG_RE =
   /对话.*逻辑|逻辑.*不对|诊断|上下文|记忆|串线|错位|回答.*问题/i;
 
@@ -105,6 +108,7 @@ function classifyUserIntent(content: string | null | undefined): string {
   if (!text.trim()) return "unknown";
   if (CONVERSATION_DEBUG_RE.test(text)) return "conversation-diagnostic";
   if (PROJECT_SUMMARY_RE.test(text)) return "project-understanding-summary";
+  if (PROJECT_ADVICE_RE.test(text)) return "project-context-advice";
   if (BUILD_ERROR_RE.test(text)) return "build-error-troubleshooting";
   return "general-question";
 }
@@ -115,6 +119,7 @@ function classifyAssistantIntent(content: string | null | undefined): string {
   if (BUILD_ERROR_RE.test(text)) return "build-error-troubleshooting";
   if (CONVERSATION_DEBUG_RE.test(text)) return "conversation-diagnostic";
   if (PROJECT_SUMMARY_RE.test(text)) return "project-understanding-summary";
+  if (PROJECT_ADVICE_RE.test(text)) return "project-context-advice";
   return "general-answer";
 }
 
@@ -178,8 +183,10 @@ function inferredAgentRoute(options: {
   const text = options.previousUserText;
   const projectUnderstandingSummary =
     looksLikeProjectUnderstandingSummaryRequest(text);
+  const projectContextAdvice = looksLikeProjectContextAdviceRequest(text);
   const chatOnlyDiagram = isChatOnlyDiagramAsk(text);
-  const forcePlainNoTools = projectUnderstandingSummary || chatOnlyDiagram;
+  const forcePlainNoTools =
+    projectUnderstandingSummary || projectContextAdvice || chatOnlyDiagram;
   const preferPlainChat =
     !options.projectRoot ||
     forcePlainNoTools ||
@@ -211,6 +218,7 @@ function inferredAgentRoute(options: {
     `- preferPlainChat: ${bool(preferPlainChat)}`,
     `- forcePlainNoTools: ${bool(forcePlainNoTools)}`,
     `- projectUnderstandingSummary: ${bool(projectUnderstandingSummary)}`,
+    `- projectContextAdvice: ${bool(projectContextAdvice)}`,
     `- chatOnlyDiagram: ${bool(chatOnlyDiagram)}`,
     `- networkOnlyTurn: ${bool(networkOnlyTurn)}`,
     `- availableTools: ${availableTools}`,

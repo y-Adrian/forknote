@@ -29,6 +29,7 @@ import {
   isChatOnlyDiagramAsk,
   looksLikeAnswerOnlyRequest,
   looksLikeMutationRequest,
+  looksLikeProjectContextAdviceRequest,
   looksLikeProjectGroundedAsk,
   looksLikeProjectUnderstandingSummaryRequest,
   mutationPlanNoToolsAction,
@@ -190,6 +191,7 @@ function thinkingSecondsFromTiming(
 export function shouldInjectProjectPackForPlainChat(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
+  if (looksLikeProjectContextAdviceRequest(t)) return true;
   if (looksLikeProjectUnderstandingSummaryRequest(t)) return true;
   if (looksLikeProjectGroundedAsk(t)) return true;
   return /(?:之前|先前|前面|刚才|上次|历史|记录|记忆|归档|总结|结论|决策|做了什么|我们做过什么|操作记录|memory|history|previous|earlier|last time|what did we do|what have we done|decision|archive|summary)/i.test(
@@ -298,10 +300,13 @@ export async function runAgentTurn(
   const trimmed = userText.trim();
   /** Mermaid/画图 etc.: answer in chat; do not continue old project memory/tools. */
   const chatOnlyDiagramAsk = isChatOnlyDiagramAsk(trimmed);
+  const projectContextAdviceAsk = looksLikeProjectContextAdviceRequest(trimmed);
   const projectUnderstandingSummaryAsk =
     looksLikeProjectUnderstandingSummaryRequest(trimmed);
   const forcePlainNoTools =
-    chatOnlyDiagramAsk || projectUnderstandingSummaryAsk;
+    chatOnlyDiagramAsk ||
+    projectContextAdviceAsk ||
+    projectUnderstandingSummaryAsk;
 
   const planLlm = withAgentPhaseModel(llm, "plan");
   const codeLlm = withAgentPhaseModel(llm, "code");
@@ -358,6 +363,7 @@ export async function runAgentTurn(
   const preferPlainChat =
     !projectRoot ||
     chatOnlyDiagramAsk ||
+    projectContextAdviceAsk ||
     projectUnderstandingSummaryAsk ||
     shouldPreferPlainChatTurn(trimmed, {
       createPath,
@@ -444,12 +450,16 @@ export async function runAgentTurn(
       role: "system",
       content:
         locale === "zh"
-          ? projectUnderstandingSummaryAsk
+          ? projectContextAdviceAsk
+            ? "用户最新消息是在要求基于当前项目上下文给建议/下一步方向。必须只基于当前对话、已注入记忆/项目包和已真实读取过的内容给出建议；禁止继续历史里的构建、CMake、SSH、工具失败或未完成计划；禁止声称工具不可用；禁止调用或提及 web_search/web_fetch/list_dir/read_file/run_terminal 等工具。若材料不足，先说明依据有限，再给保守建议。"
+            : projectUnderstandingSummaryAsk
             ? "用户最新消息是在询问你当前已了解/已掌握的项目信息。必须只基于当前对话、已注入记忆/项目包和已真实读取过的内容做简短总结；禁止继续历史里的构建、CMake、SSH、工具失败或未完成计划；禁止声称工具不可用；禁止调用或提及 web_search/web_fetch/list_dir/read_file/run_terminal 等工具。若材料不足，直接说明哪些信息为空或尚未掌握。"
             : chatOnlyDiagramAsk
             ? "用户最新消息是聊天内绘图/示意图请求（如「随便画个图」、流程图、架构图等）。必须严格依据该条消息作答：直接用 Markdown 输出图。默认且优先使用 ```mermaid 围栏（客户端可实时渲染）；仅当用户明确要求 PlantUML / puml 时才用 ```plantuml（可在设置中启用服务端/本地渲染，否则仅源码）。可附一句极短说明。禁止调用或提及任何项目工具（list_dir/read_file/write_file/run_terminal 等），禁止探索仓库，禁止延续记忆/历史里的构建、验证、CMake、git 等旧任务，禁止输出与绘图无关的长「总结」。"
             : "用户最新消息是普通问答/建议/概念讨论，并未明确要求你改仓库、跑命令或创建文件。请直接用 Markdown 对准其核心目标凝练作答（先结论/建议，少铺垫）；禁止调用任何项目工具，禁止探索/读取/修改仓库，禁止擅自 write_file 或「落地」文档；不要把记忆里的旧项目任务当作本轮目标，不要写成冗长报告。"
-          : projectUnderstandingSummaryAsk
+          : projectContextAdviceAsk
+            ? "The latest user message asks for advice/next steps based on the current project context. Give advice only from the current conversation, injected memory/project pack, and content actually read before. Do not continue old build/CMake/SSH/tool-failure/unfinished tasks; do not claim tools are unavailable; do not call or mention web_search/web_fetch/list_dir/read_file/run_terminal. If context is thin, state that briefly and give conservative advice."
+            : projectUnderstandingSummaryAsk
             ? "The latest user message asks what you currently know/understand about the project. Summarize only from the current conversation, injected memory/project pack, and content actually read before. Do not continue old build/CMake/SSH/tool-failure/unfinished tasks; do not claim tools are unavailable; do not call or mention web_search/web_fetch/list_dir/read_file/run_terminal. If context is thin, say what is empty or not yet known."
             : chatOnlyDiagramAsk
             ? "The latest user message is a chat diagram request (e.g. draw a diagram, flowchart, architecture). Answer that message only: emit the diagram in Markdown. Default to a ```mermaid fence (client renders live); use ```plantuml only if the user explicitly asked for PlantUML/puml (opt-in server/local render in Settings, otherwise source-only). Optionally add one short sentence. Do not call or mention project tools (list_dir/read_file/write_file/run_terminal, etc.), do not explore the repo, do not continue old build/verify/CMake/git work from memory or history, and do not dump an unrelated summary."
