@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import {
   mergeReasoningChannels,
+  peelWholeChineseMetaReasoning,
   peelUntaggedBilingualReasoning,
 } from "../src/lib/reasoning.ts";
 
@@ -62,6 +63,28 @@ const taggedMerged = mergeReasoningChannels("", tagged, {
 assert.match(taggedMerged.reasoning, /The user asked for ls/);
 assert.match(taggedMerged.content, /已列出当前目录/);
 assert.ok(!/<think>/.test(taggedMerged.content));
+
+const zhMetaOnly = [
+  "我们需要理解用户的问题：用户最新消息是“根据当前项目的现状，你有什么建议”。",
+  "这是在要求给建议，属于B类（偏求助/指导/决策），应该用【N】分点给出可独立取舍的建议。",
+  "注意结构：偏求助/指导/决策，所以用【1】、【2】等分点，行首【N】。",
+  "不要提及工具不可用等内容，不要提及 web_search 等工具。",
+  "用户想要的是项目层面的建议，不是工具层面的。",
+].join("\n\n");
+
+const zhMetaOnlyPeeled = peelWholeChineseMetaReasoning(zhMetaOnly, {
+  expectChineseAnswer: true,
+});
+assert.equal(zhMetaOnlyPeeled.peeled, true);
+assert.equal(zhMetaOnlyPeeled.content, "");
+assert.match(zhMetaOnlyPeeled.reasoning, /我们需要理解用户的问题/);
+
+const zhMetaOnlyMerged = mergeReasoningChannels("", zhMetaOnly, {
+  expectChineseAnswer: true,
+  hidePeeledReasoning: true,
+});
+assert.equal(zhMetaOnlyMerged.content, "");
+assert.equal(zhMetaOnlyMerged.reasoning, "");
 
 // expectChineseAnswer false → no peel even if mixed
 assert.equal(

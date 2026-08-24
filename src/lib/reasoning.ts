@@ -30,6 +30,13 @@ const EN_META_OPEN_RE =
 const ZH_META_OPEN_RE =
   /^(?:我们需要|用户(?:最新|要求|说)|需要调用|让我们|因此我|所以我|注意[：:]|实际上|计划阶段|严格服从|为了安全|我认为|仔细阅读|看历史|然而|或许|根据规则|系统说|系统提示)/;
 
+/** Stricter opener for all-meta leaks that never reach a real answer. */
+const ZH_META_ONLY_OPEN_RE =
+  /^(?:我们需要(?:理解|判断|遵循|根据)|用户(?:最新消息|的问题|要求|说)|需要(?:理解用户|根据规则|遵循)|注意(?:结构|格式|上下文|规则)|回答(?:格式|应该)|根据(?:规则|系统提示)|系统(?:说|提示)|这属于[ABC]类)/;
+
+const ZH_META_ONLY_MARK_RE =
+  /用户|最新消息|问题|格式|分点|结构|应该|不要|禁止|注意|上下文|系统提示|规则|工具|调用|历史|记忆|回答/g;
+
 /** Chinese answer / status openers that mark the end of meta-CoT. */
 const ZH_ANSWER_OPEN_RE =
   /^(?:已(?:按要求)?(?:完成|执行|列出|修改|创建)|任务已完成|以下是|完整输出|命令成功|我先(?:运行|执行)|现在(?:开始|执行|调用)|将先执行|需要批准后才能运行)/;
@@ -203,9 +210,49 @@ export function peelUntaggedChineseMetaReasoning(
   return { content, reasoning: meta, peeled: true };
 }
 
+/**
+ * Hide a complete Chinese meta monologue that never transitions into an answer.
+ * This catches leaks like “我们需要理解用户的问题…注意结构…不要写元数据”.
+ */
+export function peelWholeChineseMetaReasoning(
+  raw: string,
+  opts?: { expectChineseAnswer?: boolean },
+): { content: string; reasoning: string; peeled: boolean } {
+  if (!opts?.expectChineseAnswer) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  const text = raw.trim();
+  if (!text || !CJK_RE.test(text) || text.length < 120) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  if (/^```/.test(text)) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  if (!ZH_META_ONLY_OPEN_RE.test(text.slice(0, 120))) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  const answerLikeParas = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => ZH_ANSWER_OPEN_RE.test(p));
+  if (answerLikeParas.length > 0) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  const markers = text.match(ZH_META_ONLY_MARK_RE) ?? [];
+  const hasFormatMeta =
+    /(?:【N】|行首|分点|格式|结构|元数据|本轮结构|[ABC]类)/.test(text);
+  if (markers.length < 6 || !hasFormatMeta) {
+    return { content: raw, reasoning: "", peeled: false };
+  }
+  return { content: "", reasoning: text, peeled: true };
+}
+
 export type MergeReasoningOptions = {
   /** When true (zh UI / CJK ask), peel untagged English/Chinese meta-CoT before answers. */
   expectChineseAnswer?: boolean;
+  /** Hide untagged meta leaks from the visible reasoning block too. */
+  hidePeeledReasoning?: boolean;
 };
 
 /** Merge API reasoning channel with any think-tags found in content. */
@@ -233,11 +280,26 @@ export function mergeReasoningChannels(
       if (zhPeeled.peeled) {
         content = zhPeeled.content;
         peeledReasoning = zhPeeled.reasoning;
+      } else {
+        const zhMetaOnly = peelWholeChineseMetaReasoning(content, {
+          expectChineseAnswer: true,
+        });
+        if (zhMetaOnly.peeled) {
+          content = zhMetaOnly.content;
+          peeledReasoning = zhMetaOnly.reasoning;
+        }
       }
     }
   }
 
-  const reasoning = [apiReasoning.trim(), fromTags.reasoning.trim(), peeledReasoning.trim()]
+  const visiblePeeledReasoning = opts?.hidePeeledReasoning
+    ? ""
+    : peeledReasoning;
+  const reasoning = [
+    apiReasoning.trim(),
+    fromTags.reasoning.trim(),
+    visiblePeeledReasoning.trim(),
+  ]
     .filter(Boolean)
     .join("\n\n")
     .trim();

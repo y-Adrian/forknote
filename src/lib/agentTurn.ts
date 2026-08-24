@@ -187,6 +187,12 @@ function thinkingSecondsFromTiming(
   return Math.max(1, Math.round((endAt - startAt) / 1000));
 }
 
+function hiddenInternalReasoningFallback(locale: Locale): string {
+  return locale === "zh"
+    ? "本次生成只包含内部思考，已隐藏。请重试生成。"
+    : "This generation only contained internal reasoning, so it was hidden. Please retry.";
+}
+
 /** Plain-chat asks that still need injected memory/project orientation. */
 export function shouldInjectProjectPackForPlainChat(userText: string): boolean {
   const t = userText.trim();
@@ -224,11 +230,19 @@ async function streamPlainChatAnswer(args: {
     apiMessages,
     (delta) => {
       roundText += delta;
-      const cleaned = stripToolCalls(roundText);
+      const merged = mergeReasoningChannels(
+        apiReasoning,
+        stripToolCalls(roundText),
+        {
+          expectChineseAnswer: locale === "zh",
+          hidePeeledReasoning: true,
+        },
+      );
+      const cleaned = merged.content;
       if (cleaned.length > 0) {
         patchAssistantState({
           content: cleaned,
-          ...(apiReasoning.trim() ? { reasoning: apiReasoning } : {}),
+          ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
         });
       }
     },
@@ -257,10 +271,18 @@ async function streamPlainChatAnswer(args: {
   const merged = mergeReasoningChannels(
     apiReasoning,
     stripToolCalls(roundText),
-    { expectChineseAnswer: locale === "zh" },
+    {
+      expectChineseAnswer: locale === "zh",
+      hidePeeledReasoning: true,
+    },
   );
+  const finalContent =
+    merged.content ||
+    (stripToolCalls(roundText).trim()
+      ? hiddenInternalReasoningFallback(locale)
+      : "");
   patchAssistantState({
-    content: merged.content,
+    content: finalContent,
     ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
     ...(merged.reasoning.trim()
       ? {
@@ -812,14 +834,22 @@ export async function runAgentTurn(
           apiMessages,
           (delta) => {
             roundText += delta;
-            const cleaned = stripToolCalls(roundText);
+            const merged = mergeReasoningChannels(
+              apiReasoning,
+              stripToolCalls(roundText),
+              {
+                expectChineseAnswer: locale === "zh",
+                hidePeeledReasoning: true,
+              },
+            );
+            const cleaned = merged.content;
             if (cleaned.length > 0) {
               patchAssistantState({
                 content: visibleContent
                   ? `${visibleContent}\n\n${cleaned}`.trim()
                   : cleaned,
-                ...(apiReasoning.trim()
-                  ? { reasoning: apiReasoning }
+                ...(merged.reasoning.trim()
+                  ? { reasoning: merged.reasoning }
                   : {}),
               });
             } else if (!visibleContent && projectRoot) {
@@ -891,10 +921,18 @@ export async function runAgentTurn(
         const merged = mergeReasoningChannels(
           apiReasoning,
           stripToolCalls(roundText),
-          { expectChineseAnswer: locale === "zh" },
+          {
+            expectChineseAnswer: locale === "zh",
+            hidePeeledReasoning: true,
+          },
         );
         apiReasoning = merged.reasoning;
-        roundText = merged.content;
+        const rawVisibleRound = stripToolCalls(roundText).trim();
+        roundText =
+          merged.content ||
+          (rawVisibleRound
+            ? hiddenInternalReasoningFallback(locale)
+            : "");
         if (apiReasoning.trim()) {
           patchAssistantState({
             reasoning: apiReasoning,
