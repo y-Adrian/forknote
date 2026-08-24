@@ -90,19 +90,43 @@ const packet = buildTurnDiagnosticPacket({
     { id: "act1", kind: "search", message: "semantic_search", at: 7 },
   ],
   agentChanges: [{ path: "src/App.tsx", size: 123, at: 8 }],
+  settings: {
+    baseUrl: "https://api.example.com/v1",
+    apiKey: "GLOBAL_SECRET_SHOULD_NOT_APPEAR",
+    model: "global-model",
+    useProxy: true,
+    memoryLayerPreferences: true,
+    memoryLayerProject: true,
+    memoryLayerSession: false,
+    compressAfterArchive: true,
+    contextAutoSummary: true,
+    contextWindowTurns: 64,
+    agentRequireApproval: true,
+    agentAllowTerminal: true,
+    agentAllowNetwork: false,
+    agentAutoDiagnostics: true,
+  },
   generatedAt: Date.parse("2026-08-24T00:00:00.000Z"),
 });
 
 assert.match(packet, /ForkNote Turn Diagnostic/);
+assert.match(packet, /Problem observed/);
 assert.match(packet, /previousUser: user u1/);
 assert.match(packet, /targetMessage: assistant a1/);
+assert.match(packet, /renderMode: full-preview/);
+assert.match(packet, /Nearby Message Index/);
 assert.match(packet, /为什么当前对话逻辑不对/);
 assert.match(packet, /可能是记忆注入问题/);
 assert.match(packet, /PROJECT\.md chars: 9/);
 assert.match(packet, /activeArchiveTitle: Prior archive/);
+assert.match(packet, /model: x/);
+assert.match(packet, /baseUrlHost: https:\/\/api\.example\.com/);
+assert.match(packet, /memoryLayerSession: off/);
+assert.match(packet, /contextWindowTurns: 64/);
 assert.match(packet, /semantic_search/);
 assert.match(packet, /src\/App\.tsx/);
 assert.doesNotMatch(packet, /SECRET_SHOULD_NOT_APPEAR/);
+assert.doesNotMatch(packet, /GLOBAL_SECRET_SHOULD_NOT_APPEAR/);
 assert.doesNotMatch(packet, /apiKey/i);
 
 const actions = readFileSync("src/components/MessageActions.tsx", "utf8");

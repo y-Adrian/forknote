@@ -706,6 +706,7 @@ export function MainPanel({
       agentChanges: activeId
         ? state.agentChangesBySession[activeId] ?? []
         : [],
+      settings: state.settings,
     });
     return copyTextToClipboard(packet);
   }, [sourceMode]);

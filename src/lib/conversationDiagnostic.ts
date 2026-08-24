@@ -3,6 +3,7 @@ import type {
   AgentFileChange,
 } from "./agentTools";
 import type {
+  ApiSettings,
   ArchiveSnapshot,
   ChatMessage,
   ChatSession,
@@ -12,6 +13,7 @@ import type {
 
 const SNIP = 1600;
 const SMALL_SNIP = 420;
+const NEARBY_RADIUS = 2;
 
 function truncate(text: string | null | undefined, max = SNIP): string {
   const t = (text ?? "").trim();
@@ -46,6 +48,47 @@ function previousUserMessage(
   return null;
 }
 
+function safeUrlHost(raw: string | null | undefined): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "(empty)";
+  if (value.startsWith("/")) return value;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return "(invalid/hidden)";
+  }
+}
+
+function settingBool(value: boolean | undefined, fallback = true): string {
+  return value ?? fallback ? "on" : "off";
+}
+
+function nearbyMessageIndex(messages: ChatMessage[], targetIndex: number): string {
+  if (targetIndex < 0) return "- target message not found in thread";
+  const start = Math.max(0, targetIndex - NEARBY_RADIUS);
+  const end = Math.min(messages.length, targetIndex + NEARBY_RADIUS + 1);
+  return messages
+    .slice(start, end)
+    .map((m, offset) => {
+      const i = start + offset;
+      const marker = i === targetIndex ? " <-- target" : "";
+      const text = truncate(m.content, 180).replace(/\n+/g, " / ");
+      return `- [${i}] ${messageLabel(m)} chars=${m.content.length}${marker}: ${text}`;
+    })
+    .join("\n");
+}
+
+function renderModeFor(options: {
+  targetIsTail: boolean;
+  sourceMode: boolean;
+  loadingMain: boolean;
+}): string {
+  if (options.sourceMode) return "source/raw-markdown";
+  if (options.loadingMain && options.targetIsTail) return "stream-preview";
+  return "full-preview";
+}
+
 export function buildTurnDiagnosticPacket(options: {
   session: ChatSession | null | undefined;
   thread: ThreadRoot | null | undefined;
@@ -60,6 +103,7 @@ export function buildTurnDiagnosticPacket(options: {
   pendingFileIncludes: string[];
   agentActivity: AgentActivity[];
   agentChanges: AgentFileChange[];
+  settings?: ApiSettings | null;
   generatedAt?: number;
 }): string {
   const {
@@ -76,6 +120,7 @@ export function buildTurnDiagnosticPacket(options: {
     pendingFileIncludes,
     agentActivity,
     agentChanges,
+    settings,
   } = options;
   const messages = thread?.messages ?? [];
   const targetIndex = messages.findIndex((m) => m.id === targetMessageId);
@@ -87,6 +132,10 @@ export function buildTurnDiagnosticPacket(options: {
   const recentChanges = agentChanges.slice(-8);
   const recentFeedback = (session?.feedbackLog ?? []).slice(-12);
   const generated = new Date(options.generatedAt ?? Date.now()).toISOString();
+  const targetIsTail = targetIndex === messages.length - 1;
+  const renderMode = renderModeFor({ targetIsTail, sourceMode, loadingMain });
+  const sessionApi = session?.api;
+  const effectiveModel = sessionApi?.model?.trim() || settings?.model?.trim() || "(empty)";
 
   return [
     "# ForkNote Turn Diagnostic",
@@ -94,12 +143,20 @@ export function buildTurnDiagnosticPacket(options: {
     "Paste this whole packet when asking someone to debug a conversation/logical issue.",
     "It is generated from local UI state; API keys and full API settings are intentionally omitted.",
     "",
+    "## User Report",
+    "- Problem observed: (fill in what looked wrong)",
+    "- Expected behavior: (fill in what should have happened)",
+    "- Actual behavior: (fill in what happened instead)",
+    "- Suspected area: (prompt / memory / archive / tools / rendering / UI state / unsure)",
+    "",
     "## Target",
     `- generatedAt: ${generated}`,
     `- session: ${session?.id ?? "(none)"} · ${session?.title ?? "(untitled)"}`,
     `- targetMessage: ${target ? messageLabel(target) : targetMessageId}`,
     `- previousUser: ${prevUser ? messageLabel(prevUser) : "(none)"}`,
     `- sourceMode: ${bool(sourceMode)}`,
+    `- renderMode: ${renderMode}`,
+    `- targetIsTail: ${bool(targetIsTail)}`,
     "",
     "## Runtime State",
     `- contextMode: ${session?.contextMode ?? "live"}`,
@@ -114,6 +171,22 @@ export function buildTurnDiagnosticPacket(options: {
     `- projectRoot: ${projectRoot ?? "(none)"}`,
     `- pendingFileIncludes: ${pendingFileIncludes.length ? pendingFileIncludes.join(", ") : "(none)"}`,
     "",
+    "## Effective Settings (sanitized)",
+    `- model: ${effectiveModel}`,
+    `- baseUrlHost: ${safeUrlHost(sessionApi?.baseUrl || settings?.baseUrl)}`,
+    `- sessionApiOverride: ${sessionApi ? "yes" : "no"}`,
+    `- useProxy: ${sessionApi?.useProxy ?? settings?.useProxy ?? "(default)"}`,
+    `- memoryLayerPreferences: ${settingBool(settings?.memoryLayerPreferences)}`,
+    `- memoryLayerProject: ${settingBool(settings?.memoryLayerProject ?? settings?.contextMemoryEnabled)}`,
+    `- memoryLayerSession: ${settingBool(settings?.memoryLayerSession)}`,
+    `- compressAfterArchive: ${settingBool(settings?.compressAfterArchive, false)}`,
+    `- contextAutoSummary: ${settingBool(settings?.contextAutoSummary)}`,
+    `- contextWindowTurns: ${settings?.contextWindowTurns ?? "(default)"}`,
+    `- agentRequireApproval: ${settingBool(settings?.agentRequireApproval)}`,
+    `- agentAllowTerminal: ${settingBool(settings?.agentAllowTerminal)}`,
+    `- agentAllowNetwork: ${settingBool(settings?.agentAllowNetwork, false)}`,
+    `- agentAutoDiagnostics: ${settingBool(settings?.agentAutoDiagnostics)}`,
+    "",
     "## Memory / Archive",
     `- shareMemory: ${session?.shareMemory === false ? "no" : "yes/default"}`,
     `- projectMemoryStorage: ${memory?.storage ?? "(none)"}`,
@@ -126,6 +199,11 @@ export function buildTurnDiagnosticPacket(options: {
     `- sessionMemory chars: ${session?.sessionMemory?.summary?.length ?? 0}`,
     `- archiveCount: ${session?.archives?.length ?? 0}`,
     `- activeArchiveTitle: ${archive?.title ?? "(none)"}`,
+    `- archiveThroughMessageId: ${archive?.throughMessageId ?? "(none)"}`,
+    `- memoryThroughMessageId: ${memory?.throughMessageId ?? "(none)"}`,
+    "",
+    "## Nearby Message Index",
+    nearbyMessageIndex(messages, targetIndex),
     "",
     "## Nearby Conversation",
     "### Previous user message",
