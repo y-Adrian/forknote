@@ -135,6 +135,21 @@ export function hasPoints(content: string): boolean {
 }
 
 /**
+ * Streaming preview should not expose protocol markers like `【1】`.
+ * Keep one stable Markdown mount, but render point bodies as ordinary prose.
+ */
+export function stripPointMarkersForPreview(content: string): string {
+  let changed = false;
+  const lines = content.split("\n").map((line) => {
+    const matched = matchPointStartLine(line);
+    if (!matched) return line;
+    changed = true;
+    return matched.rest;
+  });
+  return changed ? lines.join("\n").replace(/^\n+/, "") : content;
+}
+
+/**
  * Build an Anchor for one-click 「澄清此点」 from a numbered point【N】.
  */
 export function anchorForAnswerPoint(

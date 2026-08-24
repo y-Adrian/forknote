@@ -11,6 +11,7 @@ import {
   earliestRejectIndex,
   hasExplicitAcceptOrReject,
   parseAnswerPoints,
+  stripPointMarkersForPreview,
 } from "../lib/points";
 import type {
   FeedbackAttribution,
@@ -231,7 +232,7 @@ export function PointizedAnswer({
     return (
       <MarkdownBody
         key="stream"
-        content={stripLeakedFeedbackMeta(content)}
+        content={stripPointMarkersForPreview(stripLeakedFeedbackMeta(content))}
         streaming
       />
     );
