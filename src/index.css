@@ -1876,6 +1876,23 @@ body {
   line-height: 1.65;
 }
 
+.fn-markdown-render-fallback {
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  color: var(--ds-text);
+}
+
+.fn-markdown-render-fallback pre {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--fn-mono-font);
+  font-size: 0.9em;
+  line-height: 1.55;
+}
+
 /* Offscreen point bodies — plain preview until IntersectionObserver mounts Markdown. */
 .fn-markdown-deferred {
   white-space: pre-wrap;

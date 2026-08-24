@@ -8,11 +8,13 @@ import {
 } from "../lib/markdownRemark";
 import { planMarkdownRender } from "../lib/markdownStream";
 import {
+  Component,
   createContext,
   memo,
   useContext,
   useState,
   type AnchorHTMLAttributes,
+  type ErrorInfo,
   type HTMLAttributes,
   type ImgHTMLAttributes,
   type ReactNode,
@@ -41,6 +43,66 @@ interface Props {
  * every parent state change (header clicks, network toggle, verdicts, etc.).
  */
 const MarkdownStreamingContext = createContext(false);
+
+type MarkdownRenderBoundaryProps = {
+  children: ReactNode;
+  fallbackContent: string;
+  resetSignal: string;
+};
+
+type MarkdownRenderBoundaryState = {
+  error: Error | null;
+  resetSignal: string;
+};
+
+class MarkdownRenderBoundary extends Component<
+  MarkdownRenderBoundaryProps,
+  MarkdownRenderBoundaryState
+> {
+  state: MarkdownRenderBoundaryState = {
+    error: null,
+    resetSignal: this.props.resetSignal,
+  };
+
+  static getDerivedStateFromError(
+    error: Error,
+  ): Partial<MarkdownRenderBoundaryState> {
+    return { error };
+  }
+
+  static getDerivedStateFromProps(
+    props: MarkdownRenderBoundaryProps,
+    state: MarkdownRenderBoundaryState,
+  ): Partial<MarkdownRenderBoundaryState> | null {
+    if (props.resetSignal !== state.resetSignal) {
+      return { error: null, resetSignal: props.resetSignal };
+    }
+    return null;
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.warn(
+      "[ForkNote] markdown render fallback",
+      error,
+      info.componentStack,
+    );
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="fn-markdown-render-fallback" role="note">
+        <pre>
+          <code>{this.props.fallbackContent}</code>
+        </pre>
+      </div>
+    );
+  }
+}
+
+function markdownResetSignal(markdown: string, mode: string): string {
+  return `${mode}:${markdown.length}:${markdown.slice(-80)}`;
+}
 
 function languageFromClass(className?: string): string | null {
   if (!className) return null;
@@ -304,13 +366,18 @@ export const MarkdownBody = memo(function MarkdownBody({
         className={`fn-markdown-mount${plan.mode === "stream-preview" ? " fn-markdown-streaming" : ""}`}
         data-fn-md-mode={plan.mode === "stream-preview" ? "stream-preview" : "full"}
       >
-        <ReactMarkdown
-          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-          urlTransform={forknoteUrlTransform}
-          components={MARKDOWN_COMPONENTS}
+        <MarkdownRenderBoundary
+          fallbackContent={markdown}
+          resetSignal={markdownResetSignal(markdown, plan.mode)}
         >
-          {markdown}
-        </ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+            urlTransform={forknoteUrlTransform}
+            components={MARKDOWN_COMPONENTS}
+          >
+            {markdown}
+          </ReactMarkdown>
+        </MarkdownRenderBoundary>
       </div>
     </MarkdownStreamingContext.Provider>
   );

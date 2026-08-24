@@ -212,12 +212,13 @@ export function SelectableMarkdown({
     const el = containerRef.current;
     if (!el) return;
     clearHighlights(el);
+    if (contentStreaming) return;
     if (!content.trim()) return;
     if (branches.length === 0) return;
     // Keep reopen targets visible even while another branch is loading.
     applyBranchHighlights(el, branches);
     return () => clearHighlights(el);
-  }, [content, branches, loading]);
+  }, [content, branches, loading, contentStreaming]);
 
   const syncToolbarFromSelection = useCallback(() => {
     if (disabled || loading) return;
