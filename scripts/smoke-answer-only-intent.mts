@@ -293,7 +293,11 @@ for (const q of [
   "基于这个项目，有什么优化建议",
   "结合当前项目现状给建议",
   "你觉得这个项目下一步怎么做",
+  "当前项目可以用于哪些场景",
+  "这个项目有哪些应用场景",
+  "当前项目适合做什么",
   "what next steps do you suggest for this project",
+  "what use cases does this project support",
 ]) {
   assert.ok(
     looksLikeProjectContextAdviceRequest(q),
@@ -342,7 +346,7 @@ for (const q of [
 }
 
 // Evaluative but project-grounded — may use tools; must not force inventory explore.
-for (const q of ["看看这个项目怎么样", "当前项目适合做什么"]) {
+for (const q of ["看看这个项目怎么样"]) {
   assert.equal(inferExploreIntent(q), null, `not explore list: ${q}`);
 }
 

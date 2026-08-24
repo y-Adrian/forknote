@@ -25,7 +25,7 @@ const BUILD_ERROR_RE =
 const PROJECT_SUMMARY_RE =
   /了解到的信息|现在.*了解|项目.*信息|项目.*现状|项目目标|当前现状|模块|架构|总结/i;
 const PROJECT_ADVICE_RE =
-  /针对.*项目.*建议|项目.*建议|优化建议|下一步|后续.*(?:推进|演进)|项目.*(?:方向|路线|规划|优先级)|project.*(?:advice|next steps?|roadmap|suggest|recommend)/i;
+  /针对.*项目.*建议|项目.*建议|优化建议|下一步|后续.*(?:推进|演进)|项目.*(?:方向|路线|规划|优先级|用途|应用场景|使用场景|落地场景|适用场景)|项目.*(?:可以|能).*用(?:于|来)|项目.*适合(?:做什么|用(?:于|来)|哪些场景)|project.*(?:advice|next steps?|roadmap|suggest|recommend|use\s*cases?)/i;
 const CONVERSATION_DEBUG_RE =
   /对话.*逻辑|逻辑.*不对|诊断|上下文|记忆|串线|错位|回答.*问题/i;
 
@@ -108,7 +108,9 @@ function classifyUserIntent(content: string | null | undefined): string {
   if (!text.trim()) return "unknown";
   if (CONVERSATION_DEBUG_RE.test(text)) return "conversation-diagnostic";
   if (PROJECT_SUMMARY_RE.test(text)) return "project-understanding-summary";
-  if (PROJECT_ADVICE_RE.test(text)) return "project-context-advice";
+  if (looksLikeProjectContextAdviceRequest(text) || PROJECT_ADVICE_RE.test(text)) {
+    return "project-context-advice";
+  }
   if (BUILD_ERROR_RE.test(text)) return "build-error-troubleshooting";
   return "general-question";
 }
