@@ -4,7 +4,6 @@ import { messagesAfterArchive } from "../lib/archive";
 import { countBranchesInThread, maxBranchDepthInThread } from "../lib/branches";
 import { branchRailWidthPx } from "../lib/branchRailLayout";
 import { copyTextToClipboard } from "../lib/clipboard";
-import { buildTurnDiagnosticPacket } from "../lib/conversationDiagnostic";
 import {
   resolveConversationContext,
   resolveThreadView,
@@ -707,6 +706,9 @@ export function MainPanel({
     const state = useAppStore.getState();
     const session = state.sessions.find((s) => s.id === state.activeSessionId);
     const activeId = state.activeSessionId;
+    const { buildTurnDiagnosticPacket } = await import(
+      "../lib/conversationDiagnostic"
+    );
     const packet = buildTurnDiagnosticPacket({
       session,
       thread: state.thread,

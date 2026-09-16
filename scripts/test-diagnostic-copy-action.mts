@@ -30,6 +30,14 @@ assert.ok(
   "diagnostic copy builds a packet through its own callback",
 );
 assert.ok(
+  /const diagnoseMessage = useCallback[\s\S]*import\(\s*["']\.\.\/lib\/conversationDiagnostic["']\s*\)/.test(panel),
+  "diagnostic module loads only when diagnostic copy is requested",
+);
+assert.ok(
+  !/import \{ buildTurnDiagnosticPacket \} from ["']\.\.\/lib\/conversationDiagnostic["']/.test(panel),
+  "diagnostic module must not be imported into the main panel entry",
+);
+assert.ok(
   !/const diagnoseMessage = useCallback[\s\S]*recordPassiveCopy/.test(panel),
   "diagnostic copy must not record passive copy",
 );
