@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { ArchivePanel } from "./components/ArchivePanel";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { BranchFloatLayer } from "./components/BranchFloatLayer";
 import { MainPanel } from "./components/MainPanel";
-import { ProjectPanel } from "./components/ProjectPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
-import { SettingsPanel } from "./components/SettingsPanel";
-import { ShareViewer } from "./components/ShareViewer";
 import { useLocale } from "./lib/i18n";
 import {
   isSidebarNarrowViewport,
@@ -14,6 +10,27 @@ import {
 import { parseShareHash } from "./lib/sessionShare";
 import { useTextZoomShortcuts } from "./lib/useTextZoomShortcuts";
 import { useAppStore } from "./store/useAppStore";
+
+const ArchivePanel = lazy(() =>
+  import("./components/ArchivePanel").then((mod) => ({
+    default: mod.ArchivePanel,
+  })),
+);
+const ProjectPanel = lazy(() =>
+  import("./components/ProjectPanel").then((mod) => ({
+    default: mod.ProjectPanel,
+  })),
+);
+const SettingsPanel = lazy(() =>
+  import("./components/SettingsPanel").then((mod) => ({
+    default: mod.SettingsPanel,
+  })),
+);
+const ShareViewer = lazy(() =>
+  import("./components/ShareViewer").then((mod) => ({
+    default: mod.ShareViewer,
+  })),
+);
 
 function readShareToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -30,6 +47,7 @@ export default function App() {
   const setSettings = useAppStore((s) => s.setSettings);
   const projectOpen = useAppStore((s) => s.projectOpen);
   const setProjectOpen = useAppStore((s) => s.setProjectOpen);
+  const archivePanelOpen = useAppStore((s) => s.archivePanelOpen);
 
   const [narrowViewport, setNarrowViewport] = useState(
     isSidebarNarrowViewport,
@@ -89,7 +107,11 @@ export default function App() {
   }, [narrowViewport]);
 
   if (shareToken) {
-    return <ShareViewer token={shareToken} onExit={exitShare} />;
+    return (
+      <Suspense fallback={null}>
+        <ShareViewer token={shareToken} onExit={exitShare} />
+      </Suspense>
+    );
   }
 
   const sidebarCollapsed = narrowViewport ? false : desktopCollapsed;
@@ -124,17 +146,23 @@ export default function App() {
       />
       <BranchFloatLayer />
 
-      <SettingsPanel
-        settings={settings}
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onSave={setSettings}
-      />
-      <ProjectPanel
-        open={projectOpen}
-        onClose={() => setProjectOpen(false)}
-      />
-      <ArchivePanel />
+      <Suspense fallback={null}>
+        {settingsOpen ? (
+          <SettingsPanel
+            settings={settings}
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            onSave={setSettings}
+          />
+        ) : null}
+        {projectOpen ? (
+          <ProjectPanel
+            open={projectOpen}
+            onClose={() => setProjectOpen(false)}
+          />
+        ) : null}
+        {archivePanelOpen ? <ArchivePanel /> : null}
+      </Suspense>
     </div>
   );
 }

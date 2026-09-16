@@ -30,4 +30,21 @@ const asyncMarkdown = fs.readFileSync(
 );
 assert.match(asyncMarkdown, /lazy\(\(\) =>\s*import\("\.\/MarkdownBody"\)/);
 
+const app = fs.readFileSync(path.join(ROOT, "src/App.tsx"), "utf8");
+for (const component of [
+  "ArchivePanel",
+  "ProjectPanel",
+  "SettingsPanel",
+  "ShareViewer",
+]) {
+  assert.match(
+    app,
+    new RegExp(`const ${component} = lazy\\(\\(\\) =>\\s*import`),
+    `App should lazy-load ${component}`,
+  );
+}
+assert.match(app, /settingsOpen \? \(\s*<SettingsPanel/);
+assert.match(app, /projectOpen \? \(\s*<ProjectPanel/);
+assert.match(app, /archivePanelOpen \? <ArchivePanel \/> : null/);
+
 console.log("test-vite-chunking: ok");
