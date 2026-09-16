@@ -106,5 +106,35 @@ assert.match(
   /import\(["']\.\.\/lib\/agentTurn["']\)/,
   "store should load the agent turn runner on demand",
 );
+assert.doesNotMatch(
+  store,
+  /from ["']\.\.\/lib\/archive["']/,
+  "store should not statically import the archive prompt/source builder",
+);
+assert.match(
+  store,
+  /import\(["']\.\.\/lib\/archive["']\)/,
+  "store should load archive builders on demand",
+);
+assert.match(
+  fs.readFileSync(path.join(ROOT, "src/components/MainPanel.tsx"), "utf8"),
+  /from ["']\.\.\/lib\/archiveView["']/,
+  "main panel should use the lightweight archive view helper",
+);
+
+const contextMemory = fs.readFileSync(
+  path.join(ROOT, "src/lib/contextMemory.ts"),
+  "utf8",
+);
+assert.doesNotMatch(
+  contextMemory,
+  /from ["']\.\/archive["']/,
+  "context memory should not statically import archive source builders",
+);
+assert.match(
+  store,
+  /import\(["']\.\.\/lib\/contextCompressSource["']\)/,
+  "store should load compress source builders on demand",
+);
 
 console.log("test-vite-chunking: ok");

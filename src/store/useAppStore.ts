@@ -13,18 +13,6 @@ import {
 } from "../lib/agentSessionActivity";
 import { isAgentTurnPlaceholder } from "../lib/agentStatus";
 import { withAgentPhaseModel } from "../lib/agentModelRouting";
-import {
-  archiveHasNewMaterial,
-  archiveSystemPrompt,
-  archiveTitleFromContent,
-  archiveUserPrompt,
-  buildArchiveSource,
-  buildIncrementalArchiveSource,
-  incrementalArchiveSystemPrompt,
-  incrementalArchiveUserPrompt,
-  lastNonEmptyMessageId,
-  resolveBaseArchive,
-} from "../lib/archive";
 import { saveArchiveMarkdownToProject } from "../lib/archiveFiles";
 import {
   buildClarifyAddendumMessages,
@@ -34,14 +22,12 @@ import { getLocale, t } from "../lib/i18n";
 import { createId } from "../lib/id";
 import { isQuotaExceededError } from "../lib/browserStorage";
 import {
-  buildCompressSource,
   compressChatMessages,
   formatArchiveDraftAsCompressSource,
   isCompressAfterArchiveEnabled,
   loadContextMemoryPack,
   packThroughMessageId,
   parseCompressedOutput,
-  resolveCompressArchive,
   saveContextMemoryPack,
 } from "../lib/contextMemory";
 import { streamChat } from "../lib/openai";
@@ -1382,6 +1368,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     const hasContent = thread.messages.some((m) => m.content.trim());
     if (!hasContent) return;
 
+    const {
+      archiveHasNewMaterial,
+      archiveSystemPrompt,
+      archiveTitleFromContent,
+      archiveUserPrompt,
+      buildArchiveSource,
+      buildIncrementalArchiveSource,
+      incrementalArchiveSystemPrompt,
+      incrementalArchiveUserPrompt,
+      lastNonEmptyMessageId,
+      resolveBaseArchive,
+    } = await import("../lib/archive");
+
     const throughMessageId = lastNonEmptyMessageId(thread);
     if (!throughMessageId) return;
 
@@ -1687,6 +1686,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    const {
+      buildCompressSource,
+      resolveCompressArchive,
+    } = await import("../lib/contextCompressSource");
     const archive = resolveCompressArchive(session);
     const source =
       override ||

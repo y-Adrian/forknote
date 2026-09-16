@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { messagesAfterArchive } from "../lib/archive";
+import { messagesAfterArchive } from "../lib/archiveView";
 import { countBranchesInThread, maxBranchDepthInThread } from "../lib/branches";
 import { branchRailWidthPx } from "../lib/branchRailLayout";
 import { copyTextToClipboard } from "../lib/clipboard";

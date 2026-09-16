@@ -14,9 +14,9 @@ import {
   shrinkTextForArchive,
 } from "../src/lib/archive.ts";
 import {
-  buildCompressSource,
   formatArchiveDraftAsCompressSource,
 } from "../src/lib/contextMemory.ts";
+import { buildCompressSource } from "../src/lib/contextCompressSource.ts";
 import type {
   ArchiveSnapshot,
   ChatMessage,

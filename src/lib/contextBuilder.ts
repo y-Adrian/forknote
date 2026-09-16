@@ -9,7 +9,7 @@ import type {
 import {
   buildArchiveContextMessages,
   messagesAfterArchive,
-} from "./archive";
+} from "./archiveView";
 import { flattenAdoptedForPlaintext } from "./adoptBranch";
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
