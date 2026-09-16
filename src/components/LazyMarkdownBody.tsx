@@ -3,7 +3,7 @@ import {
   deferredMarkdownPreview,
   shouldMountHeavyMarkdown,
 } from "../lib/lazyMarkdown";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 
 interface Props {
   content: string;
@@ -52,7 +52,7 @@ export function LazyMarkdownBody({
   return (
     <div ref={hostRef} className="fn-lazy-md">
       {mountHeavy ? (
-        <MarkdownBody content={content} streaming={streaming} />
+        <AsyncMarkdownBody content={content} streaming={streaming} />
       ) : (
         <div
           className="fn-markdown-mount fn-markdown-deferred"

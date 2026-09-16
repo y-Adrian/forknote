@@ -12,7 +12,7 @@ import {
   InlineToolApproval,
   usePendingInlineApproval,
 } from "./InlineToolApproval";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 import { MessageActions } from "./MessageActions";
 import { AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
@@ -287,7 +287,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
                   {sourceMode ? (
                     <SourceBody content={archiveDraft} />
                   ) : (
-                    <MarkdownBody content={archiveDraft} />
+                    <AsyncMarkdownBody content={archiveDraft} />
                   )}
                 </div>
               ) : (
@@ -331,7 +331,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
                 {sourceMode ? (
                   <SourceBody content={activeArchive.content} />
                 ) : (
-                  <MarkdownBody content={activeArchive.content} />
+                  <AsyncMarkdownBody content={activeArchive.content} />
                 )}
               </div>
             </article>

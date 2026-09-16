@@ -26,7 +26,7 @@ import {
 import { AdoptedClarifyCard } from "./AdoptedClarifyCard";
 import { DiagramFence, isDiagramFenceClass } from "./DiagramFence";
 
-interface Props {
+export interface MarkdownBodyProps {
   content: string;
   /** Skip adopted-note cards (used inside the card body itself). */
   skipAdoptedSplit?: boolean;
@@ -323,7 +323,7 @@ export const MarkdownBody = memo(function MarkdownBody({
   content,
   skipAdoptedSplit = false,
   streaming = false,
-}: Props) {
+}: MarkdownBodyProps) {
   const { t } = useLocale();
   const plan = planMarkdownRender(content, streaming);
   if (plan.mode === "empty") {

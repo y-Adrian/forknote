@@ -9,7 +9,7 @@ import {
   sharePayloadToMarkdown,
   type SharePayload,
 } from "../lib/sessionShare";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 import { GlassMessageBubble } from "./GlassMessageBubble";
 interface Props {
   token: string;
@@ -116,7 +116,7 @@ export function ShareViewer({ token, onExit }: Props) {
                   </GlassMessageBubble>
                 ) : (
                   <div className="ds-bubble ds-bubble-assistant markdown-body">
-                    <MarkdownBody content={msg.content} />
+                    <AsyncMarkdownBody content={msg.content} />
                   </div>
                 )}
               </article>

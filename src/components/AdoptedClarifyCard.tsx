@@ -6,7 +6,7 @@ import {
 import { useLocale } from "../lib/i18n";
 import { findBranchInThread } from "../lib/thread";
 import { useAppStore } from "../store/useAppStore";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 
 interface Props {
   branchId: string;
@@ -47,7 +47,7 @@ export function AdoptedClarifyCard({ branchId, label, storedBody }: Props) {
       </header>
       <div className="fn-adopt-body">
         {body ? (
-          <MarkdownBody content={body} skipAdoptedSplit />
+          <AsyncMarkdownBody content={body} skipAdoptedSplit />
         ) : (
           <p className="muted">{t("fork.adoptedEmpty")}</p>
         )}

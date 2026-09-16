@@ -4,7 +4,7 @@ import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
 import { AccessibleModal } from "./AccessibleModal";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 
 export function ArchivePanel() {
   const { t } = useLocale();
@@ -120,7 +120,7 @@ export function ArchivePanel() {
             </div>
           ) : body.trim() ? (
             <div className="fn-archive-markdown markdown-body">
-              <MarkdownBody content={body} />
+              <AsyncMarkdownBody content={body} />
             </div>
           ) : (
             <p className="muted">{t("archive.empty")}</p>

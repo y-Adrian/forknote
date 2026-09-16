@@ -20,7 +20,7 @@ import type {
   PointVerdict,
   PointVerdictMap,
 } from "../types";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 import { LazyMarkdownBody } from "./LazyMarkdownBody";
 
 interface Props {
@@ -236,7 +236,7 @@ export function PointizedAnswer({
   // point-splitting + full remounts that thrash as numbered lists grow.
   if (streaming) {
     return (
-      <MarkdownBody
+      <AsyncMarkdownBody
         key="stream"
         content={stripPointMarkersForPreview(stripLeakedFeedbackMeta(content))}
         streaming
@@ -248,7 +248,7 @@ export function PointizedAnswer({
 
   if (parsed.points.length < 2) {
     return (
-      <MarkdownBody
+      <AsyncMarkdownBody
         key="flat"
         content={stripLeakedFeedbackMeta(content)}
         streaming={streaming}
@@ -264,7 +264,7 @@ export function PointizedAnswer({
     <div key={`points-${parsed.points.length}`} className="pointized-answer">
       {parsed.preamble && (
         <div className="point-preamble">
-          <MarkdownBody
+          <AsyncMarkdownBody
             content={stripLeakedFeedbackMeta(parsed.preamble)}
             streaming={streaming}
           />

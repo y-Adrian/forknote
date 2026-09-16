@@ -38,7 +38,7 @@ import { clearSelection, getSelectionInContainer } from "../lib/selection";
 import { useLocale } from "../lib/i18n";
 import { useAppStore } from "../store/useAppStore";
 import { FloatingAskPanel } from "./FloatingAskPanel";
-import { MarkdownBody } from "./MarkdownBody";
+import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 import { PointizedAnswer } from "./PointizedAnswer";
 import { SelectionToolbar } from "./SelectionToolbar";
 
@@ -393,7 +393,7 @@ export function SelectableMarkdown({
             streaming={contentStreaming}
           />
         ) : (
-          <MarkdownBody
+          <AsyncMarkdownBody
             content={stripLeakedFeedbackMeta(content)}
             streaming={contentStreaming}
           />

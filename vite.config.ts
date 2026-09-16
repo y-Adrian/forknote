@@ -287,6 +287,20 @@ export default defineConfig({
   // loopback static server without absolute `/assets/...` breakage.
   base: "./",
   plugins: [react(), openaiDevProxyPlugin(), sidecarDevPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("/node_modules/")) return;
+          if (id.includes("/node_modules/react")) return "vendor-react";
+          if (id.includes("/node_modules/react-dom")) return "vendor-react";
+          if (id.includes("/node_modules/zustand")) return "vendor-state";
+          if (id.includes("/node_modules/react-markdown")) return "vendor-markdown";
+          if (id.includes("/node_modules/remark-")) return "vendor-markdown";
+        },
+      },
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: 5173,
