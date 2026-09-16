@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
 import { maxBranchDepthInThread } from "../lib/branches";
+import { branchRailWidthPx } from "../lib/branchRailLayout";
 import {
   filterMsgsForRailViewport,
   RAIL_OVERSCAN_PX,
@@ -35,19 +36,6 @@ const Y_START = RAIL_Y_START;
 const Y_GAP   = RAIL_Y_GAP;
 const TRUNK_R = 5.5;
 const NODE_R  = 4.5;
-const RAIL_PAD = 10;
-/** Room for the short 10-char label drawn beside a leaf. */
-const LABEL_W = 62;
-const RAIL_W_MAX = 160;
-
-/** Compact when trunk-only; grow with fork depth + label, never past RAIL_W_MAX. */
-export function branchRailWidthPx(maxDepth: number): number {
-  if (maxDepth <= 0) return Math.ceil(TRUNK_X + TRUNK_R + RAIL_PAD);
-  return Math.min(
-    RAIL_W_MAX,
-    Math.ceil(TRUNK_X + maxDepth * X_STEP + NODE_R + 5 + LABEL_W + RAIL_PAD),
-  );
-}
 
 // ── Colors (muted lavender / amethyst) ─────────────────────
 const C_TRUNK_LINE  = "rgba(168,152,200,0.20)";

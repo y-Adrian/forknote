@@ -1,5 +1,4 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { BranchFloatLayer } from "./components/BranchFloatLayer";
 import { MainPanel } from "./components/MainPanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { useLocale } from "./lib/i18n";
@@ -14,6 +13,11 @@ import { useAppStore } from "./store/useAppStore";
 const ArchivePanel = lazy(() =>
   import("./components/ArchivePanel").then((mod) => ({
     default: mod.ArchivePanel,
+  })),
+);
+const BranchFloatLayer = lazy(() =>
+  import("./components/BranchFloatLayer").then((mod) => ({
+    default: mod.BranchFloatLayer,
   })),
 );
 const ProjectPanel = lazy(() =>
@@ -48,6 +52,7 @@ export default function App() {
   const projectOpen = useAppStore((s) => s.projectOpen);
   const setProjectOpen = useAppStore((s) => s.setProjectOpen);
   const archivePanelOpen = useAppStore((s) => s.archivePanelOpen);
+  const branchFloatCount = useAppStore((s) => s.branchFloatStack.length);
 
   const [narrowViewport, setNarrowViewport] = useState(
     isSidebarNarrowViewport,
@@ -144,9 +149,8 @@ export default function App() {
         showSidebarMenu={narrowViewport}
         onOpenSidebar={openMobileNav}
       />
-      <BranchFloatLayer />
-
       <Suspense fallback={null}>
+        {branchFloatCount > 0 ? <BranchFloatLayer /> : null}
         {settingsOpen ? (
           <SettingsPanel
             settings={settings}

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { messagesAfterArchive } from "../lib/archive";
-import { countBranchesInThread } from "../lib/branches";
+import { countBranchesInThread, maxBranchDepthInThread } from "../lib/branches";
+import { branchRailWidthPx } from "../lib/branchRailLayout";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { buildTurnDiagnosticPacket } from "../lib/conversationDiagnostic";
 import {
@@ -20,9 +21,6 @@ import { displaySessionTitle } from "../lib/storage";
 import { useAppStore } from "../store/useAppStore";
 import type { ChatMessage, NodeId } from "../types";
 import { ForkNoteLogo } from "./BranchLogo";
-import { BranchRail } from "./BranchRail";
-import { ForkHistoryMap } from "./ForkHistoryMap";
-import { AgentPlanReview } from "./AgentPlanReview";
 import {
   InlineToolApproval,
   usePendingInlineApproval,
@@ -30,8 +28,22 @@ import {
 import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
 import { MainChatMessageList } from "./MainChatMessageList";
 import { ProjectStatusBar } from "./ProjectStatusBar";
-import { SessionApiSettings } from "./SessionApiSettings";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
+
+const ForkHistoryMap = lazy(() =>
+  import("./ForkHistoryMap").then((mod) => ({ default: mod.ForkHistoryMap })),
+);
+const BranchRail = lazy(() =>
+  import("./BranchRail").then((mod) => ({ default: mod.BranchRail })),
+);
+const AgentPlanReview = lazy(() =>
+  import("./AgentPlanReview").then((mod) => ({ default: mod.AgentPlanReview })),
+);
+const SessionApiSettings = lazy(() =>
+  import("./SessionApiSettings").then((mod) => ({
+    default: mod.SessionApiSettings,
+  })),
+);
 
 function ViewModeIcon({ mode }: { mode: MainThreadViewMode }) {
   if (mode === "source") {
@@ -142,6 +154,11 @@ export function MainPanel({
     const plan = s.agentPendingPlan;
     return Boolean(plan && plan.sessionId === sid && !plan.branchId);
   });
+  const hasMainPendingPlan = useAppStore((s) => {
+    const sid = s.activeSessionId;
+    const plan = s.agentPendingPlan;
+    return Boolean(sid && plan && plan.sessionId === sid && !plan.branchId);
+  });
   const { pending: pendingInline } = usePendingInlineApproval({ kind: "main" });
   const error = useAppStore((s) => s.error);
   const pendingClarify = useAppStore((s) =>
@@ -239,6 +256,10 @@ export function MainPanel({
 
   const forkCount = useMemo(
     () => (thread ? countBranchesInThread(thread) : 0),
+    [thread],
+  );
+  const branchRailWidth = useMemo(
+    () => branchRailWidthPx(thread ? maxBranchDepthInThread(thread) : 0),
     [thread],
   );
 
@@ -795,7 +816,11 @@ export function MainPanel({
           <ProjectStatusBar onOpenProject={onOpenProject} />
 
           <InlineToolApproval scope={{ kind: "main" }} />
-          <AgentPlanReview scope={{ kind: "main" }} />
+          {hasMainPendingPlan ? (
+            <Suspense fallback={null}>
+              <AgentPlanReview scope={{ kind: "main" }} />
+            </Suspense>
+          ) : null}
 
           <ChatComposer
             ref={composerRef}
@@ -810,7 +835,9 @@ export function MainPanel({
             leading={
               <>
                 <NetworkAccessToggle disabled={composerBusy} />
-                <SessionApiSettings disabled={composerBusy} />
+                <Suspense fallback={null}>
+                  <SessionApiSettings disabled={composerBusy} />
+                </Suspense>
               </>
             }
             projectRoot={projectRoot}
@@ -913,13 +940,15 @@ export function MainPanel({
         ) : null}
       </header>
 
-      {thread ? (
-        <ForkHistoryMap
-          thread={thread}
-          open={forkMapOpen}
-          onClose={() => setForkMapOpen(false)}
-          scrollRef={scrollRef}
-        />
+      {thread && forkMapOpen ? (
+        <Suspense fallback={null}>
+          <ForkHistoryMap
+            thread={thread}
+            open={forkMapOpen}
+            onClose={() => setForkMapOpen(false)}
+            scrollRef={scrollRef}
+          />
+        </Suspense>
       ) : null}
 
       <div className="ds-chat-body">
@@ -1204,7 +1233,11 @@ export function MainPanel({
               </div>
             </div>
 
-            <AgentPlanReview scope={{ kind: "main" }} />
+            {hasMainPendingPlan ? (
+              <Suspense fallback={null}>
+                <AgentPlanReview scope={{ kind: "main" }} />
+              </Suspense>
+            ) : null}
 
             <ChatComposer
               ref={composerRef}
@@ -1217,7 +1250,9 @@ export function MainPanel({
               leading={
               <>
                 <NetworkAccessToggle disabled={composerBusy} />
-                <SessionApiSettings disabled={composerBusy} />
+                <Suspense fallback={null}>
+                  <SessionApiSettings disabled={composerBusy} />
+                </Suspense>
               </>
             }
               projectRoot={projectRoot}
@@ -1235,7 +1270,25 @@ export function MainPanel({
             />
           </footer>
         </div>
-        <BranchRail thread={thread} scrollRef={scrollRef} />
+        {thread && forkCount > 0 ? (
+          <Suspense
+            fallback={
+              <div
+                className="ds-branch-rail"
+                style={{ width: branchRailWidth }}
+                aria-hidden
+              />
+            }
+          >
+            <BranchRail thread={thread} scrollRef={scrollRef} />
+          </Suspense>
+        ) : (
+          <div
+            className="ds-branch-rail"
+            style={{ width: branchRailWidth }}
+            aria-hidden
+          />
+        )}
       </div>
 
       {error && <p className="ds-error ds-error-bar">{error}</p>}

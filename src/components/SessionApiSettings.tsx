@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocale } from "../lib/i18n";
 import {
@@ -9,11 +9,16 @@ import {
   type ApiConnectionFields as ConnectionDraft,
 } from "../lib/sessionApi";
 import { useAppStore } from "../store/useAppStore";
-import { ApiConnectionFields } from "./ApiConnectionFields";
 
 interface Props {
   disabled?: boolean;
 }
+
+const ApiConnectionFields = lazy(() =>
+  import("./ApiConnectionFields").then((mod) => ({
+    default: mod.ApiConnectionFields,
+  })),
+);
 
 /** Composer control: open Session API settings (per-note overrides). */
 export function SessionApiSettings({ disabled = false }: Props) {
@@ -118,11 +123,13 @@ export function SessionApiSettings({ disabled = false }: Props) {
                     <p className="hint local-hint">{t("sessionApi.inheritHint")}</p>
                   )}
 
-                  <ApiConnectionFields
-                    value={draft}
-                    onChange={setDraft}
-                    variant="session"
-                  />
+                  <Suspense fallback={null}>
+                    <ApiConnectionFields
+                      value={draft}
+                      onChange={setDraft}
+                      variant="session"
+                    />
+                  </Suspense>
 
                   <div className="modal-actions fn-session-api-actions">
                     <button
