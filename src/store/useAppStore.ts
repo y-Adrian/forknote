@@ -12,7 +12,6 @@ import {
   projectAgentSessionUi,
 } from "../lib/agentSessionActivity";
 import { isAgentTurnPlaceholder } from "../lib/agentStatus";
-import { runAgentTurn } from "../lib/agentTurn";
 import { withAgentPhaseModel } from "../lib/agentModelRouting";
 import {
   archiveHasNewMaterial,
@@ -141,6 +140,14 @@ import type {
   SettingsTab,
   ThreadRoot,
 } from "../types";
+
+type RunAgentTurn = typeof import("../lib/agentTurn").runAgentTurn;
+type RunAgentTurnOptions = Parameters<RunAgentTurn>[0];
+
+async function runLoadedAgentTurn(options: RunAgentTurnOptions) {
+  const { runAgentTurn } = await import("../lib/agentTurn");
+  return runAgentTurn(options);
+}
 
 interface AppState {
   sessions: ChatSession[];
@@ -2761,7 +2768,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (includeFiles.length > 0) {
         set({ pendingFileIncludes: [] });
       }
-      await runAgentTurn({
+      await runLoadedAgentTurn({
         llm,
         settings,
         locale: getLocale(),
@@ -3016,7 +3023,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       try {
         const { projectRoot, sidecarUrl } = get();
-        await runAgentTurn({
+        await runLoadedAgentTurn({
           llm,
           settings,
           locale,
@@ -3229,7 +3236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
 
-        await runAgentTurn({
+        await runLoadedAgentTurn({
           llm,
           settings,
           locale,

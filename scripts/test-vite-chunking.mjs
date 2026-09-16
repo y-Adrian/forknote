@@ -92,4 +92,19 @@ assert.match(
   /const MemorySettingsPanel = lazy\(\(\) =>\s*import\("\.\/MemoryPanel"\)/,
 );
 
+const store = fs.readFileSync(
+  path.join(ROOT, "src/store/useAppStore.ts"),
+  "utf8",
+);
+assert.doesNotMatch(
+  store,
+  /import \{ runAgentTurn \} from ["']\.\.\/lib\/agentTurn["']/,
+  "store should not statically import the heavy agent turn runner",
+);
+assert.match(
+  store,
+  /import\(["']\.\.\/lib\/agentTurn["']\)/,
+  "store should load the agent turn runner on demand",
+);
+
 console.log("test-vite-chunking: ok");
