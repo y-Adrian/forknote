@@ -24,7 +24,7 @@ import {
 } from "../lib/composerHeight";
 import { handleComposerEnterKey } from "../lib/composerKeys";
 import { useLocale } from "../lib/i18n";
-import { activeAtQuery, listProjectFileHints } from "../lib/repoContext";
+import { activeAtQuery, listProjectFileHints } from "../lib/repoFileHints";
 
 interface Props {
   value: string;

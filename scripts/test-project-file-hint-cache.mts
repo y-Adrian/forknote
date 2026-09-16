@@ -15,7 +15,7 @@ import {
   resetProjectFileHintStatsForTests,
   setProjectFileHintListDirForTests,
   setProjectFileHintNowForTests,
-} from "../src/lib/repoContext.ts";
+} from "../src/lib/repoFileHints.ts";
 
 const ROOT_A = "/tmp/forknote-project-a";
 const ROOT_B = "/tmp/forknote-project-b";

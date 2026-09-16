@@ -10,11 +10,9 @@
 import { getLocale, withReplyLanguage, type Locale } from "./i18n";
 import type { ChatMessage as ApiChatMessage } from "./openai";
 import {
-  buildDiscoveredCodeAddendum,
-  buildIncludedFilesAddendum,
   extractAtFileMentions,
   mergeIncludePaths,
-} from "./repoContext";
+} from "./repoFileHints";
 import {
   isMemoryLayerPreferencesEnabled,
   isMemoryLayerProjectEnabled,
@@ -753,11 +751,13 @@ export async function buildAgentMemoryAddendum(options: {
   if (projectRoot) {
     const paths = mergeIncludePaths(includeFiles, extractAtFileMentions(query));
     if (paths.length > 0) {
+      const { buildIncludedFilesAddendum } = await import("./repoContext");
       const files = await buildIncludedFilesAddendum({
         paths, projectRoot, sidecarUrl, signal,
       });
       if (files) layers.push({ kind: "files", text: files });
     } else if (!omitProjectPack) {
+      const { buildDiscoveredCodeAddendum } = await import("./repoContext");
       const discovered = await buildDiscoveredCodeAddendum({
         query,
         projectRoot,

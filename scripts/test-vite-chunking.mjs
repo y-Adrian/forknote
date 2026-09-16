@@ -136,5 +136,24 @@ assert.match(
   /import\(["']\.\.\/lib\/contextCompressSource["']\)/,
   "store should load compress source builders on demand",
 );
+const composer = fs.readFileSync(
+  path.join(ROOT, "src/components/ChatComposer.tsx"),
+  "utf8",
+);
+assert.match(
+  composer,
+  /from ["']\.\.\/lib\/repoFileHints["']/,
+  "composer should import lightweight project file hint helpers",
+);
+assert.doesNotMatch(
+  composer,
+  /from ["']\.\.\/lib\/repoContext["']/,
+  "composer should not import the heavier repo context module",
+);
+assert.match(
+  contextMemory,
+  /import\(["']\.\/repoContext["']\)/,
+  "context memory should load project context builders on demand",
+);
 
 console.log("test-vite-chunking: ok");
