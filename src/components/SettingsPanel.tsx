@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { applyLocale, useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
@@ -31,7 +31,6 @@ import { useAppStore } from "../store/useAppStore";
 import type { ApiSettings, SettingsTab } from "../types";
 import { AccessibleModal } from "./AccessibleModal";
 import { ApiConnectionFields } from "./ApiConnectionFields";
-import { MemorySettingsPanel } from "./MemoryPanel";
 
 interface Props {
   settings: ApiSettings;
@@ -39,6 +38,12 @@ interface Props {
   onClose: () => void;
   onSave: (settings: ApiSettings) => void;
 }
+
+const MemorySettingsPanel = lazy(() =>
+  import("./MemoryPanel").then((mod) => ({
+    default: mod.MemorySettingsPanel,
+  })),
+);
 
 const NAV_ICONS: Record<SettingsTab, ReactNode> = {
   general: (
@@ -1282,7 +1287,9 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
               />
             )}
             {settingsTab === "memory" && (
-              <MemorySettingsPanel draft={draft} setDraft={setDraft} onSave={onSave} />
+              <Suspense fallback={null}>
+                <MemorySettingsPanel draft={draft} setDraft={setDraft} onSave={onSave} />
+              </Suspense>
             )}
             {settingsTab === "data" && <DataPanel />}
             {settingsTab === "project" && <ProjectSettingsPanel />}

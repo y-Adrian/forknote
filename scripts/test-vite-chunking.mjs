@@ -83,4 +83,13 @@ assert.match(
   /const ApiConnectionFields = lazy\(\(\) =>\s*import\("\.\/ApiConnectionFields"\)/,
 );
 
+const settingsPanel = fs.readFileSync(
+  path.join(ROOT, "src/components/SettingsPanel.tsx"),
+  "utf8",
+);
+assert.match(
+  settingsPanel,
+  /const MemorySettingsPanel = lazy\(\(\) =>\s*import\("\.\/MemoryPanel"\)/,
+);
+
 console.log("test-vite-chunking: ok");
