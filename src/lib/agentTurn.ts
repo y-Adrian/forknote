@@ -437,6 +437,7 @@ export async function runAgentTurn(
     locale,
     memoryAddendum,
     settings,
+    currentTurnQuery: trimmed,
   });
 
   if (extraMessages?.length) {

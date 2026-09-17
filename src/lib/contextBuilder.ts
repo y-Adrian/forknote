@@ -335,6 +335,8 @@ export type ConversationOptions = {
   locale?: Locale;
   /** Optional memory block appended to the system prompt */
   memoryAddendum?: string | null;
+  /** Current request driving this response (main turn or Clarify turn). */
+  currentTurnQuery?: string;
   /**
    * Live-mode sliding window size (user↔assistant turns). When omitted,
    * uses `settings` or the app default.
@@ -475,7 +477,7 @@ export function buildConversationMessages(
     .reverse()
     .find((m) => m.role === "user" && m.content.trim());
   const structureHint = answerStructureHintForLatestUser(
-    lastUser?.content ?? "",
+    options?.currentTurnQuery ?? lastUser?.content ?? "",
     locale,
   );
   if (structureHint) {
@@ -585,9 +587,7 @@ export function buildClarifyAddendumMessages(
 - 纯概念澄清时保持简洁；项目任务则按任务需要完成（含计划批准后的多轮工具调用）。
 - 上下文里的用户分点反馈是结构化校准信号（未拒绝 = 默认采纳；不采纳看已确认归因；存疑要验证）：目标是逼近该用户真正需要的决策方式，而非讨好。归因来自 Agent 假设 + 用户「对/不对」确认，不是多选表单。
 
-${POINT_ANSWER_FORMAT}
-
-${answerStructureHintForLatestUser(userQuestion, locale) ?? ""}`,
+${POINT_ANSWER_FORMAT}`,
     locale,
   );
 
@@ -657,9 +657,7 @@ export function buildClarifyContinueAddendumMessages(
 - 若用户要求查看/修改本地项目，可使用与主对话相同的工具与深度。
 - 纯概念澄清时保持简洁；项目任务则按任务需要完成。
 
-${POINT_ANSWER_FORMAT}
-
-${answerStructureHintForLatestUser(userQuestion, locale) ?? ""}`,
+${POINT_ANSWER_FORMAT}`,
     locale,
   );
 

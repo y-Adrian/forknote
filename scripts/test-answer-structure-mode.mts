@@ -52,4 +52,13 @@ const system = msgs.find((m) => m.role === "system")?.content ?? "";
 assert.match(system, /本轮结构/);
 assert.match(system, /禁止使用【N】/);
 
+const clarifyMsgs = buildConversationMessages(thread, {
+  locale: "zh",
+  currentTurnQuery: "应该怎样逐步排查闭包引起的内存问题？",
+});
+const clarifySystem =
+  clarifyMsgs.find((m) => m.role === "system")?.content ?? "";
+assert.match(clarifySystem, /【N】分点/);
+assert.doesNotMatch(clarifySystem, /禁止使用【N】/);
+
 console.log("test-answer-structure-mode: ok");
