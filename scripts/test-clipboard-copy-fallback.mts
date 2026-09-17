@@ -29,7 +29,7 @@ for (const rel of [
   "src/components/ShareSessionDialog.tsx",
   "src/components/ShareViewer.tsx",
   "src/components/MessageActions.tsx",
-  "src/components/MainPanel.tsx",
+  "src/components/MainChatMessageList.tsx",
 ]) {
   const src = read(rel);
   assert.match(
@@ -48,6 +48,13 @@ for (const rel of [
     `${rel} must surface a copy failure state`,
   );
 }
+
+// MainPanel owns diagnostic-packet generation, while MessageActions owns the
+// visible success/failure feedback for the returned boolean.
+const mainPanel = read("src/components/MainPanel.tsx");
+assert.match(mainPanel, /copyTextToClipboard/);
+assert.doesNotMatch(mainPanel, /navigator\.clipboard\.writeText/);
+assert.match(mainPanel, /return copyTextToClipboard\(packet\)/);
 
 assert.equal(t("chat.copyFailed", undefined, "en"), "Could not copy");
 assert.equal(t("chat.copyFailed", undefined, "zh"), "无法复制");

@@ -33,22 +33,29 @@ assert.ok(
 assert.ok(MODAL_Z_INDEX < 1200, "modals stay below session menus (~1200)");
 console.log("[PASS] modal stacking clears branch floats");
 
+const primitive = readFileSync("src/components/AccessibleModal.tsx", "utf8");
+assert.ok(primitive.includes("createPortal"), "AccessibleModal must use createPortal");
+assert.ok(primitive.includes("document.body"), "AccessibleModal must portal to body");
+assert.ok(
+  primitive.includes('backdropClassName = "modal-backdrop"'),
+  "AccessibleModal must default to the shared modal backdrop",
+);
+
 for (const [file, label] of [
   ["src/components/SettingsPanel.tsx", "Settings"],
   ["src/components/ProjectPanel.tsx", "Project"],
   ["src/components/ArchivePanel.tsx", "Archive"],
 ] as const) {
   const source = readFileSync(file, "utf8");
-  assert.ok(source.includes("createPortal"), `${label} must import/use createPortal`);
   assert.ok(
-    source.includes("document.body"),
-    `${label} must portal to document.body`,
+    source.includes("AccessibleModal"),
+    `${label} must use AccessibleModal`,
   );
   assert.ok(
-    source.includes("modal-backdrop"),
-    `${label} must use shared modal-backdrop`,
+    !source.includes("createPortal"),
+    `${label} should delegate portal behavior to AccessibleModal`,
   );
-  console.log(`[PASS] ${label} portals shared modal above floats`);
+  console.log(`[PASS] ${label} uses shared accessible modal above floats`);
 }
 
 console.log("test-modal-above-floats: ok");

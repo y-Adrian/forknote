@@ -39,14 +39,17 @@ for (const [input, want] of cases) {
   );
 }
 
-const mainPanel = readFileSync(join(root, "src/components/MainPanel.tsx"), "utf8");
-assert(mainPanel.includes("fn-msg-footer"), "MainPanel renders fn-msg-footer");
-assert(mainPanel.includes("TurnBusyIndicator"), "MainPanel mounts TurnBusyIndicator");
-assert(
-  mainPanel.includes("isAgentTurnPlaceholder(msg.content)"),
-  "MainPanel gates spinner on placeholder + loading",
+const mainMessageList = readFileSync(
+  join(root, "src/components/MainChatMessageList.tsx"),
+  "utf8",
 );
-assert(mainPanel.includes("aria-busy={"), "MainPanel sets aria-busy on footer");
+assert(mainMessageList.includes("fn-msg-footer"), "message list renders fn-msg-footer");
+assert(mainMessageList.includes("TurnBusyIndicator"), "message list mounts TurnBusyIndicator");
+assert(
+  mainMessageList.includes("isAgentTurnPlaceholder(msg.content)"),
+  "message list gates spinner on placeholder + loading",
+);
+assert(mainMessageList.includes("aria-busy={"), "message list sets aria-busy on footer");
 
 const floatPanel = readFileSync(
   join(root, "src/components/FloatingBranchDetail.tsx"),
