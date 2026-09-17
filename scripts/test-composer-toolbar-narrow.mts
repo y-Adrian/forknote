@@ -29,5 +29,20 @@ assert.ok(
 const main = readFileSync("src/components/MainPanel.tsx", "utf8");
 assert.ok(main.includes("fn-composer-toolbar-row"));
 assert.ok(main.includes("fn-composer-memory-actions") || main.includes("Memory"));
+
+const phoneComposer = css.slice(
+  css.indexOf("@media (max-width: 560px) {", css.indexOf(".fn-composer-actions")),
+  css.indexOf(".fn-send-btn,", css.indexOf("@media (max-width: 560px) {", css.indexOf(".fn-composer-actions"))),
+);
+assert.match(
+  phoneComposer,
+  /\.fn-composer-hint\s*\{[^}]*display:\s*none/s,
+  "phone composer must hide guidance that would squeeze controls",
+);
+assert.match(
+  phoneComposer,
+  /\.fn-session-api-btn\s*\{[^}]*flex:\s*1 1 auto[^}]*max-width:\s*none/s,
+  "phone API control must shrink within the available action row",
+);
 console.log("[PASS] composer toolbar remains reachable on narrow screens");
 console.log("test-composer-toolbar-narrow: ok");

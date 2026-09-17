@@ -4124,6 +4124,31 @@ mark.branch-highlight:focus-visible {
   flex-shrink: 0;
 }
 
+@media (max-width: 560px) {
+  .fn-composer-bar {
+    gap: 8px;
+  }
+
+  .fn-composer-meta {
+    gap: 6px;
+  }
+
+  /* Keyboard guidance cannot stay legible beside three controls on phones. */
+  .fn-composer-hint {
+    display: none;
+  }
+
+  .fn-session-api-btn {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .fn-send-btn,
+  .fn-stop-btn {
+    padding-inline: 14px;
+  }
+}
+
 .fn-send-btn,
 .fn-stop-btn {
   display: inline-flex;
