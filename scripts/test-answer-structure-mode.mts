@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   answerStructureHintForLatestUser,
   answerStructureModeForQuery,
+  buildClarifyAddendumMessages,
   buildConversationMessages,
   looksLikeFactualRequest,
   looksLikeGuidanceRequest,
@@ -43,6 +44,13 @@ const thread: ThreadRoot = {
       content: "什么是闭包？",
       createdAt: 1,
     },
+    {
+      id: "a1",
+      role: "assistant",
+      content: "闭包会保留其词法作用域中的引用。",
+      children: [],
+      createdAt: 2,
+    },
   ],
   createdAt: 1,
   updatedAt: 1,
@@ -60,5 +68,20 @@ const clarifySystem =
   clarifyMsgs.find((m) => m.role === "system")?.content ?? "";
 assert.match(clarifySystem, /【N】分点/);
 assert.doesNotMatch(clarifySystem, /禁止使用【N】/);
+
+const clarifyAddendum = buildClarifyAddendumMessages(
+  thread,
+  "a1",
+  "词法作用域",
+  "应该怎样逐步排查闭包引起的内存问题？",
+  "zh",
+);
+const clarifyAddendumSystem =
+  clarifyAddendum.find((message) => message.role === "system")?.content ?? "";
+assert.doesNotMatch(
+  clarifyAddendumSystem,
+  /【本轮结构】/,
+  "Clarify addendum must not duplicate the shared current-turn structure hint",
+);
 
 console.log("test-answer-structure-mode: ok");

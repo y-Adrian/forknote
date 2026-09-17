@@ -103,8 +103,13 @@ const withClarify = thread([
         userQuestion: "why?",
         assistantMessage: "because",
         children: [],
-        createdAt: 2500,
+        createdAt: 500,
         replies: [
+          {
+            userQuestion: "already archived?",
+            assistantMessage: "old follow-up conclusion",
+            createdAt: 900,
+          },
           {
             userQuestion: "and then?",
             assistantMessage: "the follow-up conclusion",
@@ -123,6 +128,8 @@ assert.equal(
 const clarifyDelta = buildIncrementalArchiveSource(archive, withClarify, {});
 assert.match(clarifyDelta, /续问「and then\?」/);
 assert.match(clarifyDelta, /follow-up conclusion/);
+assert.doesNotMatch(clarifyDelta, /already archived/);
+assert.doesNotMatch(clarifyDelta, /old follow-up conclusion/);
 
 const incr = buildIncrementalArchiveSource(archive, tLater, {});
 assert.ok(incr.includes("上一版开发日志"), "incremental has previous log");

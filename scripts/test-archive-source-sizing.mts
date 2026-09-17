@@ -90,6 +90,21 @@ const clarifyThread = thread([
         createdAt: 10,
         replies: [
           {
+            userQuestion: "Oldest follow-up?",
+            assistantMessage: "This reply should fall outside the latest-three cap.",
+            createdAt: 17,
+          },
+          {
+            userQuestion: "Second follow-up?",
+            assistantMessage: "Second reply remains.",
+            createdAt: 18,
+          },
+          {
+            userQuestion: "Third follow-up?",
+            assistantMessage: "Third reply remains.",
+            createdAt: 19,
+          },
+          {
             userQuestion: "Does main see it?",
             assistantMessage: "Yes, the next main turn receives it.",
             createdAt: 20,
@@ -102,6 +117,8 @@ const clarifyThread = thread([
 const clarifySource = buildArchiveSource(clarifyThread);
 assert.match(clarifySource, /续问「Does main see it\?」/);
 assert.match(clarifySource, /next main turn receives it/);
+assert.doesNotMatch(clarifySource, /Oldest follow-up/);
+assert.match(clarifySource, /Second follow-up/);
 
 // Older turns should be capped harder than a naive 4k*6 dump
 const naiveCeiling = 4000 * 6;
