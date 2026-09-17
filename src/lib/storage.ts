@@ -514,6 +514,40 @@ function validateImportStoreShape(parsed: unknown): asserts parsed is SessionSto
     if (session.thread !== null && session.thread !== undefined) {
       validateThread(session.thread, new Set<string>(), `sessions[${index}].thread`);
     }
+    if (session.clarificationMemory !== undefined) {
+      if (!Array.isArray(session.clarificationMemory)) {
+        throw new Error(
+          `Invalid backup: sessions[${index}].clarificationMemory must be an array`,
+        );
+      }
+      session.clarificationMemory.forEach((entryRaw, entryIndex) => {
+        const entry = requireRecord(
+          entryRaw,
+          `sessions[${index}].clarificationMemory[${entryIndex}]`,
+        );
+        requireString(
+          entry.branchId,
+          `sessions[${index}].clarificationMemory[${entryIndex}].branchId`,
+        );
+        requireStringValue(
+          entry.anchor,
+          `sessions[${index}].clarificationMemory[${entryIndex}].anchor`,
+        );
+        requireStringValue(
+          entry.summary,
+          `sessions[${index}].clarificationMemory[${entryIndex}].summary`,
+        );
+        if (typeof entry.adopted !== "boolean") {
+          throw new Error(
+            `Invalid backup: sessions[${index}].clarificationMemory[${entryIndex}].adopted must be boolean`,
+          );
+        }
+        requireTimestamp(
+          entry.updatedAt,
+          `sessions[${index}].clarificationMemory[${entryIndex}].updatedAt`,
+        );
+      });
+    }
   });
 }
 

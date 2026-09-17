@@ -119,6 +119,15 @@ export interface BranchNode {
   adoptedSummary?: string;
 }
 
+/** Compact clarification knowledge shared by every turn in one session. */
+export interface ClarificationMemoryEntry {
+  branchId: NodeId;
+  anchor: string;
+  summary: string;
+  adopted: boolean;
+  updatedAt: number;
+}
+
 export interface ChatMessage {
   id: NodeId;
   role: "user" | "assistant";
@@ -194,6 +203,8 @@ export interface ChatSession {
    * Separately injectable from the project pack and user preferences.
    */
   sessionMemory?: SessionMemory | null;
+  /** Recent clarification supplements shared by main and sibling branches. */
+  clarificationMemory?: ClarificationMemoryEntry[];
   /** Bound local project absolute path for this session (via sidecar), or null */
   projectRoot?: string | null;
   /**

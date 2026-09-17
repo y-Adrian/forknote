@@ -19,6 +19,10 @@ import {
   buildClarifyContinueAddendumMessages,
 } from "../lib/contextBuilder";
 import { getLocale, t } from "../lib/i18n";
+import {
+  clarificationMemoryEntryFromBranch,
+  upsertClarificationMemory,
+} from "../lib/clarificationMemory";
 import { createId } from "../lib/id";
 import { isQuotaExceededError } from "../lib/browserStorage";
 import {
@@ -452,6 +456,7 @@ function patchActiveSessionMeta(
       | "threadView"
       | "contextMemory"
       | "sessionMemory"
+      | "clarificationMemory"
       | "shareMemory"
     >
   >,
@@ -461,6 +466,29 @@ function patchActiveSessionMeta(
   return sessions.map((s) =>
     s.id === activeSessionId ? { ...s, ...patch, updatedAt: now } : s,
   );
+}
+
+function syncSessionClarificationMemory(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+  sessionId: NodeId,
+  branchId: NodeId,
+): void {
+  const thread = getSessionThread(get, sessionId);
+  const branch = thread ? findBranchInThread(thread, branchId) : undefined;
+  const session = get().sessions.find((item) => item.id === sessionId);
+  if (!branch || !session) return;
+  const entry = clarificationMemoryEntryFromBranch(branch);
+  if (!entry) return;
+  const clarificationMemory = upsertClarificationMemory(
+    session.clarificationMemory,
+    entry,
+  );
+  const sessions = patchActiveSessionMeta(get().sessions, sessionId, {
+    clarificationMemory,
+  });
+  persistSessions(sessions, get().activeSessionId);
+  set({ sessions });
 }
 
 /** Sync sidecar to a session's bound project; ignores stale session switches. */
@@ -3026,7 +3054,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       try {
         const { projectRoot, sidecarUrl } = get();
-        await runLoadedAgentTurn({
+        const outcome = await runLoadedAgentTurn({
           llm,
           settings,
           locale,
@@ -3079,6 +3107,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             });
           },
         });
+        if (outcome === "completed" && isOwned()) {
+          syncSessionClarificationMemory(get, set, sessionId, branchId);
+        }
       } catch (e) {
         if (!isAbortError(e)) {
           set({
@@ -3239,7 +3270,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
 
-        await runLoadedAgentTurn({
+        const outcome = await runLoadedAgentTurn({
           llm,
           settings,
           locale,
@@ -3292,6 +3323,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             });
           },
         });
+        if (outcome === "completed" && isOwned()) {
+          syncSessionClarificationMemory(get, set, sessionId, branchId);
+        }
       } catch (e) {
         if (!isAbortError(e)) {
           set({
@@ -3366,6 +3400,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       thread: nextThread,
       error: null,
     });
+    syncSessionClarificationMemory(get, set, activeSessionId, branchId);
   },
 
   unadoptBranchFromMain: (branchId) => {
@@ -3405,6 +3440,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       thread: nextThread,
       error: null,
     });
+    syncSessionClarificationMemory(get, set, activeSessionId, branchId);
   },
 
 }));

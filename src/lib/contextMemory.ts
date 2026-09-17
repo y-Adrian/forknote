@@ -25,6 +25,7 @@ import {
 } from "./userPreferences";
 import { formatPolicyForAgent } from "./policy";
 import { assembleMemoryLayers } from "./memoryBudget";
+import { formatClarificationMemoryAddendum } from "./clarificationMemory";
 import {
   formatPendingUnsureAddendum,
   formatToolPreferenceHint,
@@ -701,6 +702,11 @@ export async function buildAgentMemoryAddendum(options: {
   } = options;
   const layers: Array<{ kind: "preferences" | "longTerm" | "session" | "files" | "working"; text: string }> = [];
   const locale = getLocale() === "zh" ? "zh" : "en";
+  const clarifications = formatClarificationMemoryAddendum(
+    session?.clarificationMemory,
+    locale,
+  );
+  if (clarifications) layers.push({ kind: "working", text: clarifications });
   if (isMemoryLayerPreferencesEnabled(settings)) {
     const prefs = formatPreferencesAddendum(loadUserPreferences());
     if (prefs) layers.push({ kind: "preferences", text: prefs });
