@@ -19,6 +19,7 @@ const QUOTE_MAX = 120;
 const CLARIFY_MAX = 220;
 /** Adopted clarify bodies used to be 4k; keep lean for archive prompts. */
 const CLARIFY_ADOPTED_MAX = 1200;
+const CLARIFY_REPLY_KEEP = 3;
 /** Recent turns keep more detail; older turns are aggressively capped. */
 export const MSG_MAX_RECENT = 2200;
 export const MSG_MAX_OLDER = 1000;
@@ -93,6 +94,31 @@ function prepareMessageBody(text: string, max: number): string {
   return truncate(shrinkTextForArchive(text), max);
 }
 
+function appendClarificationReplies(
+  node: BranchNode,
+  lines: string[],
+  since?: number,
+): void {
+  const replies = (node.replies ?? [])
+    .filter(
+      (reply) =>
+        reply.assistantMessage.trim() &&
+        (since == null || reply.createdAt > since),
+    )
+    .slice(-CLARIFY_REPLY_KEEP);
+  for (const reply of replies) {
+    const answer = annotateContentWithVerdicts(
+      flattenAdoptedForPlaintext(reply.assistantMessage),
+      reply.pointVerdicts,
+      reply.pointDoubts,
+      reply.pointAttributions,
+    );
+    lines.push(
+      `  ↳ 续问「${truncate(reply.userQuestion, QUOTE_MAX)}」→ ${prepareMessageBody(answer, CLARIFY_MAX)}`,
+    );
+  }
+}
+
 function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
   for (const node of nodes) {
     const answer = annotateContentWithVerdicts(
@@ -118,6 +144,7 @@ function flattenClarifications(nodes: BranchNode[], lines: string[]): void {
     lines.push(
       `- ${flag}${point} 澄清「${truncate(node.anchor.quotedText, QUOTE_MAX)}」→ ${body}`,
     );
+    appendClarificationReplies(node, lines);
     if (node.children.length) flattenClarifications(node.children, lines);
   }
 }
@@ -410,6 +437,11 @@ function collectNewClarificationsAfter(
           : "";
       lines.push(
         `- ${flag}${point} 澄清「${truncate(node.anchor.quotedText, QUOTE_MAX)}」→ ${body}`,
+      );
+      appendClarificationReplies(
+        node,
+        lines,
+        node.createdAt > since ? undefined : since,
       );
     }
     if (node.children.length) {

@@ -73,6 +73,36 @@ assert.ok(full.includes("工具输出已省略") || full.length < 20_000, "sized
 assert.ok(full.includes("recent ask"), "keeps recent user turn");
 assert.ok(full.length <= ARCHIVE_SOURCE_HARD_MAX, "hard max respected");
 
+const clarifyThread = thread([
+  msg({ id: "u-clarify", role: "user", content: "Explain memory" }),
+  msg({
+    id: "a-clarify",
+    role: "assistant",
+    content: "Shared session memory",
+    children: [
+      {
+        id: "branch-clarify",
+        parentId: "a-clarify",
+        anchor: { startOffset: 0, endOffset: 6, quotedText: "Shared" },
+        userQuestion: "What is shared?",
+        assistantMessage: "Clarification summaries are shared.",
+        children: [],
+        createdAt: 10,
+        replies: [
+          {
+            userQuestion: "Does main see it?",
+            assistantMessage: "Yes, the next main turn receives it.",
+            createdAt: 20,
+          },
+        ],
+      },
+    ],
+  }),
+]);
+const clarifySource = buildArchiveSource(clarifyThread);
+assert.match(clarifySource, /续问「Does main see it\?」/);
+assert.match(clarifySource, /next main turn receives it/);
+
 // Older turns should be capped harder than a naive 4k*6 dump
 const naiveCeiling = 4000 * 6;
 assert.ok(
