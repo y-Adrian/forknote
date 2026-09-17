@@ -3424,22 +3424,26 @@ mark.branch-highlight:focus-visible {
 
   .ss-nav {
     width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     border-right: none;
     border-bottom: 1px solid var(--ds-border);
     padding: 10px 12px;
   }
 
   .ss-nav-item {
-    width: auto;
-    flex: 1 1 auto;
+    width: 100%;
+    gap: 6px;
     justify-content: center;
-    padding: 8px 10px;
+    padding: 8px 6px;
   }
 
   .ss-nav-item span:not(.ss-nav-icon) {
-    display: none;
+    display: inline;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .ss-row {

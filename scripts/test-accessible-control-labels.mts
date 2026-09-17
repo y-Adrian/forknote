@@ -37,6 +37,15 @@ assert.match(
   "theme segment buttons need aria-pressed",
 );
 assert.match(settings, /aria-label=\{t\(opt\.labelKey\)\}/);
+assert.match(
+  settings,
+  /className=\{`ss-nav-item[\s\S]*?aria-label=\{item\.label\}/,
+  "settings category buttons need names at every responsive breakpoint",
+);
+assert.match(
+  settings,
+  /aria-current=\{settingsTab === item\.id \? "page" : undefined\}/,
+);
 
 assert.match(sidebar, /aria-pressed=\{theme === "dark"\}/);
 assert.match(sidebar, /aria-label=\{toLight \? toLightLabel : toDarkLabel\}/);

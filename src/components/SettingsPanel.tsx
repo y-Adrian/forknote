@@ -1259,6 +1259,9 @@ export function SettingsPanel({ settings, open, onClose, onSave }: Props) {
                 key={item.id}
                 type="button"
                 className={`ss-nav-item${settingsTab === item.id ? " is-active" : ""}`}
+                aria-label={item.label}
+                title={item.label}
+                aria-current={settingsTab === item.id ? "page" : undefined}
                 onClick={() => {
                   setSettingsTab(item.id);
                   setAboutPage("main");
