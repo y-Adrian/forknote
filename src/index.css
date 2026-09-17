@@ -3505,7 +3505,9 @@ mark.branch-highlight:focus-visible {
 }
 
 .fn-lang-confirm-backdrop {
-  z-index: 140;
+  /* This confirmation is opened from inside Settings, so it must sit above
+     the shared modal layer instead of using the legacy pre-token value. */
+  z-index: calc(var(--fn-z-modal) + 10);
 }
 
 .fn-lang-confirm-modal.modal {

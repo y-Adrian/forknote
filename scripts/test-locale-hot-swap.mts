@@ -15,6 +15,7 @@ const settings = readFileSync(
   "utf8",
 );
 const i18n = readFileSync(join(root, "src/lib/i18n.ts"), "utf8");
+const css = readFileSync(join(root, "src/index.css"), "utf8");
 
 // Prove the prior failure: language confirm used to reload.
 assert.match(settings, /confirmLanguageSwitch/);
@@ -52,6 +53,16 @@ assert.doesNotMatch(
 assert.match(
   t("general.langConfirmBody", { lang: "English" }, "en"),
   /kept|drafts|composer/i,
+);
+
+const confirmBackdrop = css.slice(
+  css.indexOf(".fn-lang-confirm-backdrop"),
+  css.indexOf(".fn-lang-confirm-modal.modal"),
+);
+assert.match(
+  confirmBackdrop,
+  /z-index:\s*calc\(var\(--fn-z-modal\) \+ 10\)/,
+  "language confirmation must render above the Settings modal",
 );
 
 console.log("[PASS] locale hot-swap without full-page reload");
