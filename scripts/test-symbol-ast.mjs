@@ -12,6 +12,7 @@ import { extractSymbols } from "../shared/codeIntel.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PROJECT = path.join(ROOT, `.tmp-symbol-ast-${process.pid}`);
+const TEST_TOKEN = "d".repeat(64);
 
 const results = [];
 function ok(name, pass, detail = "") {
@@ -32,10 +33,16 @@ async function freePort() {
 }
 
 async function json(base, method, pathname, body) {
+  const requestBody = pathname.startsWith("/fs/")
+    ? { ...(body ?? {}), expectedRoot: PROJECT }
+    : body;
   const res = await fetch(`${base}${pathname}`, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: {
+      "X-ForkNote-Sidecar-Token": TEST_TOKEN,
+      ...(requestBody ? { "Content-Type": "application/json" } : {}),
+    },
+    body: requestBody ? JSON.stringify(requestBody) : undefined,
   });
   const text = await res.text();
   let data;
@@ -95,7 +102,12 @@ alphaHelper();
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, [path.join(ROOT, "sidecar/index.js")], {
-    env: { ...process.env, SIDECAR_PORT: String(port), SIDECAR_HOST: "127.0.0.1" },
+    env: {
+      ...process.env,
+      SIDECAR_PORT: String(port),
+      SIDECAR_HOST: "127.0.0.1",
+      SIDECAR_AUTH_TOKEN: TEST_TOKEN,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   try {

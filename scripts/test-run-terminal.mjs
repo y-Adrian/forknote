@@ -81,7 +81,6 @@ async function closeProject() {
 
 async function testSidecar() {
   console.log("\n=== Sidecar /fs/run ===\n");
-  const projectReal = await real(PROJECT);
 
   // 3. Unbound / no project
   await closeProject();
@@ -95,6 +94,9 @@ async function testSidecar() {
   }
 
   await setupProject();
+  // Resolve after creation so macOS /tmp -> /private/tmp canonicalization is
+  // observable instead of falling back to the unresolved input path.
+  const projectReal = await real(PROJECT);
 
   // 1. Happy path
   {
