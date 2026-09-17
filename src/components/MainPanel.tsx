@@ -115,6 +115,21 @@ function SidebarMenuButton({
         iconHeight={22}
         className="fn-sidebar-menu-logo"
       />
+      <svg
+        className="fn-sidebar-menu-glyph"
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        aria-hidden
+      >
+        <path
+          d="M2 3.5h10M2 7h10M2 10.5h10"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </svg>
     </button>
   );
 }

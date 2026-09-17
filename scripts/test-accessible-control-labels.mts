@@ -66,6 +66,12 @@ assert.match(
   main,
   /aria-label=\{\s*sourceMode\s*\?\s*t\("main\.viewMode\.toReadingTitle"\)\s*:\s*t\("main\.viewMode\.toSourceTitle"\)\s*\}/,
 );
+assert.match(main, /className="fn-sidebar-menu-btn"[\s\S]*?aria-label=\{label\}/);
+assert.match(
+  main,
+  /className="fn-sidebar-menu-glyph"[\s\S]*?aria-hidden/,
+  "mobile session entry needs a familiar decorative menu glyph",
+);
 
 for (const key of [
   "verdict.accept",

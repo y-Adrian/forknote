@@ -3654,7 +3654,7 @@ mark.branch-highlight:focus-visible {
 
 .fn-sidebar-menu-btn {
   flex-shrink: 0;
-  width: 36px;
+  width: 46px;
   height: 36px;
   margin: 0;
   padding: 0;
@@ -3666,6 +3666,7 @@ mark.branch-highlight:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   transition:
     background var(--dur-fast) ease,
     color var(--dur-fast) ease,
@@ -3678,7 +3679,12 @@ mark.branch-highlight:focus-visible {
 }
 
 .fn-sidebar-menu-btn .fn-sidebar-menu-logo .fn-brand-icon {
-  height: 22px;
+  height: 20px;
+}
+
+.fn-sidebar-menu-glyph {
+  flex-shrink: 0;
+  opacity: 0.9;
 }
 
 .fn-sidebar-menu-btn:hover {
