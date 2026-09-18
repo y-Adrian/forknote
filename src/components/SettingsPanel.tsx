@@ -751,6 +751,11 @@ function DataPanel() {
       <h3 className="ss-panel-title">{t("data.title")}</h3>
       <p className="ss-panel-lead">{t("data.lead")}</p>
 
+      <div className="ss-callout">
+        <strong>{t("data.backupPrivacyTitle")}</strong>
+        <p>{t("data.backupPrivacyBody")}</p>
+      </div>
+
       <SettingsRow
         title={t("data.notesTitle")}
         description={t("data.notesCount", { count: sessions.length })}

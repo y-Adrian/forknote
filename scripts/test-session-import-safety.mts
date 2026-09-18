@@ -46,6 +46,8 @@ const {
   captureSessionImportBackup,
   parseSessionStoreImport,
   saveSessionStore,
+  SESSION_BACKUP_FORMAT,
+  SESSION_BACKUP_VERSION,
 } = await import("../src/lib/storage.ts");
 
 function storeJson(value: unknown): string {
@@ -81,6 +83,32 @@ function validSession(id = "s1") {
       confirmHandler.includes("replaceSessionStore(") &&
       confirmHandler.includes("data.importSaveFailed"),
     "confirmed import must require backup and surface save errors",
+  );
+}
+
+{
+  const imported = parseSessionStoreImport(
+    storeJson({
+      format: SESSION_BACKUP_FORMAT,
+      version: SESSION_BACKUP_VERSION,
+      exportedAt: "2026-01-02T03:04:05.000Z",
+      sessions: [validSession("versioned")],
+      activeSessionId: "versioned",
+    }),
+  );
+  assert.equal(imported.activeSessionId, "versioned");
+  assert.throws(
+    () =>
+      parseSessionStoreImport(
+        storeJson({
+          format: SESSION_BACKUP_FORMAT,
+          version: SESSION_BACKUP_VERSION + 1,
+          exportedAt: "2026-01-02T03:04:05.000Z",
+          sessions: [],
+          activeSessionId: null,
+        }),
+      ),
+    /unsupported version/,
   );
 }
 

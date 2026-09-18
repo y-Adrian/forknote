@@ -3,6 +3,9 @@
  * Usage: npx tsx scripts/test-export-redact-api.mts
  */
 import {
+  SESSION_BACKUP_FORMAT,
+  SESSION_BACKUP_VERSION,
+  createSessionBackupEnvelope,
   redactSessionApiForExport,
   sanitizeSessionStoreForExport,
 } from "../src/lib/storage.ts";
@@ -43,6 +46,15 @@ ok(
     sanitized.sessions[0]?.api?.apiKey === undefined,
 );
 ok("does not mutate original", session.api?.apiKey === "sk-leak");
+
+const envelope = createSessionBackupEnvelope(
+  store,
+  new Date("2026-01-02T03:04:05.000Z"),
+);
+ok("backup has stable format", envelope.format === SESSION_BACKUP_FORMAT);
+ok("backup has current version", envelope.version === SESSION_BACKUP_VERSION);
+ok("backup has export timestamp", envelope.exportedAt === "2026-01-02T03:04:05.000Z");
+ok("backup envelope omits secret", !JSON.stringify(envelope).includes("sk-leak"));
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

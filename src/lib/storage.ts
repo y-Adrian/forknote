@@ -321,9 +321,29 @@ export function sanitizeSessionStoreForExport(store: SessionStore): SessionStore
   };
 }
 
+export const SESSION_BACKUP_FORMAT = "forknote-session-backup";
+export const SESSION_BACKUP_VERSION = 2;
+
+export interface SessionBackupEnvelope extends SessionStore {
+  format: typeof SESSION_BACKUP_FORMAT;
+  version: typeof SESSION_BACKUP_VERSION;
+  exportedAt: string;
+}
+
+export function createSessionBackupEnvelope(
+  store: SessionStore,
+  now = new Date(),
+): SessionBackupEnvelope {
+  return {
+    format: SESSION_BACKUP_FORMAT,
+    version: SESSION_BACKUP_VERSION,
+    exportedAt: now.toISOString(),
+    ...sanitizeSessionStoreForExport(store),
+  };
+}
+
 export function exportSessionStoreJson(): string {
-  const store = sanitizeSessionStoreForExport(loadSessionStore());
-  return JSON.stringify(store, null, 2);
+  return JSON.stringify(createSessionBackupEnvelope(loadSessionStore()), null, 2);
 }
 
 export const SESSION_IMPORT_BACKUP_KEY = "forknote-session-import-backup-v1";
@@ -563,8 +583,30 @@ function stripImportedApiKeys(store: SessionStore): SessionStore {
 
 export function parseSessionStoreImport(raw: string): SessionStore {
   const parsed = JSON.parse(raw) as unknown;
-  validateImportStoreShape(parsed);
-  const normalized = stripImportedApiKeys(normalizeLoadedStore(parsed));
+  const root = requireRecord(parsed, "root");
+  let storeCandidate: unknown = parsed;
+  if (root.format !== undefined || root.version !== undefined) {
+    if (root.format !== SESSION_BACKUP_FORMAT) {
+      throw new Error("Invalid backup: unsupported format");
+    }
+    if (root.version !== SESSION_BACKUP_VERSION) {
+      throw new Error(
+        `Invalid backup: unsupported version ${String(root.version)}`,
+      );
+    }
+    if (
+      typeof root.exportedAt !== "string" ||
+      !Number.isFinite(Date.parse(root.exportedAt))
+    ) {
+      throw new Error("Invalid backup: exportedAt must be a valid date");
+    }
+    storeCandidate = {
+      sessions: root.sessions,
+      activeSessionId: root.activeSessionId,
+    };
+  }
+  validateImportStoreShape(storeCandidate);
+  const normalized = stripImportedApiKeys(normalizeLoadedStore(storeCandidate));
   const sessions = normalized.sessions;
   if (sessions.length === 0) {
     const session = createEmptySession();

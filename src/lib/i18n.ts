@@ -260,13 +260,16 @@ const en = {
   "data.notesTitle": "Sessions on this device",
   "data.notesCount":
     "{count} session(s) in localStorage.",
-  "data.export": "Export sessions (JSON)",
+  "data.export": "Export full backup (JSON)",
   "data.import": "Import sessions (JSON)",
   "data.clear": "Clear all sessions",
   "data.clearConfirm":
     "Clear all sessions and archives on this device? This cannot be undone.",
   "data.exported": "Exported sessions to a JSON file (API keys omitted).",
   "data.exportFailed": "Export failed.",
+  "data.backupPrivacyTitle": "Backup privacy",
+  "data.backupPrivacyBody":
+    "The recoverable backup omits API keys, but includes full conversations, clarifications, archives, feedback, hidden reasoning, model endpoints, and local project paths. Keep it private.",
   "data.importConfirmAria": "Confirm session import",
   "data.importConfirmTitle": "Replace all current sessions?",
   "data.importConfirmBody":
@@ -994,12 +997,15 @@ const zh: Record<MessageKey, string> = {
     "会话与归档保存在本浏览器的 localStorage。清空前请先导出备份。导出 JSON 会省略会话里的 API Key。",
   "data.notesTitle": "本机会话",
   "data.notesCount": "localStorage 中有 {count} 条会话。",
-  "data.export": "导出会话（JSON）",
+  "data.export": "导出完整备份（JSON）",
   "data.import": "导入会话（JSON）",
   "data.clear": "清空全部会话",
   "data.clearConfirm": "清空本机全部会话与归档？此操作不可撤销。",
   "data.exported": "已导出会话为 JSON 文件（已省略 API Key）。",
   "data.exportFailed": "导出失败。",
+  "data.backupPrivacyTitle": "备份隐私说明",
+  "data.backupPrivacyBody":
+    "可恢复备份会移除 API Key，但仍包含完整对话、澄清、归档、反馈、隐藏推理、模型地址和本机项目路径。请勿公开分享。",
   "data.importConfirmAria": "确认导入会话",
   "data.importConfirmTitle": "替换当前全部会话？",
   "data.importConfirmBody":
