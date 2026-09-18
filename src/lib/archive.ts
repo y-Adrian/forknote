@@ -99,6 +99,8 @@ function appendClarificationReplies(
   lines: string[],
   since?: number,
 ): void {
+  // Incremental archives include only replies after `since`; full archives
+  // retain the newest few so a long Fork cannot consume the whole prompt.
   const replies = (node.replies ?? [])
     .filter(
       (reply) =>

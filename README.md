@@ -8,6 +8,10 @@
 
 面向开发与排障的「边读边澄清、再归档成日志」的工作台。
 
+维护者入口：[`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) ·
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
+[`docs/TESTING.md`](docs/TESTING.md)
+
 **Clarify as you read** — 针对 AI 长回答的选中澄清工具。
 
 拖选一段文字 → **Clarify this** → 浮动澄清面板与 Fork 分支回答；对分点打 **Accept / Reject / Doubt**；右侧 **Branch rail** 导航；可选绑定本机目录做读写。

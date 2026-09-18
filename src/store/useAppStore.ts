@@ -542,7 +542,9 @@ function appendChild(
   }));
 }
 
-// Module-level abort controllers — not in Zustand state (no re-render needed).
+// Module-level ownership registries are intentionally outside Zustand: they are
+// non-serializable and should not trigger renders. Never resolve a completion
+// against the then-active session; use the captured session id + owns() check.
 // Main / branch work is keyed by session so sessions can generate independently.
 type MainTurn = {
   userId: NodeId;

@@ -2143,6 +2143,8 @@ async function rootsMatch(a, b) {
 }
 
 async function withExpectedProjectRoot(expectedRaw, operation) {
+  // expectedRoot pins every privileged request to the project selected by the
+  // caller. Re-check projectRoot after realpath work to close rebind races.
   const expectedText = String(expectedRaw ?? "").trim();
   if (!expectedText) {
     throw Object.assign(new Error("expectedRoot is required"), { status: 400 });
@@ -2616,6 +2618,8 @@ async function handler(req, res, signal) {
 }
 
 const server = http.createServer((req, res) => {
+  // Route handlers assume both gates below have passed: loopback-origin policy
+  // and the per-install secret. Filesystem routes add expectedRoot validation.
   const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
   if (!isTrustedLoopbackOrigin(origin)) {
     sendError(res, 403, "Origin not allowed");

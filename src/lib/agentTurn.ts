@@ -406,6 +406,8 @@ export async function runAgentTurn(
     preferPlainChat &&
     shouldInjectProjectPackForPlainChat(trimmed);
 
+  // Assemble memory before conversation messages so main and Clarify turns use
+  // the same layers. `extraMessages` below only narrows the Clarify target.
   const memoryAddendum = await buildAgentMemoryAddendum({
     settings,
     query: trimmed,

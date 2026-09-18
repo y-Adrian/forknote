@@ -1,6 +1,11 @@
 import type { BranchNode, ClarificationMemoryEntry } from "../types";
 import type { Locale } from "./i18n";
 
+/**
+ * Derived session index for completed Clarify turns. The branch tree remains
+ * the source of truth; this bounded copy exists only for prompt injection.
+ */
+
 const ENTRY_MAX = 1_000;
 const FIELD_MAX = 420;
 export const CLARIFICATION_MEMORY_MAX_ENTRIES = 8;
