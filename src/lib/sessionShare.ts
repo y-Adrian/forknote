@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession } from "../types";
+import type { BranchNode, ChatMessage, ChatSession } from "../types";
 import { flattenAdoptedForPlaintext } from "./adoptBranch";
 
 /** Soft warn when encoded URL hash exceeds this (chars). Still allowed. */
@@ -101,6 +101,105 @@ export function sessionToShareMarkdown(
   return sharePayloadToMarkdown(
     buildSharePayload(session.title, messages),
   );
+}
+
+export interface SessionMarkdownExportOptions {
+  includeClarifications?: boolean;
+  includeArchives?: boolean;
+  includeTimestamps?: boolean;
+}
+
+function markdownTimestamp(value: number): string {
+  return new Date(value).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
+function appendBranchMarkdown(
+  lines: string[],
+  branch: BranchNode,
+  depth: number,
+  includeTimestamps: boolean,
+): void {
+  const heading = "#".repeat(Math.min(6, 3 + depth));
+  const timestamp = includeTimestamps
+    ? ` · ${markdownTimestamp(branch.createdAt)}`
+    : "";
+  lines.push(
+    `${heading} Clarification${timestamp}`,
+    "",
+    `> ${branch.anchor.quotedText.trim()}`,
+    "",
+    `**Question:** ${branch.userQuestion.trim()}`,
+    "",
+    branch.assistantMessage.trim(),
+    "",
+  );
+  for (const reply of branch.replies ?? []) {
+    if (!reply.assistantMessage.trim()) continue;
+    const replyTimestamp = includeTimestamps
+      ? ` · ${markdownTimestamp(reply.createdAt)}`
+      : "";
+    lines.push(
+      `${heading} Follow-up${replyTimestamp}`,
+      "",
+      `**Question:** ${reply.userQuestion.trim()}`,
+      "",
+      reply.assistantMessage.trim(),
+      "",
+    );
+  }
+  for (const child of branch.children) {
+    appendBranchMarkdown(lines, child, depth + 1, includeTimestamps);
+  }
+}
+
+/** Human-readable note export; unlike share links, it can retain Fork context. */
+export function sessionToExportMarkdown(
+  session: ChatSession,
+  selectedIds?: ReadonlySet<string>,
+  options: SessionMarkdownExportOptions = {},
+): string {
+  const includeClarifications = options.includeClarifications !== false;
+  const includeArchives = options.includeArchives === true;
+  const includeTimestamps = options.includeTimestamps === true;
+  const lines: string[] = [`# ${session.title.trim() || "Untitled"}`, ""];
+  const messages = session.thread?.messages ?? [];
+  const selected = messages.filter(
+    (message) =>
+      message.content.trim() &&
+      (selectedIds == null || selectedIds.has(message.id)),
+  );
+
+  if (selected.length === 0) lines.push("_Empty note_", "");
+  for (const message of selected) {
+    const role = message.role === "user" ? "User" : "Assistant";
+    const timestamp = includeTimestamps
+      ? ` · ${markdownTimestamp(message.createdAt)}`
+      : "";
+    lines.push(
+      `## ${role}${timestamp}`,
+      "",
+      flattenAdoptedForPlaintext(message.content).trim(),
+      "",
+    );
+    if (includeClarifications && message.role === "assistant") {
+      for (const branch of message.children) {
+        appendBranchMarkdown(lines, branch, 0, includeTimestamps);
+      }
+    }
+  }
+
+  if (includeArchives && (session.archives?.length ?? 0) > 0) {
+    lines.push("## Archives", "");
+    for (const archive of session.archives ?? []) {
+      lines.push(
+        `### ${archive.title.trim() || "Archive"} · ${markdownTimestamp(archive.createdAt)}`,
+        "",
+        archive.content.trim(),
+        "",
+      );
+    }
+  }
+  return lines.join("\n").trimEnd() + "\n";
 }
 
 export function sharePayloadToMarkdown(payload: SharePayload): string {
@@ -406,9 +505,24 @@ export function buildShareHtmlFilename(
   return `forknote-share-${slug || date}.html`;
 }
 
+export function buildShareMarkdownFilename(
+  title: string,
+  now: Date = new Date(),
+): string {
+  return buildShareHtmlFilename(title, now).replace(/\.html$/, ".md");
+}
+
+export function downloadShareMarkdown(markdown: string, filename: string): void {
+  downloadShareText(markdown, filename, "text/markdown;charset=utf-8");
+}
+
 /** Trigger a browser download of a UTF-8 text/HTML file. */
 export function downloadShareHtml(html: string, filename: string): void {
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  downloadShareText(html, filename, "text/html;charset=utf-8");
+}
+
+function downloadShareText(text: string, filename: string, type: string): void {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

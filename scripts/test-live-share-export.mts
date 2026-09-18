@@ -11,6 +11,7 @@ import {
   buildSharePayload,
   getShareableMessages,
   resolveLiveShareSession,
+  sessionToExportMarkdown,
   sessionToShareMarkdown,
   sharePayloadToHtml,
 } from "../src/lib/sessionShare.ts";
@@ -84,6 +85,56 @@ assert.ok(
   ),
 );
 console.log("[PASS] live resolve includes messages added after dialog open");
+
+const rich = session("rich", [
+  {
+    id: "a-rich",
+    role: "assistant",
+    content: "main answer",
+    createdAt: 10,
+    children: [
+      {
+        id: "branch-rich",
+        parentId: "a-rich",
+        anchor: { startOffset: 0, endOffset: 4, quotedText: "main" },
+        userQuestion: "clarify?",
+        assistantMessage: "clarified answer",
+        createdAt: 11,
+        children: [],
+        replies: [
+          {
+            userQuestion: "follow up?",
+            assistantMessage: "follow-up answer",
+            createdAt: 12,
+          },
+        ],
+      },
+    ],
+  },
+]);
+rich.archives = [
+  {
+    id: "archive-1",
+    createdAt: 20,
+    title: "Decision log",
+    content: "Archived conclusion",
+    throughMessageId: "a-rich",
+  },
+];
+const richMarkdown = sessionToExportMarkdown(rich, undefined, {
+  includeClarifications: true,
+  includeArchives: true,
+  includeTimestamps: true,
+});
+assert.match(richMarkdown, /### Clarification/);
+assert.match(richMarkdown, /clarified answer/);
+assert.match(richMarkdown, /follow-up answer/);
+assert.match(richMarkdown, /## Archives/);
+assert.match(richMarkdown, /Archived conclusion/);
+assert.doesNotMatch(
+  sessionToExportMarkdown(rich, undefined, { includeClarifications: false }),
+  /clarified answer/,
+);
 
 const emptyPayload = buildSharePayload("Empty note", []);
 assert.equal(emptyPayload.messages.length, 0);

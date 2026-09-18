@@ -4904,6 +4904,26 @@ mark.branch-highlight:focus-visible {
   -webkit-box-orient: vertical;
 }
 
+.fn-share-export-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 2px 0;
+}
+
+.fn-share-export-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fn-text-ui-sm);
+  color: var(--ds-text-dim);
+  cursor: pointer;
+}
+
+.fn-share-export-options input {
+  accent-color: var(--ds-accent);
+}
+
 .fn-share-error {
   margin: 0;
   font-size: var(--fn-text-ui-sm);

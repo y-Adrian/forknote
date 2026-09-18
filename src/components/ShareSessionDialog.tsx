@@ -3,14 +3,16 @@ import { useLocale } from "../lib/i18n";
 import {
   SHARE_HARD_LIMIT,
   SHARE_SOFT_LIMIT,
+  buildShareMarkdownFilename,
   buildShareHtmlFilename,
   buildSharePayload,
   buildShareUrl,
   downloadShareHtml,
+  downloadShareMarkdown,
   encodeSharePayload,
   getShareableMessages,
   previewText,
-  sessionToShareMarkdown,
+  sessionToExportMarkdown,
   sharePayloadToHtml,
   type ShareableMessage,
 } from "../lib/sessionShare";
@@ -41,6 +43,9 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [warnSoft, setWarnSoft] = useState(false);
   const [copiedKind, setCopiedKind] = useState<"link" | "content" | null>(null);
+  const [includeClarifications, setIncludeClarifications] = useState(true);
+  const [includeArchives, setIncludeArchives] = useState(false);
+  const [includeTimestamps, setIncludeTimestamps] = useState(false);
 
   useEffect(() => {
     if (!session) onClose();
@@ -163,8 +168,30 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
 
   const copyMarkdown = () => {
     if (!session) return;
-    const md = sessionToShareMarkdown(session, selected);
+    const md = sessionToExportMarkdown(session, selected, {
+      includeClarifications,
+      includeArchives,
+      includeTimestamps,
+    });
     void copyText(md, "content");
+  };
+
+  const exportMarkdown = () => {
+    if (!session) return;
+    try {
+      const markdown = sessionToExportMarkdown(session, selected, {
+        includeClarifications,
+        includeArchives,
+        includeTimestamps,
+      });
+      downloadShareMarkdown(
+        markdown,
+        buildShareMarkdownFilename(session.title),
+      );
+      setError(null);
+    } catch {
+      setError(t("share.exportMarkdownFailed"));
+    }
   };
 
   if (!session) return null;
@@ -251,6 +278,33 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
           )}
         </ul>
 
+        <div className="fn-share-export-options" aria-label={t("share.exportOptions")}>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeClarifications}
+              onChange={(event) => setIncludeClarifications(event.target.checked)}
+            />
+            {t("share.includeClarifications")}
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeArchives}
+              onChange={(event) => setIncludeArchives(event.target.checked)}
+            />
+            {t("share.includeArchives")}
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeTimestamps}
+              onChange={(event) => setIncludeTimestamps(event.target.checked)}
+            />
+            {t("share.includeTimestamps")}
+          </label>
+        </div>
+
         {error ? (
           <p className="fn-share-error" role="alert">
             {error}
@@ -289,6 +343,14 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
 
         <footer className="fn-share-footer">
           <div className="fn-share-footer-secondary">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={exportMarkdown}
+              disabled={messages.length > 0 && selectedCount === 0}
+            >
+              {t("share.exportMarkdown")}
+            </button>
             <button
               type="button"
               className="btn ghost"
