@@ -151,7 +151,7 @@ curl -sS http://127.0.0.1:8787/health
 |------|------|
 | **General** | 主题 Light / Dark / System；界面语言下拉选择 English / 中文（确认后整页重载，UI 与模型回复语言一并跟随） |
 | **API** | 提供商预设、Base URL / Model / Key、开发代理；本地上下文记忆包 |
-| **Data** | 导出 / 导入笔记 JSON；清空本地笔记 |
+| **Data** | 导出 / 导入带版本的完整备份 JSON；清空本地笔记 |
 | **Project** | Sidecar URL、打开本地项目、Agent 工具轮数 / 计划批准 |
 | **About** | 产品说明 |
 
@@ -348,7 +348,8 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 - **New note**：新建空笔记；默认标题为本地化的 Untitled / 未命名（i18n sentinel，随界面语言显示）
 - **··· 菜单**：置顶 / 取消置顶、**分享**、重命名、删除
 - **重命名**：双击笔记标题，或菜单里重命名；手动命名后标题不再被首条消息自动覆盖
-- **分享**：勾选消息后 **Download HTML** 导出可离线打开的自包含 HTML；可选生成同站 hash 分享链接（不适合跨网络）
+- **分享 / 笔记导出**：勾选消息后可下载 Markdown 或自包含 HTML；可选保留 Clarify、归档和时间。HTML 会离线渲染常用 Markdown；也可生成同站 hash 分享链接（链接只含所选主线，不适合跨网络）
+- **完整备份**：Settings → Data 导出带格式版本和时间的 JSON，可恢复主线、Clarify、归档与记忆。API Key 会移除，但本机路径、反馈和隐藏推理仍可能存在，请勿公开分享
 - **删除**：确认对话框；可勾选 **Don't ask again** / **不再提示**（偏好写入 `localStorage`）。数据在本地，无云端回收站
 - 置顶笔记单独分组；其余按日期分组显示在左侧
 
@@ -467,7 +468,7 @@ flowchart TD
 | 模块 | 文件 | 说明 |
 |------|------|------|
 | 主聊天壳 | `MainPanel.tsx`、`ChatComposer.tsx` | 消息列表、footer 工具栏（项目 / 上下文模式 / Archive / Compress）、DeepSeek 风格气泡；窄屏 Logo 打开会话抽屉 |
-| 会话侧栏 | `SessionSidebar.tsx`、`ShareSessionDialog.tsx` | 笔记列表、置顶 / 分享 HTML / 重命名 / 删除确认；窄屏 overlay drawer |
+| 会话侧栏 | `SessionSidebar.tsx`、`ShareSessionDialog.tsx` | 笔记列表、置顶 / 导出 Markdown 和 HTML / 分享 / 重命名 / 删除确认；窄屏 overlay drawer |
 | 澄清 / 分点 | `SelectableMarkdown.tsx`、`PointizedAnswer.tsx`、`FloatingAskPanel.tsx` | 选中澄清、分点 Accept/Reject/Doubt |
 | 分支导航 | `BranchRail.tsx`、`BranchFloatLayer.tsx` | git-graph 轨与浮动 Fork |
 | 上下文 | `conversationContext.ts`、`contextBuilder.ts`、`points.ts` | live vs archive；system + 历史；裁决注入 |

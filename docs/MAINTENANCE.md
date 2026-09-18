@@ -65,6 +65,8 @@
 - `sessionMemory` 和偏好模型：用户显式记录、反馈策略和跨轮偏好。
 - `ArchiveSnapshot`：用户可见的开发日志，也是 archive 模式的上下文底座。
 
+导出同样分层：Settings → Data 的 JSON 是可恢复备份；会话分享窗口的 Markdown/HTML 是默认排除内部推理的可读笔记。不要把两者合并成一个含糊的“导出”按钮。
+
 ## 6. Sidecar 安全约束
 
 sidecar 能读写文件、运行命令，修改时应保留以下两层边界：
