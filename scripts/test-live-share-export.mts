@@ -10,9 +10,11 @@ import type { ChatSession, ThreadRoot } from "../src/types.ts";
 import {
   buildSharePayload,
   getShareableMessages,
+  markdownToSafeHtml,
   resolveLiveShareSession,
   sessionToExportMarkdown,
   sessionToShareMarkdown,
+  shareMarkdownToHtml,
   sharePayloadToHtml,
 } from "../src/lib/sessionShare.ts";
 
@@ -135,6 +137,22 @@ assert.doesNotMatch(
   sessionToExportMarkdown(rich, undefined, { includeClarifications: false }),
   /clarified answer/,
 );
+const renderedMarkdown = markdownToSafeHtml(
+  "## Heading\n\n- item\n\n```ts\nconst x = '<script>';\n```\n\n<script>alert(1)</script>",
+);
+assert.match(renderedMarkdown, /<h2>Heading<\/h2>/);
+assert.match(renderedMarkdown, /<ul>/);
+assert.match(renderedMarkdown, /<pre><code class="language-ts">/);
+assert.doesNotMatch(renderedMarkdown, /<script>/);
+assert.match(renderedMarkdown, /&lt;script&gt;/);
+const richHtml = shareMarkdownToHtml("Rich", richMarkdown, {
+  lang: "zh",
+  roleUser: "You",
+  roleAssistant: "Assistant",
+});
+assert.match(richHtml, /class="msg markdown-body"/);
+assert.match(richHtml, /clarified answer/);
+assert.match(richHtml, /<html lang="zh">/);
 
 const emptyPayload = buildSharePayload("Empty note", []);
 assert.equal(emptyPayload.messages.length, 0);

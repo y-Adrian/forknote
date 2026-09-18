@@ -13,7 +13,7 @@ import {
   getShareableMessages,
   previewText,
   sessionToExportMarkdown,
-  sharePayloadToHtml,
+  shareMarkdownToHtml,
   type ShareableMessage,
 } from "../lib/sessionShare";
 import { copyTextToClipboard } from "../lib/clipboard";
@@ -27,7 +27,7 @@ interface Props {
 }
 
 export function ShareSessionDialog({ sessionId, onClose }: Props) {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const session = useAppStore((s) =>
     s.sessions.find((item) => item.id === sessionId),
   );
@@ -102,6 +102,17 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
   const selectedMessages = (): ShareableMessage[] =>
     messages.filter((m) => selected.has(m.id));
 
+  const exportLabels = () => ({
+    user: t("share.roleUser"),
+    assistant: t("share.roleAssistant"),
+    clarification: t("share.clarification"),
+    followUp: t("share.followUp"),
+    question: t("share.question"),
+    archives: t("share.archives"),
+    archive: t("share.archive"),
+    empty: t("share.empty"),
+  });
+
   const exportHtml = () => {
     if (!session) return;
     if (selectedCount === 0 && messages.length > 0) {
@@ -111,15 +122,21 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
     setError(null);
     setCopiedKind(null);
     try {
-      const payload = buildSharePayload(session.title, selectedMessages());
-      const html = sharePayloadToHtml(payload, {
+      const markdown = sessionToExportMarkdown(session, selected, {
+        includeClarifications,
+        includeArchives,
+        includeTimestamps,
+        labels: exportLabels(),
+      });
+      const html = shareMarkdownToHtml(session.title, markdown, {
         brand: "ForkNote",
+        lang: locale,
         roleUser: t("share.roleUser"),
         roleAssistant: t("share.roleAssistant"),
         empty: t("share.empty"),
         footerNote: t("share.htmlFooter"),
       });
-      downloadShareHtml(html, buildShareHtmlFilename(payload.title));
+      downloadShareHtml(html, buildShareHtmlFilename(session.title));
     } catch {
       setError(t("share.exportFailed"));
     }
@@ -172,6 +189,7 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
       includeClarifications,
       includeArchives,
       includeTimestamps,
+      labels: exportLabels(),
     });
     void copyText(md, "content");
   };
@@ -183,6 +201,7 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
         includeClarifications,
         includeArchives,
         includeTimestamps,
+        labels: exportLabels(),
       });
       downloadShareMarkdown(
         markdown,

@@ -107,6 +107,16 @@ export interface SessionMarkdownExportOptions {
   includeClarifications?: boolean;
   includeArchives?: boolean;
   includeTimestamps?: boolean;
+  labels?: Partial<{
+    user: string;
+    assistant: string;
+    clarification: string;
+    followUp: string;
+    question: string;
+    archives: string;
+    archive: string;
+    empty: string;
+  }>;
 }
 
 function markdownTimestamp(value: number): string {
@@ -118,17 +128,18 @@ function appendBranchMarkdown(
   branch: BranchNode,
   depth: number,
   includeTimestamps: boolean,
+  labels: NonNullable<SessionMarkdownExportOptions["labels"]>,
 ): void {
   const heading = "#".repeat(Math.min(6, 3 + depth));
   const timestamp = includeTimestamps
     ? ` · ${markdownTimestamp(branch.createdAt)}`
     : "";
   lines.push(
-    `${heading} Clarification${timestamp}`,
+    `${heading} ${labels.clarification ?? "Clarification"}${timestamp}`,
     "",
     `> ${branch.anchor.quotedText.trim()}`,
     "",
-    `**Question:** ${branch.userQuestion.trim()}`,
+    `**${labels.question ?? "Question"}:** ${branch.userQuestion.trim()}`,
     "",
     branch.assistantMessage.trim(),
     "",
@@ -139,16 +150,16 @@ function appendBranchMarkdown(
       ? ` · ${markdownTimestamp(reply.createdAt)}`
       : "";
     lines.push(
-      `${heading} Follow-up${replyTimestamp}`,
+      `${heading} ${labels.followUp ?? "Follow-up"}${replyTimestamp}`,
       "",
-      `**Question:** ${reply.userQuestion.trim()}`,
+      `**${labels.question ?? "Question"}:** ${reply.userQuestion.trim()}`,
       "",
       reply.assistantMessage.trim(),
       "",
     );
   }
   for (const child of branch.children) {
-    appendBranchMarkdown(lines, child, depth + 1, includeTimestamps);
+    appendBranchMarkdown(lines, child, depth + 1, includeTimestamps, labels);
   }
 }
 
@@ -161,6 +172,7 @@ export function sessionToExportMarkdown(
   const includeClarifications = options.includeClarifications !== false;
   const includeArchives = options.includeArchives === true;
   const includeTimestamps = options.includeTimestamps === true;
+  const labels = options.labels ?? {};
   const lines: string[] = [`# ${session.title.trim() || "Untitled"}`, ""];
   const messages = session.thread?.messages ?? [];
   const selected = messages.filter(
@@ -169,9 +181,12 @@ export function sessionToExportMarkdown(
       (selectedIds == null || selectedIds.has(message.id)),
   );
 
-  if (selected.length === 0) lines.push("_Empty note_", "");
+  if (selected.length === 0) lines.push(`_${labels.empty ?? "Empty note"}_`, "");
   for (const message of selected) {
-    const role = message.role === "user" ? "User" : "Assistant";
+    const role =
+      message.role === "user"
+        ? labels.user ?? "User"
+        : labels.assistant ?? "Assistant";
     const timestamp = includeTimestamps
       ? ` · ${markdownTimestamp(message.createdAt)}`
       : "";
@@ -183,16 +198,16 @@ export function sessionToExportMarkdown(
     );
     if (includeClarifications && message.role === "assistant") {
       for (const branch of message.children) {
-        appendBranchMarkdown(lines, branch, 0, includeTimestamps);
+        appendBranchMarkdown(lines, branch, 0, includeTimestamps, labels);
       }
     }
   }
 
   if (includeArchives && (session.archives?.length ?? 0) > 0) {
-    lines.push("## Archives", "");
+    lines.push(`## ${labels.archives ?? "Archives"}`, "");
     for (const archive of session.archives ?? []) {
       lines.push(
-        `### ${archive.title.trim() || "Archive"} · ${markdownTimestamp(archive.createdAt)}`,
+        `### ${archive.title.trim() || labels.archive || "Archive"} · ${markdownTimestamp(archive.createdAt)}`,
         "",
         archive.content.trim(),
         "",
@@ -324,8 +339,98 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function inlineMarkdownToSafeHtml(text: string): string {
+  const code: string[] = [];
+  let safe = escapeHtml(text).replace(/`([^`]+)`/g, (_match, value: string) => {
+    const token = `\u0000CODE${code.length}\u0000`;
+    code.push(`<code>${value}</code>`);
+    return token;
+  });
+  safe = safe
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  return safe.replace(
+    /\u0000CODE(\d+)\u0000/g,
+    (_match, index: string) => code[Number(index)] ?? "",
+  );
+}
+
+/** Small, dependency-free renderer for the self-contained offline export. */
+export function markdownToSafeHtml(markdown: string): string {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const out: string[] = [];
+  let list: "ul" | "ol" | null = null;
+  let fence: { language: string; lines: string[] } | null = null;
+  const closeList = () => {
+    if (!list) return;
+    out.push(`</${list}>`);
+    list = null;
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^```([\w+-]*)\s*$/);
+    if (fence) {
+      if (fenceMatch) {
+        const language = fence.language
+          ? ` class="language-${escapeHtml(fence.language)}"`
+          : "";
+        out.push(
+          `<pre><code${language}>${escapeHtml(fence.lines.join("\n"))}</code></pre>`,
+        );
+        fence = null;
+      } else {
+        fence.lines.push(line);
+      }
+      continue;
+    }
+    if (fenceMatch) {
+      closeList();
+      fence = { language: fenceMatch[1] ?? "", lines: [] };
+      continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      out.push(
+        `<h${level}>${inlineMarkdownToSafeHtml(heading[2])}</h${level}>`,
+      );
+      continue;
+    }
+    const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (unordered || ordered) {
+      const next = unordered ? "ul" : "ol";
+      if (list !== next) {
+        closeList();
+        list = next;
+        out.push(`<${list}>`);
+      }
+      out.push(
+        `<li>${inlineMarkdownToSafeHtml((unordered ?? ordered)![1])}</li>`,
+      );
+      continue;
+    }
+    closeList();
+    if (!line.trim()) continue;
+    if (line.startsWith("> ")) {
+      out.push(
+        `<blockquote>${inlineMarkdownToSafeHtml(line.slice(2))}</blockquote>`,
+      );
+    } else {
+      out.push(`<p>${inlineMarkdownToSafeHtml(line)}</p>`);
+    }
+  }
+  if (fence) {
+    out.push(`<pre><code>${escapeHtml(fence.lines.join("\n"))}</code></pre>`);
+  }
+  closeList();
+  return out.join("\n");
+}
+
 export interface ShareHtmlLabels {
   brand?: string;
+  lang?: "en" | "zh";
   roleUser: string;
   roleAssistant: string;
   empty?: string;
@@ -341,13 +446,7 @@ export function sharePayloadToHtml(
   labels: ShareHtmlLabels,
 ): string {
   const titleRaw = payload.title.trim() || "Untitled";
-  const title = escapeHtml(titleRaw);
-  const brand = escapeHtml(labels.brand ?? "ForkNote");
   const empty = escapeHtml(labels.empty ?? "Empty note");
-  const footerNote = escapeHtml(
-    labels.footerNote ?? "Exported from ForkNote · read-only",
-  );
-
   const body =
     payload.messages.length === 0
       ? `<p class="empty">${empty}</p>`
@@ -366,8 +465,31 @@ export function sharePayloadToHtml(
           })
           .join("\n");
 
+  return shareHtmlDocument(titleRaw, body, labels);
+}
+
+export function shareMarkdownToHtml(
+  title: string,
+  markdown: string,
+  labels: ShareHtmlLabels,
+): string {
+  const body = `<article class="msg markdown-body">${markdownToSafeHtml(markdown)}</article>`;
+  return shareHtmlDocument(title.trim() || "Untitled", body, labels);
+}
+
+function shareHtmlDocument(
+  titleRaw: string,
+  body: string,
+  labels: ShareHtmlLabels,
+): string {
+  const title = escapeHtml(titleRaw);
+  const brand = escapeHtml(labels.brand ?? "ForkNote");
+  const footerNote = escapeHtml(
+    labels.footerNote ?? "Exported from ForkNote · read-only",
+  );
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${labels.lang ?? "en"}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -383,7 +505,7 @@ export function sharePayloadToHtml(
     --border: rgba(15, 23, 42, 0.08);
     --accent: #4d6bfe;
     --user-soft: #eef1ff;
-    --radius: 14px;
+    --radius: 8px;
     --font: system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
@@ -394,7 +516,7 @@ export function sharePayloadToHtml(
     font-family: var(--font);
     font-size: 1.05rem;
     line-height: 1.55;
-    letter-spacing: -0.011em;
+    letter-spacing: 0;
     color: var(--text);
     background: var(--bg);
   }
@@ -412,7 +534,7 @@ export function sharePayloadToHtml(
     margin: 0 0 8px;
     font-size: 0.78rem;
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--accent);
   }
@@ -420,7 +542,7 @@ export function sharePayloadToHtml(
     margin: 0;
     font-size: 1.55rem;
     font-weight: 650;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
     line-height: 1.25;
   }
   .msg {
@@ -434,7 +556,7 @@ export function sharePayloadToHtml(
     margin: 0 0 8px;
     font-size: 0.72rem;
     font-weight: 650;
-    letter-spacing: 0.03em;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--muted);
   }
@@ -445,6 +567,32 @@ export function sharePayloadToHtml(
     word-break: break-word;
     color: var(--text);
   }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3,
+  .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+    margin: 1.4em 0 0.55em;
+    line-height: 1.3;
+  }
+  .markdown-body h1:first-child { margin-top: 0; }
+  .markdown-body p { margin: 0.65em 0; white-space: pre-wrap; }
+  .markdown-body ul, .markdown-body ol { padding-left: 1.5rem; }
+  .markdown-body blockquote {
+    margin: 0.8em 0;
+    padding: 0.2em 0.9em;
+    border-left: 3px solid var(--accent);
+    color: var(--text-dim);
+  }
+  .markdown-body code {
+    font-family: var(--mono);
+    background: var(--user-soft);
+    padding: 0.1em 0.3em;
+  }
+  .markdown-body pre {
+    overflow: auto;
+    padding: 14px;
+    background: #171923;
+    color: #f7fafc;
+  }
+  .markdown-body pre code { padding: 0; background: transparent; color: inherit; }
   .empty {
     margin: 24px 0;
     color: var(--muted);
