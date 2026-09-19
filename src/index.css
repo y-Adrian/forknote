@@ -6533,18 +6533,18 @@ mark.branch-highlight:focus-visible {
   --ds-text: #eeeae2;
   --ds-text-dim: #c8c1b7;
   --ds-muted: #938c82;
-  --ds-brand: #d97757;
-  --ds-brand-2: #e08a6d;
-  --ds-brand-grad: #d97757;
-  --ds-accent: #d97757;
-  --ds-accent-hover: #e28b6e;
-  --ds-accent-soft: rgba(217, 119, 87, 0.15);
-  --ds-accent-glow: rgba(217, 119, 87, 0.12);
-  --ds-on-accent: #21120d;
-  --ds-link: #d99070;
-  --ds-link-hover: #eca383;
+  --ds-brand: #b9a2e8;
+  --ds-brand-2: #c8b5f0;
+  --ds-brand-grad: #b9a2e8;
+  --ds-accent: #b9a2e8;
+  --ds-accent-hover: #cbb9f2;
+  --ds-accent-soft: rgba(185, 162, 232, 0.16);
+  --ds-accent-glow: rgba(185, 162, 232, 0.13);
+  --ds-on-accent: #211a32;
+  --ds-link: #bfa9ed;
+  --ds-link-hover: #d2c2f4;
   --ds-composer-bg: #292724;
-  --ds-highlight: rgba(222, 166, 86, 0.28);
+  --ds-highlight: rgba(185, 162, 232, 0.28);
   --ds-overlay: rgba(17, 16, 14, 0.64);
   --ds-overlay-strong: rgba(17, 16, 14, 0.8);
   --ds-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
@@ -6553,16 +6553,16 @@ mark.branch-highlight:focus-visible {
   --ds-code-bg: #191816;
   --ds-code-inline-bg: rgba(239, 234, 225, 0.1);
   --ds-code-border: rgba(239, 234, 225, 0.11);
-  --ds-blockquote-border: #8d6c5b;
-  --ds-blockquote-bg: rgba(217, 119, 87, 0.06);
-  --ds-focus-border: #d97757;
-  --ds-focus-ring: rgba(217, 119, 87, 0.2);
+  --ds-blockquote-border: #82729e;
+  --ds-blockquote-bg: rgba(185, 162, 232, 0.06);
+  --ds-focus-border: #b9a2e8;
+  --ds-focus-ring: rgba(185, 162, 232, 0.2);
   --ds-scrollbar: rgba(200, 193, 183, 0.28);
   --ds-user-glass-bg: #302e2a;
   --ds-user-glass-border: rgba(239, 234, 225, 0.09);
   --ds-user-glass-highlight: transparent;
   --ds-user-glass-shadow: none;
-  --ds-manga-accent: #d97757;
+  --ds-manga-accent: #b9a2e8;
 }
 
 [data-theme="light"] {
@@ -6577,18 +6577,18 @@ mark.branch-highlight:focus-visible {
   --ds-text: #2f2b27;
   --ds-text-dim: #5d5750;
   --ds-muted: #827a70;
-  --ds-brand: #c96442;
-  --ds-brand-2: #b65334;
-  --ds-brand-grad: #c96442;
-  --ds-accent: #c96442;
-  --ds-accent-hover: #b65334;
-  --ds-accent-soft: rgba(201, 100, 66, 0.1);
-  --ds-accent-glow: rgba(201, 100, 66, 0.1);
-  --ds-on-accent: #fffaf5;
-  --ds-link: #9a543d;
-  --ds-link-hover: #793e2d;
+  --ds-brand: #8064b3;
+  --ds-brand-2: #6f54a2;
+  --ds-brand-grad: #8064b3;
+  --ds-accent: #8064b3;
+  --ds-accent-hover: #6f54a2;
+  --ds-accent-soft: rgba(128, 100, 179, 0.11);
+  --ds-accent-glow: rgba(128, 100, 179, 0.1);
+  --ds-on-accent: #fffaff;
+  --ds-link: #70539f;
+  --ds-link-hover: #593d87;
   --ds-composer-bg: #fffefa;
-  --ds-highlight: rgba(210, 157, 76, 0.25);
+  --ds-highlight: rgba(161, 132, 210, 0.25);
   --ds-overlay: rgba(47, 43, 39, 0.28);
   --ds-overlay-strong: rgba(47, 43, 39, 0.42);
   --ds-shadow: 0 12px 34px rgba(51, 43, 36, 0.09);
@@ -6597,16 +6597,16 @@ mark.branch-highlight:focus-visible {
   --ds-code-bg: #f3f0e9;
   --ds-code-inline-bg: rgba(75, 64, 54, 0.08);
   --ds-code-border: rgba(56, 48, 41, 0.11);
-  --ds-blockquote-border: #b18470;
-  --ds-blockquote-bg: rgba(201, 100, 66, 0.045);
-  --ds-focus-border: #c96442;
-  --ds-focus-ring: rgba(201, 100, 66, 0.16);
+  --ds-blockquote-border: #9b88bd;
+  --ds-blockquote-bg: rgba(128, 100, 179, 0.05);
+  --ds-focus-border: #8064b3;
+  --ds-focus-ring: rgba(128, 100, 179, 0.17);
   --ds-scrollbar: rgba(82, 72, 63, 0.25);
   --ds-user-glass-bg: #f1efe9;
   --ds-user-glass-border: transparent;
   --ds-user-glass-highlight: transparent;
   --ds-user-glass-shadow: none;
-  --ds-manga-accent: #c96442;
+  --ds-manga-accent: #8064b3;
 }
 
 .ds-app { padding: 0; gap: 0; }
