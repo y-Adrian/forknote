@@ -12,6 +12,8 @@ React + Zustand + localStorage
         |
         +---- OpenAI-compatible API
         |
+        +---- optional Jev System One API (Reflect decisions only)
+        |
         +---- /sidecar proxy ----> local sidecar ----> files / git / terminal
 ```
 
@@ -47,6 +49,8 @@ React + Zustand + localStorage
 - `src/lib/contextBuilder.ts`：构建模型消息。
 - `src/lib/agentTurn.ts`：意图判断、记忆组装、模型流、工具循环和批准暂停。
 - `src/lib/openai.ts`：兼容 API 和流式解析。
+- `src/lib/jev.ts`：Jev System One 请求、严格响应解码和超时回退。
+- `src/lib/llmReflect.ts`：工具批次后的规则、Jev 与聊天模型三级 Reflect 决策。
 - `src/lib/storage.ts`：localStorage、导入校验和旧数据兼容。
 - `src/lib/sidecar.ts`：sidecar HTTP 客户端。
 
@@ -61,12 +65,15 @@ Composer
        -> buildAgentMemoryAddendum
        -> buildConversationMessages
        -> streamChat 或 agent tool loop
+       -> 工具批次完成后 rule -> Jev -> LLM Reflect（按可用性回退）
        -> patchContent 回写发起会话
   -> 完成后刷新持久化
   -> 澄清任务额外同步 clarificationMemory
 ```
 
 `runAgentTurn` 不直接依赖具体 UI 节点，只通过 `patchContent`、`isOwned` 和事件回调工作，因此主线与澄清可共享同一执行逻辑。
+
+Jev 不参与回答生成，也不能走 `/chat/completions`。启用后，它只读取有界的工具观察摘要和预期结果，并只能返回当前 `AgentLoopController` 允许的 Reflect 选项。响应选项越界、置信度不足、8 秒超时或请求失败时，继续使用现有 LLM Reflect；后者仍失败时使用本地规则。
 
 ## 4. 会话与澄清模型
 
@@ -126,3 +133,4 @@ ChatSession
 - 项目工具不能绕过 `expectedRoot`；项目外终端访问必须显式批准。
 - 停止或失败不能留下空分支、卡住的 loading 状态或未刷新的最终内容。
 - 主会话和 Clarify 共用模型执行能力，但 Clarify 的写入目标和局部定位必须保持独立。
+- Jev 是可选增强层；关闭、无 Key 或服务不可用时不能改变原有 Agent 行为。

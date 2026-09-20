@@ -22,9 +22,10 @@
 2. `src/store/useAppStore.ts`：会话、流式生成、澄清、归档和项目绑定的编排层。
 3. `src/lib/agentTurn.ts`：主会话与澄清共用的模型执行器。
 4. `src/lib/contextBuilder.ts`：发送给模型的对话和 Clarify 附加上下文。
-5. `src/lib/contextMemory.ts`、`src/lib/clarificationMemory.ts`、`src/lib/archive.ts`：三种不同用途的记忆。
-6. `src/lib/agentTools.ts`、`src/lib/sidecar.ts`、`sidecar/index.js`：工具定义、客户端和本机执行端。
-7. `src/components/MainPanel.tsx`、`MainChatMessageList.tsx`、`BranchFloatLayer.tsx`：主要交互界面。
+5. `src/lib/jev.ts` 与 `src/lib/llmReflect.ts`：可选 Jev 决策层及 Reflect 回退顺序。
+6. `src/lib/contextMemory.ts`、`src/lib/clarificationMemory.ts`、`src/lib/archive.ts`：三种不同用途的记忆。
+7. `src/lib/agentTools.ts`、`src/lib/sidecar.ts`、`sidecar/index.js`：工具定义、客户端和本机执行端。
+8. `src/components/MainPanel.tsx`、`MainChatMessageList.tsx`、`BranchFloatLayer.tsx`：主要交互界面。
 
 ## 3. 常见改动放在哪里
 
@@ -34,6 +35,7 @@
 | 主会话发送逻辑 | `useAppStore.ts` 的 `askMain` | 停止、切换会话、计划批准、持久化 |
 | 澄清逻辑 | `askBranch`、`continueBranch` | 共享记忆、归档、浮层恢复、并发队列 |
 | 模型提示词 | `contextBuilder.ts`、`agentTools.ts` | 中英文、主线/澄清一致性、结构提示是否重复 |
+| Jev / Reflect | `jev.ts`、`llmReflect.ts`、`agentLoop.ts` | 合法选项、置信度门控、超时与关闭状态是否保持回退 |
 | 归档格式 | `archive.ts` | 首次归档、增量归档、大小上限、压缩复用 |
 | 本地工具 | `agentTools.ts` + `sidecar.ts` + `sidecar/index.js` | schema、客户端、路由三处必须一致 |
 | 设置项 | `types.ts`、`settings.ts`、`SettingsPanel.tsx` | 默认值、持久化、脏状态比较、中英文文案 |

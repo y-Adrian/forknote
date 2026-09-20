@@ -34,6 +34,7 @@ node scripts/test-fs-agent-tools.mjs
 | 归档 | `test-archive-source-sizing.mts`、`test-incremental-archive.mts`、`test-archive-mode-rollback.mts` |
 | 会话并发 | `test-session-summary-jobs.mts`、`test-session-summary-store.mts`、`test-agent-activity-by-session.mts` |
 | 提示和回答结构 | `test-answer-structure-mode.mts`、`smoke-agent-goal-focus.mts`、`smoke-answer-only-intent.mts` |
+| Jev / Agent Reflect | `test-jev-reflect.mts`、相关 `test-agent-*` 脚本；真实 API 仅在有专用测试 Key 时运行 |
 | 流式与持久化 | `test-stream-storage-throttle.mts`、`test-stream-render-crash-guard.mts`、`test-localstorage-quota.mts` |
 | 弹窗与可访问性 | `test-accessible-modal.mts`、`test-modal-above-floats.mts`、`test-accessible-control-labels.mts` |
 | Sidecar 文件工具 | `node scripts/test-fs-agent-tools.mjs` |
@@ -76,6 +77,7 @@ node scripts/test-run-terminal.mjs
 5. 窄屏下会话抽屉、输入框工具和设置入口可达。
 6. 打开项目后读取、修改和终端计划批准路径正常；断开项目后工具不可用。
 7. 归档后可在归档正文和演进记录间切换，后续对话仍以选中归档为底座。
+8. Jev 默认关闭时不产生请求；开启但无 Key、低置信度或服务失败时仍能完成原有 Reflect 回退。
 
 ## 6. 新增测试原则
 

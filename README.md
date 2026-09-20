@@ -152,7 +152,7 @@ curl -sS http://127.0.0.1:8787/health
 | **General** | 主题 Light / Dark / System；界面语言下拉选择 English / 中文（确认后整页重载，UI 与模型回复语言一并跟随） |
 | **API** | 提供商预设、Base URL / Model / Key、开发代理；本地上下文记忆包 |
 | **Data** | 导出 / 导入带版本的完整备份 JSON；清空本地笔记 |
-| **Project** | Sidecar URL、打开本地项目、Agent 工具轮数 / 计划批准 |
+| **Project** | Sidecar URL、打开本地项目、Agent 工具轮数 / 计划批准、可选 Jev Reflect 决策层 |
 | **About** | 产品说明 |
 
 ### API
@@ -274,6 +274,15 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 2. **工具轮数**：同页 **Agent 工具循环轮数** 可调（1–128，**默认 50**），控制单条消息内最多往返次数。
 3. **终端工具（默认开启）**：同页 **允许终端工具（run_terminal）**。关闭后模型看不到该工具。只读命令（`ls` / `pwd` / `git status` 等）可跳过计划批准；可能改系统的命令仍受计划批准门控。命令经 sidecar 在项目绑定后执行。绑定项目对话框也会显示终端开关状态，并可一键跳到该设置页。
 4. 关闭计划批准后，模型会直接调用工具（仍受轮数上限约束）。
+
+### Jev Reflect（实验性）
+
+Settings → **Project** 可选择启用 Jev。Jev 不是聊天模型，不能填入默认 API 的 Model 字段；它只在工具批次结束后，辅助 Agent 从 `continue`、`retry`、`replan`、`abort` 中选择下一步。
+
+- 默认关闭，不配置不会产生 Jev 请求。
+- 需要独立的 Jev Base URL、API Key 和模型（默认 `jev-latest`）。
+- 只有达到最低置信度的合法选项才会采用；低置信度、超时、接口失败或异常响应都会回退到现有 LLM Reflect 与本地规则。
+- 启用后会向所配置服务商发送工具结果摘要和本步预期，不发送完整会话。Jev Key 保存在本机设置中，不进入会话备份导出。
 
 活动日志与 **Changes this turn** 显示本轮读/写过的路径与命令；可 **Clear log**。
 
