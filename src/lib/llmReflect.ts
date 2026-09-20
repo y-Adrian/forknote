@@ -12,6 +12,7 @@ import type {
 import { observeBatchHasWebTools } from "./agentLoop";
 import { streamChat, type ChatMessage } from "./openai";
 import { withAgentPhaseModel } from "./agentModelRouting";
+import { askJevReflectDecision } from "./jev";
 
 const DECISIONS: ReflectDecision[] = [
   "continue",
@@ -173,32 +174,52 @@ export async function reflectWithOptionalLlm(args: {
   enableLlm?: boolean;
   signal?: AbortSignal;
   locale?: "zh" | "en";
-}): Promise<{ decision: ReflectDecision; source: "rule" | "llm" }> {
+}): Promise<{ decision: ReflectDecision; source: "rule" | "llm" | "jev" }> {
   const ruleDecision = args.loop.peekReflect(args.input);
   const allowed = args.loop.allowedReflectDecisions(args.input.observed);
   let decision = ruleDecision;
-  let source: "rule" | "llm" = "rule";
+  let source: "rule" | "llm" | "jev" = "rule";
 
   if (
     args.enableLlm !== false &&
     args.llm &&
     shouldAskLlmReflect(args.input, ruleDecision)
   ) {
-    const llmDecision = await askLlmReflectDecision({
-      llm: args.llm,
-      observed: args.input.observed,
-      expectedOutcome: args.input.expectedOutcome,
-      ruleDecision,
+    const jev = await askJevReflectDecision({
+      settings: args.llm,
       allowed,
       signal: args.signal,
-      locale: args.locale,
+      state: {
+        ruleDecision,
+        expectedOutcome: args.input.expectedOutcome ?? null,
+        observation: args.input.observed.digest,
+        batchOk: args.input.observed.batchOk,
+        successCount: args.input.observed.successCount,
+        errorCount: args.input.observed.errorCount,
+        primaryErrorType: args.input.observed.primaryErrorType ?? null,
+      },
     });
-    const clamped = clampReflectDecision(llmDecision, allowed, ruleDecision);
-    if (llmDecision && clamped === llmDecision) {
-      decision = clamped;
-      source = "llm";
+    const minConfidence = args.llm.jevMinConfidence ?? 0.65;
+    if (jev && jev.confidence >= minConfidence) {
+      decision = clampReflectDecision(jev.decision, allowed, ruleDecision);
+      source = "jev";
     } else {
-      decision = clamped;
+      const llmDecision = await askLlmReflectDecision({
+        llm: args.llm,
+        observed: args.input.observed,
+        expectedOutcome: args.input.expectedOutcome,
+        ruleDecision,
+        allowed,
+        signal: args.signal,
+        locale: args.locale,
+      });
+      const clamped = clampReflectDecision(llmDecision, allowed, ruleDecision);
+      if (llmDecision && clamped === llmDecision) {
+        decision = clamped;
+        source = "llm";
+      } else {
+        decision = clamped;
+      }
     }
   }
 

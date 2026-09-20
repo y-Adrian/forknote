@@ -13,6 +13,7 @@ const LEGACY_STORAGE_KEY = "branch-chat-settings";
 export const DEFAULT_AGENT_MAX_ROUNDS = 50;
 export const MIN_AGENT_MAX_ROUNDS = 1;
 export const MAX_AGENT_MAX_ROUNDS = 128;
+export const DEFAULT_JEV_MIN_CONFIDENCE = 0.65;
 
 /** Live-mode sliding window: recent user↔assistant turns kept verbatim.
  * Default 64 matches longer IDE-agent sessions; max allows multi-hour notes. */
@@ -52,6 +53,11 @@ const APP_DEFAULTS: ApiSettings = {
   agentPlanModel: "",
   agentCodeModel: "",
   agentSummaryModel: "",
+  jevReflectEnabled: false,
+  jevBaseUrl: "https://api.typesafe.ai",
+  jevApiKey: "",
+  jevModel: "jev-latest",
+  jevMinConfidence: DEFAULT_JEV_MIN_CONFIDENCE,
   plantumlRenderMode: "off",
   plantumlServerUrl: DEFAULT_PLANTUML_SERVER_URL,
   plantumlLocalPath: "",
@@ -213,6 +219,23 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
       typeof raw.agentSummaryModel === "string"
         ? raw.agentSummaryModel.trim()
         : APP_DEFAULTS.agentSummaryModel,
+    jevReflectEnabled: raw.jevReflectEnabled === true,
+    jevBaseUrl:
+      coerceApiBaseUrl(raw.jevBaseUrl ?? APP_DEFAULTS.jevBaseUrl ?? "") ||
+      "https://api.typesafe.ai",
+    jevApiKey:
+      typeof raw.jevApiKey === "string" ? raw.jevApiKey.trim() : "",
+    jevModel:
+      (raw.jevModel ?? APP_DEFAULTS.jevModel ?? "jev-latest").trim() ||
+      "jev-latest",
+    jevMinConfidence: (() => {
+      const value = Number(
+        raw.jevMinConfidence ?? APP_DEFAULTS.jevMinConfidence,
+      );
+      return Number.isFinite(value)
+        ? Math.min(1, Math.max(0, value))
+        : DEFAULT_JEV_MIN_CONFIDENCE;
+    })(),
     plantumlRenderMode: resolvePlantumlRenderMode({
       plantumlRenderMode:
         raw.plantumlRenderMode ?? APP_DEFAULTS.plantumlRenderMode,

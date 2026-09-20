@@ -374,6 +374,16 @@ export interface ApiSettings {
    * Optional model id for final Chinese summary rounds. Empty = use {@link model}.
    */
   agentSummaryModel?: string;
+  /** Use Jev for bounded Agent Reflect decisions. Default false. */
+  jevReflectEnabled?: boolean;
+  /** TypeSafe API origin (or a compatible System One endpoint). */
+  jevBaseUrl?: string;
+  /** Separate credential because Jev is not a chat-completions model. */
+  jevApiKey?: string;
+  /** System One model id. Default `jev-latest`. */
+  jevModel?: string;
+  /** Minimum returned confidence before a Jev decision is accepted. */
+  jevMinConfidence?: number;
   /**
    * PlantUML fence rendering. Default `off` — show source + hint (Mermaid stays
    * the live-preview default for chat diagram asks).

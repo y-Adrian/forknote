@@ -1598,7 +1598,7 @@ export async function runAgentTurn(
             id: createId(),
             at: Date.now(),
             kind: decision === "abort" ? "error" : "info",
-            message: `reflect:${decision}${observed.primaryErrorType ? `/${observed.primaryErrorType}` : ""}${reflectSource === "llm" ? "/llm" : ""}`,
+            message: `reflect:${decision}${observed.primaryErrorType ? `/${observed.primaryErrorType}` : ""}${reflectSource !== "rule" ? `/${reflectSource}` : ""}`,
           });
         }
         if (decision === "abort") {

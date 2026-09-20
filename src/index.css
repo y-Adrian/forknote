@@ -5943,6 +5943,19 @@ mark.branch-highlight:focus-visible {
   }
 }
 
+.ss-section-divider {
+  height: 1px;
+  margin: 8px 0 2px;
+  background: var(--ds-border);
+}
+
+.ss-section-title {
+  margin: 8px 0 2px;
+  color: var(--ds-text);
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
 @media (max-width: 560px) {
   .fn-composer-toolbar-sep {
     display: none;

@@ -350,6 +350,16 @@ const en = {
   "projectSettings.agentSummaryModelHint":
     "Used for Archive, Compress, and light Q&A when no project tools are needed. Leave blank to use the session API model.",
   "projectSettings.agentModelPlaceholder": "Same as session model",
+  "projectSettings.jevTitle": "Jev decision layer (experimental)",
+  "projectSettings.jevReflectEnabled": "Use Jev for Agent Reflect decisions",
+  "projectSettings.jevReflectHint":
+    "Jev may choose continue, retry, replan, or abort after tool batches. Low-confidence or failed calls automatically fall back to the existing Reflect path.",
+  "projectSettings.jevBaseUrl": "Jev Base URL",
+  "projectSettings.jevApiKey": "Jev API Key",
+  "projectSettings.jevModel": "Jev model",
+  "projectSettings.jevConfidence": "Minimum confidence (0–1)",
+  "projectSettings.jevPrivacyHint":
+    "When enabled, tool outcome summaries and expected outcomes are sent to this provider. The key is stored locally with other settings and is never included in session backup exports.",
 
   "agentPlan.aria": "Agent plan review",
   "agentPlan.kicker": "Agent plan",
@@ -1091,6 +1101,16 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentSummaryModelHint":
     "用于归档、压缩上下文，以及无需项目工具时的轻量问答。留空则使用会话 API 模型。",
   "projectSettings.agentModelPlaceholder": "与会话模型相同",
+  "projectSettings.jevTitle": "Jev 决策层（实验性）",
+  "projectSettings.jevReflectEnabled": "使用 Jev 判断 Agent Reflect",
+  "projectSettings.jevReflectHint":
+    "工具批次结束后，Jev 可在继续、重试、重规划或中止中选择。低置信度或请求失败时会自动回退到现有 Reflect 链路。",
+  "projectSettings.jevBaseUrl": "Jev Base URL",
+  "projectSettings.jevApiKey": "Jev API Key",
+  "projectSettings.jevModel": "Jev 模型",
+  "projectSettings.jevConfidence": "最低置信度（0–1）",
+  "projectSettings.jevPrivacyHint":
+    "启用后，工具结果摘要和预期结果会发送给该服务商。密钥与其他设置一样保存在本机，且不会包含在会话备份导出中。",
 
   "agentPlan.aria": "Agent 计划审核",
   "agentPlan.kicker": "执行计划",

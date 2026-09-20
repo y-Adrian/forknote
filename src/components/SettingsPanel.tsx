@@ -3,6 +3,7 @@ import { applyLocale, useLocale, type Locale } from "../lib/i18n";
 import { loadProjectPrefs, saveProjectPrefs } from "../lib/project";
 import {
   DEFAULT_AGENT_MAX_ROUNDS,
+  DEFAULT_JEV_MIN_CONFIDENCE,
   DEFAULT_CONTEXT_WINDOW_TURNS,
   MAX_AGENT_MAX_ROUNDS,
   MAX_CONTEXT_WINDOW_TURNS,
@@ -906,6 +907,21 @@ function ProjectSettingsPanel() {
   const [summaryModelDraft, setSummaryModelDraft] = useState(
     settings.agentSummaryModel ?? "",
   );
+  const [jevEnabledDraft, setJevEnabledDraft] = useState(
+    settings.jevReflectEnabled ?? false,
+  );
+  const [jevBaseUrlDraft, setJevBaseUrlDraft] = useState(
+    settings.jevBaseUrl ?? "https://api.typesafe.ai",
+  );
+  const [jevApiKeyDraft, setJevApiKeyDraft] = useState(
+    settings.jevApiKey ?? "",
+  );
+  const [jevModelDraft, setJevModelDraft] = useState(
+    settings.jevModel ?? "jev-latest",
+  );
+  const [jevConfidenceDraft, setJevConfidenceDraft] = useState(
+    settings.jevMinConfidence ?? DEFAULT_JEV_MIN_CONFIDENCE,
+  );
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -918,6 +934,13 @@ function ProjectSettingsPanel() {
     setPlanModelDraft(settings.agentPlanModel ?? "");
     setCodeModelDraft(settings.agentCodeModel ?? "");
     setSummaryModelDraft(settings.agentSummaryModel ?? "");
+    setJevEnabledDraft(settings.jevReflectEnabled ?? false);
+    setJevBaseUrlDraft(settings.jevBaseUrl ?? "https://api.typesafe.ai");
+    setJevApiKeyDraft(settings.jevApiKey ?? "");
+    setJevModelDraft(settings.jevModel ?? "jev-latest");
+    setJevConfidenceDraft(
+      settings.jevMinConfidence ?? DEFAULT_JEV_MIN_CONFIDENCE,
+    );
     setSaved(false);
   }, [
     sidecarUrl,
@@ -928,6 +951,11 @@ function ProjectSettingsPanel() {
     settings.agentPlanModel,
     settings.agentCodeModel,
     settings.agentSummaryModel,
+    settings.jevReflectEnabled,
+    settings.jevBaseUrl,
+    settings.jevApiKey,
+    settings.jevModel,
+    settings.jevMinConfidence,
   ]);
 
   const save = () => {
@@ -950,6 +978,11 @@ function ProjectSettingsPanel() {
       agentPlanModel: planModelDraft.trim(),
       agentCodeModel: codeModelDraft.trim(),
       agentSummaryModel: summaryModelDraft.trim(),
+      jevReflectEnabled: jevEnabledDraft,
+      jevBaseUrl: jevBaseUrlDraft.trim(),
+      jevApiKey: jevApiKeyDraft.trim(),
+      jevModel: jevModelDraft.trim(),
+      jevMinConfidence: jevConfidenceDraft,
     });
     saveSettings(nextSettings);
     setSettings(nextSettings);
@@ -1080,6 +1113,74 @@ function ProjectSettingsPanel() {
       <p className="hint local-hint">
         {t("projectSettings.agentSummaryModelHint")}
       </p>
+
+      <div className="ss-section-divider" />
+      <h4 className="ss-section-title">{t("projectSettings.jevTitle")}</h4>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={jevEnabledDraft}
+          onChange={(e) => {
+            setJevEnabledDraft(e.target.checked);
+            setSaved(false);
+          }}
+        />
+        <span>{t("projectSettings.jevReflectEnabled")}</span>
+      </label>
+      <p className="hint local-hint">{t("projectSettings.jevReflectHint")}</p>
+
+      <label>
+        {t("projectSettings.jevBaseUrl")}
+        <input
+          value={jevBaseUrlDraft}
+          onChange={(e) => {
+            setJevBaseUrlDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder="https://api.typesafe.ai"
+          spellCheck={false}
+        />
+      </label>
+      <label>
+        {t("projectSettings.jevApiKey")}
+        <input
+          type="password"
+          value={jevApiKeyDraft}
+          onChange={(e) => {
+            setJevApiKeyDraft(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <label>
+        {t("projectSettings.jevModel")}
+        <input
+          value={jevModelDraft}
+          onChange={(e) => {
+            setJevModelDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder="jev-latest"
+          spellCheck={false}
+        />
+      </label>
+      <label>
+        {t("projectSettings.jevConfidence")}
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          value={jevConfidenceDraft}
+          onChange={(e) => {
+            setJevConfidenceDraft(Number(e.target.value));
+            setSaved(false);
+          }}
+        />
+      </label>
+      <p className="hint local-hint">{t("projectSettings.jevPrivacyHint")}</p>
 
       {projectRoot ? (
         <p className="project-connected-hint">
