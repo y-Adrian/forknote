@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { parseJevReflectResponse } from "../src/lib/jev";
+import { jevEndpointFromSettings, parseJevReflectResponse } from "../src/lib/jev";
+import type { ApiSettings } from "../src/types";
+import { normalizeApiSettings } from "../src/lib/settings";
 
 const allowed = ["continue", "retry", "replan"] as const;
 
@@ -30,6 +32,35 @@ assert.equal(
   null,
   "decisions outside the local allow-list must be rejected",
 );
+
+assert.equal(
+  jevEndpointFromSettings({
+    jevProvider: "official",
+    jevBaseUrl: "https://api.typesafe.ai",
+  } as ApiSettings),
+  "https://api.typesafe.ai/v1/systemone",
+);
+assert.equal(
+  jevEndpointFromSettings({
+    jevProvider: "hosted",
+    jevBaseUrl: "https://jevtypesafeai.com",
+  } as ApiSettings),
+  "https://jevtypesafeai.com/api/v1/decide",
+);
+assert.equal(
+  jevEndpointFromSettings({
+    jevApiKey: "jv_live_test",
+    jevBaseUrl: "",
+  } as ApiSettings),
+  "https://jevtypesafeai.com/api/v1/decide",
+  "legacy settings should infer the hosted provider from its key prefix",
+);
+const migrated = normalizeApiSettings({
+  jevApiKey: "jv_live_test",
+  jevBaseUrl: "https://api.typesafe.ai",
+});
+assert.equal(migrated.jevProvider, "hosted");
+assert.equal(migrated.jevBaseUrl, "https://jevtypesafeai.com");
 
 assert.equal(
   parseJevReflectResponse(

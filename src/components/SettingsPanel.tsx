@@ -910,6 +910,9 @@ function ProjectSettingsPanel() {
   const [jevEnabledDraft, setJevEnabledDraft] = useState(
     settings.jevReflectEnabled ?? false,
   );
+  const [jevProviderDraft, setJevProviderDraft] = useState<"official" | "hosted">(
+    settings.jevProvider ?? "official",
+  );
   const [jevBaseUrlDraft, setJevBaseUrlDraft] = useState(
     settings.jevBaseUrl ?? "https://api.typesafe.ai",
   );
@@ -935,6 +938,7 @@ function ProjectSettingsPanel() {
     setCodeModelDraft(settings.agentCodeModel ?? "");
     setSummaryModelDraft(settings.agentSummaryModel ?? "");
     setJevEnabledDraft(settings.jevReflectEnabled ?? false);
+    setJevProviderDraft(settings.jevProvider ?? "official");
     setJevBaseUrlDraft(settings.jevBaseUrl ?? "https://api.typesafe.ai");
     setJevApiKeyDraft(settings.jevApiKey ?? "");
     setJevModelDraft(settings.jevModel ?? "jev-latest");
@@ -952,6 +956,7 @@ function ProjectSettingsPanel() {
     settings.agentCodeModel,
     settings.agentSummaryModel,
     settings.jevReflectEnabled,
+    settings.jevProvider,
     settings.jevBaseUrl,
     settings.jevApiKey,
     settings.jevModel,
@@ -979,6 +984,7 @@ function ProjectSettingsPanel() {
       agentCodeModel: codeModelDraft.trim(),
       agentSummaryModel: summaryModelDraft.trim(),
       jevReflectEnabled: jevEnabledDraft,
+      jevProvider: jevProviderDraft,
       jevBaseUrl: jevBaseUrlDraft.trim(),
       jevApiKey: jevApiKeyDraft.trim(),
       jevModel: jevModelDraft.trim(),
@@ -1128,6 +1134,26 @@ function ProjectSettingsPanel() {
         <span>{t("projectSettings.jevReflectEnabled")}</span>
       </label>
       <p className="hint local-hint">{t("projectSettings.jevReflectHint")}</p>
+
+      <label>
+        {t("projectSettings.jevProvider")}
+        <select
+          value={jevProviderDraft}
+          onChange={(e) => {
+            const provider = e.target.value as "official" | "hosted";
+            setJevProviderDraft(provider);
+            setJevBaseUrlDraft(
+              provider === "hosted"
+                ? "https://jevtypesafeai.com"
+                : "https://api.typesafe.ai",
+            );
+            setSaved(false);
+          }}
+        >
+          <option value="official">{t("projectSettings.jevProviderOfficial")}</option>
+          <option value="hosted">{t("projectSettings.jevProviderHosted")}</option>
+        </select>
+      </label>
 
       <label>
         {t("projectSettings.jevBaseUrl")}

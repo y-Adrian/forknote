@@ -14,10 +14,19 @@ export type JevDecisionResult = {
   probabilities: Record<string, number>;
 };
 
-function endpointFromBaseUrl(baseUrl: string): string | null {
+export function jevEndpointFromSettings(settings: ApiSettings): string | null {
+  const provider = settings.jevProvider ??
+    (settings.jevApiKey?.trim().startsWith("jv_live_") ? "hosted" : "official");
+  const fallback = provider === "hosted"
+    ? "https://jevtypesafeai.com"
+    : "https://api.typesafe.ai";
+  const baseUrl = settings.jevBaseUrl?.trim() || fallback;
   const base = coerceApiBaseUrl(baseUrl).replace(/\/$/, "");
   if (!isValidApiBaseUrl(base)) return null;
-  return /\/v1\/systemone$/i.test(base) ? base : `${base}/v1/systemone`;
+  const endpointPath = provider === "hosted" ? "/api/v1/decide" : "/v1/systemone";
+  return /\/(?:api\/v1\/decide|v1\/systemone)$/i.test(base)
+    ? base
+    : `${base}${endpointPath}`;
 }
 
 function proxyParts(endpoint: string): { url: string; target: string } {
@@ -68,9 +77,7 @@ export async function askJevReflectDecision(args: {
 }): Promise<JevDecisionResult | null> {
   const { settings, allowed } = args;
   if (!settings.jevReflectEnabled || !settings.jevApiKey?.trim()) return null;
-  const endpoint = endpointFromBaseUrl(
-    settings.jevBaseUrl ?? "https://api.typesafe.ai",
-  );
+  const endpoint = jevEndpointFromSettings(settings);
   if (!endpoint) return null;
 
   const headers: Record<string, string> = {

@@ -376,7 +376,9 @@ export interface ApiSettings {
   agentSummaryModel?: string;
   /** Use Jev for bounded Agent Reflect decisions. Default false. */
   jevReflectEnabled?: boolean;
-  /** TypeSafe API origin (or a compatible System One endpoint). */
+  /** Jev API provider. Hosted credentials use a different endpoint. */
+  jevProvider?: "official" | "hosted";
+  /** Provider API origin (or a complete compatible endpoint). */
   jevBaseUrl?: string;
   /** Separate credential because Jev is not a chat-completions model. */
   jevApiKey?: string;

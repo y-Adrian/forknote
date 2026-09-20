@@ -54,6 +54,7 @@ const APP_DEFAULTS: ApiSettings = {
   agentCodeModel: "",
   agentSummaryModel: "",
   jevReflectEnabled: false,
+  jevProvider: "official",
   jevBaseUrl: "https://api.typesafe.ai",
   jevApiKey: "",
   jevModel: "jev-latest",
@@ -168,6 +169,23 @@ export function isValidApiBaseUrl(baseUrl: string): boolean {
 
 /** Merge saved settings with app defaults (Settings UI is the source of truth). */
 export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
+  const inferredJevProvider =
+    raw.jevProvider === "hosted" || raw.jevProvider === "official"
+      ? raw.jevProvider
+      : raw.jevApiKey?.trim().startsWith("jv_live_")
+        ? "hosted"
+        : "official";
+  const defaultJevBaseUrl =
+    inferredJevProvider === "hosted"
+      ? "https://jevtypesafeai.com"
+      : "https://api.typesafe.ai";
+  const savedJevBaseUrl = raw.jevBaseUrl?.trim() ?? "";
+  const migratedJevBaseUrl =
+    raw.jevProvider == null &&
+    inferredJevProvider === "hosted" &&
+    /^(?:https?:\/\/)?api\.typesafe\.ai\/?$/i.test(savedJevBaseUrl)
+      ? defaultJevBaseUrl
+      : savedJevBaseUrl || defaultJevBaseUrl;
   return {
     ...APP_DEFAULTS,
     ...raw,
@@ -220,9 +238,9 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
         ? raw.agentSummaryModel.trim()
         : APP_DEFAULTS.agentSummaryModel,
     jevReflectEnabled: raw.jevReflectEnabled === true,
+    jevProvider: inferredJevProvider,
     jevBaseUrl:
-      coerceApiBaseUrl(raw.jevBaseUrl ?? APP_DEFAULTS.jevBaseUrl ?? "") ||
-      "https://api.typesafe.ai",
+      coerceApiBaseUrl(migratedJevBaseUrl) || defaultJevBaseUrl,
     jevApiKey:
       typeof raw.jevApiKey === "string" ? raw.jevApiKey.trim() : "",
     jevModel:

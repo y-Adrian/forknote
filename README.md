@@ -280,7 +280,7 @@ curl 成功而页面失败时，核对 Model 名、端口、是否启用代理�
 Settings → **Project** 可选择启用 Jev。Jev 不是聊天模型，不能填入默认 API 的 Model 字段；它只在工具批次结束后，辅助 Agent 从 `continue`、`retry`、`replan`、`abort` 中选择下一步。
 
 - 默认关闭，不配置不会产生 Jev 请求。
-- 需要独立的 Jev Base URL、API Key 和模型（默认 `jev-latest`）。
+- 可选择 TypeSafe AI 官方接口或 `jevtypesafeai.com` 托管代理；`jv_live_` 凭据会自动迁移到托管接口。两者使用独立的 Base URL、API Key 和模型（默认 `jev-latest`）。
 - 只有达到最低置信度的合法选项才会采用；低置信度、超时、接口失败或异常响应都会回退到现有 LLM Reflect 与本地规则。
 - 启用后会向所配置服务商发送工具结果摘要和本步预期，不发送完整会话。Jev Key 保存在本机设置中，不进入会话备份导出。
 

@@ -354,6 +354,9 @@ const en = {
   "projectSettings.jevReflectEnabled": "Use Jev for Agent Reflect decisions",
   "projectSettings.jevReflectHint":
     "Jev may choose continue, retry, replan, or abort after tool batches. Low-confidence or failed calls automatically fall back to the existing Reflect path.",
+  "projectSettings.jevProvider": "Jev provider",
+  "projectSettings.jevProviderOfficial": "TypeSafe AI (official)",
+  "projectSettings.jevProviderHosted": "jevtypesafeai.com (hosted proxy)",
   "projectSettings.jevBaseUrl": "Jev Base URL",
   "projectSettings.jevApiKey": "Jev API Key",
   "projectSettings.jevModel": "Jev model",
@@ -1105,6 +1108,9 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.jevReflectEnabled": "使用 Jev 判断 Agent Reflect",
   "projectSettings.jevReflectHint":
     "工具批次结束后，Jev 可在继续、重试、重规划或中止中选择。低置信度或请求失败时会自动回退到现有 Reflect 链路。",
+  "projectSettings.jevProvider": "Jev 服务提供方",
+  "projectSettings.jevProviderOfficial": "TypeSafe AI（官方）",
+  "projectSettings.jevProviderHosted": "jevtypesafeai.com（托管代理）",
   "projectSettings.jevBaseUrl": "Jev Base URL",
   "projectSettings.jevApiKey": "Jev API Key",
   "projectSettings.jevModel": "Jev 模型",

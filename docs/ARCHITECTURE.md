@@ -73,7 +73,7 @@ Composer
 
 `runAgentTurn` 不直接依赖具体 UI 节点，只通过 `patchContent`、`isOwned` 和事件回调工作，因此主线与澄清可共享同一执行逻辑。
 
-Jev 不参与回答生成，也不能走 `/chat/completions`。启用后，它只读取有界的工具观察摘要和预期结果，并只能返回当前 `AgentLoopController` 允许的 Reflect 选项。响应选项越界、置信度不足、8 秒超时或请求失败时，继续使用现有 LLM Reflect；后者仍失败时使用本地规则。
+Jev 不参与回答生成，也不能走 `/chat/completions`。官方 TypeSafe 使用 `/v1/systemone`，`jevtypesafeai.com` 托管代理使用 `/api/v1/decide`；设置中的提供方负责选择正确端点。启用后，它只读取有界的工具观察摘要和预期结果，并只能返回当前 `AgentLoopController` 允许的 Reflect 选项。响应选项越界、置信度不足、8 秒超时或请求失败时，继续使用现有 LLM Reflect；后者仍失败时使用本地规则。
 
 ## 4. 会话与澄清模型
 
