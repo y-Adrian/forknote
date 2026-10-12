@@ -147,6 +147,8 @@ export class AgentLoopController {
         primaryErrorType = k;
       }
     }
+    // Authorization failures must keep their hard-stop semantics in mixed batches.
+    if (errVotes.permission) primaryErrorType = "permission";
 
     const observed: ObserveSignal = {
       batchOk: errorCount === 0 && successCount > 0,

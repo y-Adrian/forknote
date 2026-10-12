@@ -39,6 +39,7 @@ node scripts/test-fs-agent-tools.mjs
 | Sidecar 文件工具 | `node scripts/test-fs-agent-tools.mjs` |
 | 代码分析工具 | `test-dep-graph.mjs`、`test-semantic-search.mjs`、`test-symbol-ast.mjs` |
 | 终端工具 | 启动 sidecar 后运行 `node scripts/test-run-terminal.mjs` |
+| Agent 错误恢复 | `test-agent-loop.mts`（混合权限错误熔断）、`test-agent-diagnostics-recovery.mts`（模拟模型与 sidecar，写入→诊断失败→修复→复检通过） |
 | Electron 与打包 | `test-electron-startup-guard.mjs`、`npm run test:desktop-build-pipelines`、`test-packaged-ui-csp.mjs` |
 
 ## 4. 完整离线回归

@@ -88,6 +88,7 @@ import {
   buildReflectNudge,
   parseStructuredPlanHints,
   upsertWorkingMemoryAddendum,
+  type ReflectDecision,
 } from "./agentLoop";
 import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { reflectWithOptionalLlm } from "./llmReflect";
@@ -1533,18 +1534,40 @@ export async function runAgentTurn(
             skipped: diag.skipped,
             output: diag.output,
           });
+          // Validation belongs to the same observation as the edit it checks.
+          // A skipped check is neither passed validation nor a tool failure.
+          if (!diag.skipped) {
+            batchToolResults.push({
+              tool: "run_diagnostics",
+              result: toToolResult({
+                ok: diag.ok,
+                resultText: diag.output,
+                tool: "run_diagnostics",
+              }),
+            });
+          }
           apiMessages.push({ role: "user", content: feedback });
           onAgentActivity({
             id: createId(),
             at: Date.now(),
-            kind: diag.ok ? "info" : "error",
-            message: diag.ok
-              ? "auto diagnostics ok"
-              : "auto diagnostics failed",
+            kind: diag.ok || diag.skipped ? "info" : "error",
+            message: diag.skipped
+              ? "auto diagnostics skipped"
+              : diag.ok
+                ? "auto diagnostics ok"
+                : "auto diagnostics failed",
           });
         } catch (e) {
           if (signal.aborted) break;
           const msg = e instanceof Error ? e.message : String(e);
+          batchToolResults.push({
+            tool: "run_diagnostics",
+            result: toToolResult({
+              ok: false,
+              resultText: msg,
+              tool: "run_diagnostics",
+            }),
+          });
           apiMessages.push({
             role: "user",
             content: `【自动诊断】运行失败：${msg}`,
@@ -1553,6 +1576,7 @@ export async function runAgentTurn(
       }
 
       // OBSERVE → REFLECT: structured decision (continue / retry / replan / abort)
+      let batchDecision: ReflectDecision = "continue";
       if (!signal.aborted && batchToolResults.length > 0) {
         agentLoop.enter("act");
         const observed = agentLoop.recordToolResults(batchToolResults);
@@ -1570,6 +1594,7 @@ export async function runAgentTurn(
           signal,
           locale: locale === "zh" ? "zh" : "en",
         });
+        batchDecision = decision;
 
         // Decision-bound tool_selection logging (observe outcome → feedback log).
         if (onDecisionFeedback) {
@@ -1623,13 +1648,16 @@ export async function runAgentTurn(
 
       if (signal.aborted) break;
 
-      if (createPath && wroteTarget) {
+      const batchValidated =
+        batchDecision === "continue" &&
+        batchToolResults.every((item) => item.result.ok);
+      if (createPath && wroteTarget) forcedWrite = false;
+      if (createPath && wroteTarget && batchValidated) {
         apiMessages.push({
           role: "user",
           content: `文件 ${createPath} 已写入。请用一两句中文确认路径与作用，不要再调用工具。`,
         });
-        forcedWrite = false;
-      } else if (officeIntent && wroteTarget) {
+      } else if (officeIntent && wroteTarget && batchValidated) {
         apiMessages.push({
           role: "user",
           content: `文件 ${officeIntent.path} 已写入磁盘。请用一两句中文确认路径，不要再调用工具，也不要把工具 JSON 贴给用户。`,
@@ -1650,6 +1678,7 @@ export async function runAgentTurn(
         toolBatchesExecuted > 0 &&
         batchHadTools &&
         batchHadSuccess &&
+        batchValidated &&
         !wroteTarget &&
         !createPath &&
         !officeIntent
