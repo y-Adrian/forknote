@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { AgentBudget } from "../src/lib/agentBudget.ts";
+const b = new AgentBudget(2);
+assert.equal(b.reserveRound(), true);
+assert.equal(b.reserveRound(), true);
+assert.equal(b.reserveRound(), false);
+assert.equal(b.rounds, 2);
+const call = { tool: "read_file" as const, path: "a.ts" };
+for (let i = 0; i < 3; i++) b.record(call, false);
+assert.equal(b.canRun({ path: "a.ts", tool: "read_file" }), false);
+assert.equal(b.canRun({ ...call, path: "b.ts" }), true);
+b.record(call, true);
+assert.equal(b.canRun(call), true);
+console.log("test-agent-budget: ok");

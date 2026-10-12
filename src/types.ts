@@ -156,6 +156,7 @@ export interface ThreadRoot {
 
 /** 一条独立笔记（可含澄清分支） */
 export interface ChatSession {
+  modelMetrics?: import("./lib/modelMetrics").SessionModelMetrics;
   id: NodeId;
   title: string;
   /** 用户手动重命名后为 true，后续消息不再自动覆盖标题 */

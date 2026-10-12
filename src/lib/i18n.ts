@@ -658,6 +658,8 @@ const en = {
   "archive.continue": "Continue with archive",
 
   "projectBar.open": "Open project",
+  "projectBar.usage": "{tokens} tokens · {seconds}s",
+  "projectBar.usageDetail": "Input: {input}; output: {output}; calls: {calls}; usage unavailable for {unknown} calls. Time is summed request duration.",
   "projectBar.activityAria": "Agent activity",
 
   "clarify.toolbar": "Clarify this",
@@ -1397,6 +1399,8 @@ const zh: Record<MessageKey, string> = {
   "archive.continue": "用归档继续",
 
   "projectBar.open": "打开项目",
+  "projectBar.usage": "{tokens} tokens · {seconds}秒",
+  "projectBar.usageDetail": "输入：{input}；输出：{output}；请求：{calls}；其中 {unknown} 次未返回用量。耗时为请求耗时累计。",
   "projectBar.activityAria": "助手活动",
 
   "clarify.toolbar": "澄清此处",

@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { hiddenInternalReasoningFallback } from "../src/lib/agentAnswer.ts";
 
 const reasoning = readFileSync("src/lib/reasoning.ts", "utf8");
 assert.ok(
@@ -27,7 +28,7 @@ assert.ok(
   "agent must show a short fallback when only internal reasoning was generated",
 );
 assert.ok(
-  /本次生成只包含内部思考，已隐藏/.test(agentTurn),
+  /本次生成只包含内部思考，已隐藏/.test(hiddenInternalReasoningFallback("zh")),
   "Chinese fallback should explain hidden internal reasoning without leaking it",
 );
 

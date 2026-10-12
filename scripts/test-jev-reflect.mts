@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { jevEndpointFromSettings, parseJevReflectResponse } from "../src/lib/jev";
 import type { ApiSettings } from "../src/types";
 import { normalizeApiSettings } from "../src/lib/settings";
+import { reflectWithOptionalLlm } from "../src/lib/llmReflect";
+import { AgentLoopController } from "../src/lib/agentLoop";
+import type { ModelMetrics } from "../src/lib/modelMetrics";
 
 const allowed = ["continue", "retry", "replan"] as const;
 
@@ -71,5 +74,27 @@ assert.equal(
   "invalid confidence values must not pass a positive threshold",
 );
 
-console.log("[PASS] Jev Reflect responses are bounded and confidence-safe");
+const originalFetch = globalThis.fetch;
+const metrics: Array<Omit<ModelMetrics, "phase">> = [];
+globalThis.fetch = async (url) => {
+  assert.equal(String(url), "https://jevtypesafeai.com/api/v1/decide");
+  return Response.json({ model: "jev-fixture", answers: { decision: {
+    choice: "retry", confidence: 0.9,
+  } }, usage: { input_tokens: 10, output_tokens: 0 } });
+};
+try {
+  const result = await reflectWithOptionalLlm({
+    loop: new AgentLoopController(),
+    input: { observed: { batchOk: false, successCount: 0, errorCount: 1, primaryErrorType: "unknown", summaries: [], digest: "test error" } },
+    llm: normalizeApiSettings({ jevReflectEnabled: true, jevProvider: "hosted", jevApiKey: "fixture", useProxy: false }),
+    onMetrics: m => metrics.push(m),
+  });
+  assert.equal(result.source, "jev");
+  assert.equal(result.decision, "retry");
+  assert.equal(metrics.length, 1);
+  assert.equal(metrics[0]?.model, "jev-fixture");
+  assert.equal(metrics[0]?.usage?.totalTokens, 10);
+} finally { globalThis.fetch = originalFetch; }
+
+console.log("[PASS] Jev Reflect responses and metrics preserve the provider fallback chain");
 console.log("test-jev-reflect: ok");

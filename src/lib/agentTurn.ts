@@ -68,7 +68,6 @@ import {
   isToolsUnsupportedError,
   streamChat,
   type ChatMessage as ApiChatMessage,
-  type StreamTiming,
   type ToolCall,
 } from "./openai";
 import { mergeReasoningChannels } from "./reasoning";
@@ -93,6 +92,11 @@ import {
 import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { reflectWithOptionalLlm } from "./llmReflect";
 import { withAgentPhaseModel } from "./agentModelRouting";
+import { AgentPlanProgress } from "./agentPlanProgress";
+import { AgentBudget } from "./agentBudget";
+import type { ModelMetrics } from "./modelMetrics";
+import { abortable } from "./abortable";
+import { streamPlainChatAnswer, thinkingSecondsFromTiming, hiddenInternalReasoningFallback } from "./agentAnswer";
 import {
   estimateWebTaskComplexity,
   formatNetworkStatusSystem,
@@ -113,6 +117,7 @@ export type AgentTurnOutcome =
   | "aborted";
 
 export type RunAgentTurnOptions = {
+  onModelMetrics?: (metrics: ModelMetrics) => void;
   llm: ApiSettings;
   settings: ApiSettings;
   locale: Locale;
@@ -151,49 +156,6 @@ export type RunAgentTurnOptions = {
   onDecisionFeedback?: (events: FeedbackEvent[]) => void;
 };
 
-/** Reject when `signal` aborts so tool fetches can be interrupted promptly. */
-function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (err) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(err);
-      },
-    );
-  });
-}
-
-function thinkingSecondsFromTiming(
-  timing: StreamTiming,
-  reasoningText: string,
-): number | undefined {
-  if (!reasoningText.trim()) return undefined;
-  const startAt = timing.firstReasoningAt ?? timing.startedAt;
-  const endAt = Math.max(
-    startAt,
-    timing.lastReasoningAt ?? 0,
-    timing.firstVisibleContentAt ?? 0,
-  );
-  return Math.max(1, Math.round((endAt - startAt) / 1000));
-}
-
-function hiddenInternalReasoningFallback(locale: Locale): string {
-  return locale === "zh"
-    ? "本次生成只包含内部思考，已隐藏。请重试生成。"
-    : "This generation only contained internal reasoning, so it was hidden. Please retry.";
-}
-
 /** Plain-chat asks that still need injected memory/project orientation. */
 export function shouldInjectProjectPackForPlainChat(userText: string): boolean {
   const t = userText.trim();
@@ -204,97 +166,6 @@ export function shouldInjectProjectPackForPlainChat(userText: string): boolean {
   return /(?:之前|先前|前面|刚才|上次|历史|记录|记忆|归档|总结|结论|决策|做了什么|我们做过什么|操作记录|memory|history|previous|earlier|last time|what did we do|what have we done|decision|archive|summary)/i.test(
     t,
   );
-}
-
-/** Stream a plain chat reply with tools schema omitted (no plan / write path). */
-async function streamPlainChatAnswer(args: {
-  llm: ApiSettings;
-  apiMessages: ApiChatMessage[];
-  signal: AbortSignal;
-  isOwned: () => boolean;
-  patchContent: (patch: AgentContentPatch) => void;
-  locale: Locale;
-}): Promise<AgentTurnOutcome> {
-  const { llm, apiMessages, signal, isOwned, patchContent, locale } = args;
-  let apiReasoning = "";
-  const patchAssistantState = (patch: AgentContentPatch) => {
-    if (!isOwned() || signal.aborted) return;
-    patchContent(patch);
-  };
-
-  // Keep content empty until real tokens arrive so the UI shows the typing
-  // indicator (and ThinkingBlock when reasoning streams) instead of a stuck
-  // "Thinking…" placeholder that looks frozen on simple asks.
-  let roundText = "";
-  const streamResult = await streamChat(
-    llm,
-    apiMessages,
-    (delta) => {
-      roundText += delta;
-      const merged = mergeReasoningChannels(
-        apiReasoning,
-        stripToolCalls(roundText),
-        {
-          expectChineseAnswer: locale === "zh",
-          hidePeeledReasoning: true,
-        },
-      );
-      const cleaned = merged.content;
-      if (cleaned.length > 0) {
-        patchAssistantState({
-          content: cleaned,
-          ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
-        });
-      }
-    },
-    {
-      signal,
-      temperature: 0.6,
-      tools: undefined,
-      toolChoice: undefined,
-      onReasoningDelta: (piece) => {
-        apiReasoning += piece;
-        if (apiReasoning.trim()) {
-          patchAssistantState({ reasoning: apiReasoning });
-        }
-      },
-    },
-  );
-
-  if (signal.aborted || !isOwned()) {
-    return "aborted";
-  }
-
-  roundText = streamResult.content || roundText;
-  if (streamResult.reasoning.length >= apiReasoning.length) {
-    apiReasoning = streamResult.reasoning;
-  }
-  const merged = mergeReasoningChannels(
-    apiReasoning,
-    stripToolCalls(roundText),
-    {
-      expectChineseAnswer: locale === "zh",
-      hidePeeledReasoning: true,
-    },
-  );
-  const finalContent =
-    merged.content ||
-    (stripToolCalls(roundText).trim()
-      ? hiddenInternalReasoningFallback(locale)
-      : "");
-  patchAssistantState({
-    content: finalContent,
-    ...(merged.reasoning.trim() ? { reasoning: merged.reasoning } : {}),
-    ...(merged.reasoning.trim()
-      ? {
-          thinkingSeconds: thinkingSecondsFromTiming(
-            streamResult.timing,
-            merged.reasoning,
-          ),
-        }
-      : {}),
-  });
-  return "completed";
 }
 
 export async function runAgentTurn(
@@ -318,6 +189,7 @@ export async function runAgentTurn(
     onRepairContextToLive,
     onAwaitPlanApproval,
     onDecisionFeedback,
+    onModelMetrics,
   } = options;
 
   const trimmed = userText.trim();
@@ -492,6 +364,7 @@ export async function runAgentTurn(
             : "The latest user message is ordinary Q&A / advice / conceptual discussion, not an explicit request to change the repo, run commands, or create files. Answer the core goal directly and concisely in Markdown (lead with the answer; minimal preamble). Do not call project tools, do not explore/read/modify the repo, do not write_file or 'land' documents on disk, do not treat older memory tasks as this turn's goal, and do not write a long report.",
     });
     return streamPlainChatAnswer({
+      onModelMetrics,
       llm: summaryLlm,
       apiMessages,
       signal,
@@ -505,6 +378,7 @@ export async function runAgentTurn(
     preferPlainChat && allowNetworkTools && !forcePlainNoTools;
   /** Hard stop always = Settings → Project agentMaxRounds (never soft-capped below it). */
   const agentMaxRounds = agentMaxRoundsBase;
+  const budget = new AgentBudget(agentMaxRounds);
   if (networkOnlyTurn) {
     const complexityHint =
       locale === "zh"
@@ -649,6 +523,7 @@ export async function runAgentTurn(
   let lastModelToolBatches = 0;
   /** Successful mutating tool calls from the latest executeTools call. */
   let lastMutatingToolSuccesses = 0;
+  let validationFailed = false;
   let apiReasoning = "";
   /** Explicit PLAN→ACT→OBSERVE→REFLECT controller for this turn. */
   const agentLoop = new AgentLoopController({
@@ -671,6 +546,7 @@ export async function runAgentTurn(
     requireToolBatch?: boolean;
     /** User approved outside-project terminal access for this batch. */
     allowOutsideProject?: boolean;
+    progress?: AgentPlanProgress;
     /** Approved plan text/steps — synthesize concrete tools if the model emits none. */
     fallbackFromPlan?: {
       planText: string;
@@ -682,13 +558,13 @@ export async function runAgentTurn(
     const allowOutsideProject = Boolean(opts?.allowOutsideProject);
     /** One plan-synthesis inject per approve/execute phase. */
     let planFallbackUsed = false;
-    // Each approve/execute phase gets a fresh round budget.
+    // Local round selects phase hints; the shared budget never resets on approval.
     round = 0;
     lastModelToolBatches = 0;
     lastMutatingToolSuccesses = 0;
     addExecutionHints();
 
-    if (!deterministicPrefetchDone) {
+    if (!deterministicPrefetchDone && !budget.exhausted) {
       const preflightShell =
         projectRoot &&
         allowTerminal &&
@@ -817,7 +693,7 @@ export async function runAgentTurn(
     const forcedOfficeTool = officeIntent?.tool ?? null;
 
     while (round < agentMaxRounds) {
-      if (signal.aborted) break;
+      if (signal.aborted || !isOwned() || !budget.reserveRound()) break;
 
       // Subsequent rounds see a bounded snapshot of plan/observe/reflect continuity.
       if (round > 0) {
@@ -871,6 +747,7 @@ export async function runAgentTurn(
           {
             signal,
             temperature: projectRoot ? 0.2 : 0.6,
+            onMetrics: m => onModelMetrics?.({ ...m, phase: "code" }),
             tools: useNativeTools ? activeTools : undefined,
             toolChoice:
               useNativeTools && forcedWrite && round === 0
@@ -1291,6 +1168,14 @@ export async function runAgentTurn(
           continue;
         }
 
+        if (opts?.progress && (!opts.progress.complete || validationFailed) && round < agentMaxRounds - 1) {
+          apiMessages.push({
+            role: "user",
+            content: `Approved steps still require completion or validation:\n${opts.progress.remaining.join("\n")}\nUse tools to finish the approved work; do not claim completion without evidence.`,
+          });
+          round += 1;
+          continue;
+        }
         visibleContent = cleanedRound || visibleContent;
         patchAssistantContent(visibleContent);
         break;
@@ -1382,6 +1267,7 @@ export async function runAgentTurn(
                 await executeTools({
                   requireToolBatch: true,
                   allowOutsideProject: true,
+                  progress: opts?.progress,
                   fallbackFromPlan: {
                     planText: displayPlan,
                     steps,
@@ -1403,7 +1289,9 @@ export async function runAgentTurn(
           ...executed,
           tool: item.agent.tool,
         });
+        budget.record(item.agent, toolResult.ok);
         batchToolResults.push({ tool: item.agent.tool, result: toolResult });
+        opts?.progress?.record(item.agent, toolResult.ok);
         if (toolResult.ok) {
           batchHadSuccess = true;
           if (
@@ -1478,7 +1366,15 @@ export async function runAgentTurn(
         }
       };
 
-      const runOne = (item: PendingCall) =>
+      const runOne = (item: PendingCall) => {
+        if (!budget.canRun(item.agent)) {
+          return Promise.resolve({
+            ok: false,
+            resultText: "Error: identical tool call repeatedly failed; change its parameters or approach.",
+            activity: { kind: "error" as const, message: "Repeated failing tool call blocked" },
+          });
+        }
+        return (
         abortable(
           executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
@@ -1487,7 +1383,8 @@ export async function runAgentTurn(
             session,
           }),
           signal,
-        );
+        ));
+      };
 
       const parallel =
         pending.length > 1 &&
@@ -1537,6 +1434,7 @@ export async function runAgentTurn(
           // Validation belongs to the same observation as the edit it checks.
           // A skipped check is neither passed validation nor a tool failure.
           if (!diag.skipped) {
+            validationFailed = !diag.ok;
             batchToolResults.push({
               tool: "run_diagnostics",
               result: toToolResult({
@@ -1560,6 +1458,7 @@ export async function runAgentTurn(
         } catch (e) {
           if (signal.aborted) break;
           const msg = e instanceof Error ? e.message : String(e);
+          validationFailed = true;
           batchToolResults.push({
             tool: "run_diagnostics",
             result: toToolResult({
@@ -1580,9 +1479,7 @@ export async function runAgentTurn(
       if (!signal.aborted && batchToolResults.length > 0) {
         agentLoop.enter("act");
         const observed = agentLoop.recordToolResults(batchToolResults);
-        const expected =
-          agentLoop.structuredSteps.find((s) => s.expectedOutcome)
-            ?.expectedOutcome ?? agentLoop.structuredSteps[0]?.expectedOutcome;
+        const expected = opts?.progress?.expectedFor(pending.map(item => item.agent));
         const { decision, source: reflectSource } = await reflectWithOptionalLlm({
           loop: agentLoop,
           input: {
@@ -1593,6 +1490,7 @@ export async function runAgentTurn(
           enableLlm: true,
           signal,
           locale: locale === "zh" ? "zh" : "en",
+          onMetrics: m => onModelMetrics?.({ ...m, phase: "reflect" }),
         });
         batchDecision = decision;
 
@@ -1697,7 +1595,7 @@ export async function runAgentTurn(
       }
 
       round += 1;
-      if (round >= agentMaxRounds) {
+      if (round >= agentMaxRounds || budget.exhausted) {
         if (officeIntent && !officeTargetWritten) {
           const failNote = `\n\n（未能确认 ${officeIntent.path} 已写入磁盘。请重试，或检查 sidecar / 项目绑定。）`;
           visibleContent = (visibleContent || cleanedRound) + failNote;
@@ -1721,6 +1619,7 @@ export async function runAgentTurn(
       projectRoot &&
       !officeTargetWritten &&
       toolBatchesExecuted === 0 &&
+      !budget.exhausted &&
       !signal.aborted
     ) {
       // Last-resort write so a skipped tool loop cannot end as fake success
@@ -1767,6 +1666,10 @@ export async function runAgentTurn(
       patchAssistantContent(visibleContent);
     }
 
+    if (budget.exhausted && !visibleContent.includes(t("agent.toolRoundLimit", { rounds: String(agentMaxRounds) }, locale))) {
+      visibleContent = `${visibleContent}\n\n${t("agent.toolRoundLimit", { rounds: String(agentMaxRounds) }, locale)}`.trim();
+      patchAssistantContent(visibleContent);
+    }
     return { status: "done", content: visibleContent };
   };
 
@@ -1856,7 +1759,7 @@ export async function runAgentTurn(
             patchAssistantContent(cleaned);
           }
         },
-        { signal, temperature: 0.3 },
+        { signal, temperature: 0.3, onMetrics: m => onModelMetrics?.({ ...m, phase: "plan" }) },
       );
 
       if (signal.aborted) return null;
@@ -1889,6 +1792,7 @@ export async function runAgentTurn(
         : `User approved the following plan (this round's steps only). Execute those steps now with tools: emit native tool_calls or <tool_call>…</tool_call>. Do not only describe work, do not pretend it is done, and do not run steps that were not listed. If a step needs a file write, you must call write_file / write_docx / write_xlsx etc.\n\n${approvedPlanText}`;
 
     const presentPlanForApproval = (drafted: DraftedPlan): void => {
+      const progress = new AgentPlanProgress(drafted.steps, projectRoot);
       const approvedPlanText = drafted.displayPlan;
       const deferredSteps = drafted.deferredSteps;
       const preferredTool = inferPreferredToolFromPlan(
@@ -1942,6 +1846,7 @@ export async function runAgentTurn(
           );
           const execResult = await executeTools({
             requireToolBatch: true,
+            progress,
             allowOutsideProject: needsOutside,
             fallbackFromPlan: {
               planText: approvedPlanText,
@@ -1953,24 +1858,28 @@ export async function runAgentTurn(
           if (execResult.status === "waiting_plan") return;
 
           // Approve → run → plan next chunk when steps were deferred.
-          if (deferredSteps.length === 0 || signal.aborted) return;
+          if (deferredSteps.length === 0 || signal.aborted || budget.exhausted) return;
 
           // Do not claim the chunk finished / draft the next plan if the model
           // never ran tools (or never mutated disk when the plan required it).
           // Prefetch list/read alone must not unlock the next chunk — that was
           // the E2E failure mode with Ollama after chunking.
-          const chunkIncomplete = needsMutation
-            ? lastMutatingToolSuccesses === 0
-            : lastModelToolBatches === 0;
+          const chunkIncomplete = !progress.complete || validationFailed ||
+            (needsMutation && lastMutatingToolSuccesses === 0);
           if (chunkIncomplete) {
             const note =
               locale === "zh"
-                ? `${visibleContent ? `${visibleContent}\n\n` : ""}（本轮批准的步骤尚未成功调用工具，已暂停后续分批计划。请再次点「允许」，或改用对 function calling 更稳的模型如 DeepSeek。）`
-                : `${visibleContent ? `${visibleContent}\n\n` : ""}(No tools ran for this approved chunk, so the next plan round was not started. Click Allow again, or switch to a model with stronger function calling such as DeepSeek.)`;
+                ? `${visibleContent ? `${visibleContent}\n\n` : ""}（本轮仍有未确认完成的步骤，已暂停后续计划。）\n${progress.remaining.join("\n")}`
+                : `${visibleContent ? `${visibleContent}\n\n` : ""}(Some approved steps remain unverified; the next chunk is paused.)\n${progress.remaining.join("\n")}`;
             visibleContent = note.trim();
             patchAssistantContent(visibleContent);
             // Keep the same chunk available for another Allow.
-            presentPlanForApproval(drafted);
+            const remaining = progress.remaining.length ? progress.remaining : drafted.steps;
+            presentPlanForApproval({
+              ...drafted,
+              steps: remaining,
+              displayPlan: remaining.map((step, i) => `${i + 1}. ${step}`).join("\n"),
+            });
             return;
           }
 

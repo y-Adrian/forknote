@@ -35,6 +35,7 @@ import {
   saveContextMemoryPack,
 } from "../lib/contextMemory";
 import { streamChat } from "../lib/openai";
+import { accumulateModelMetrics, type ModelMetrics } from "../lib/modelMetrics";
 import {
   projectSessionJobUi,
   resolveSessionJobTarget,
@@ -905,6 +906,22 @@ function pushSessionAgentActivity(
   });
 }
 
+function pushSessionModelMetrics(
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  sessionId: NodeId,
+  metrics: ModelMetrics,
+): void {
+  set(state => {
+    const session = state.sessions.find(s => s.id === sessionId);
+    if (!session) return {};
+    const sessions = state.sessions.map(s => s.id === sessionId
+      ? { ...s, modelMetrics: accumulateModelMetrics(s.modelMetrics, metrics) }
+      : s);
+    persistSessions(sessions, state.activeSessionId);
+    return { sessions };
+  });
+}
+
 function pushSessionAgentChange(
   set: (
     partial:
@@ -1530,7 +1547,9 @@ export const useAppStore = create<AppState>((set, get) => ({
               : {}),
           }));
         },
-        { signal: ctrl.signal, temperature: 0.2 },
+        { signal: ctrl.signal, temperature: 0.2, onMetrics: m => {
+          if (archiveJobs.owns(sessionId, ctrl)) pushSessionModelMetrics(set, sessionId, { ...m, phase: "archive" });
+        } },
       );
 
       if (!archiveJobs.owns(sessionId, ctrl)) return;
@@ -1766,7 +1785,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (!compressJobs.owns(sessionId, ctrl)) return;
           content += delta;
         },
-        { signal: ctrl.signal, temperature: 0.2 },
+        { signal: ctrl.signal, temperature: 0.2, onMetrics: m => {
+          if (compressJobs.owns(sessionId, ctrl)) pushSessionModelMetrics(set, sessionId, { ...m, phase: "compress" });
+        } },
       );
 
       if (!compressJobs.owns(sessionId, ctrl)) return;
@@ -2817,6 +2838,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         onAgentActivity: (activity) => {
           pushSessionAgentActivity(set, sessionId, activity);
         },
+        onModelMetrics: metrics => { if (isOwned()) pushSessionModelMetrics(set, sessionId, metrics); },
         onAgentChange: (change) => {
           pushSessionAgentChange(set, sessionId, change);
         },
@@ -3072,6 +3094,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           onAgentActivity: (activity) => {
             pushSessionAgentActivity(set, sessionId, activity);
           },
+          onModelMetrics: metrics => { if (isOwned()) pushSessionModelMetrics(set, sessionId, metrics); },
           onAgentChange: (change) => {
             pushSessionAgentChange(set, sessionId, change);
           },
@@ -3288,6 +3311,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           onAgentActivity: (activity) => {
             pushSessionAgentActivity(set, sessionId, activity);
           },
+          onModelMetrics: metrics => { if (isOwned()) pushSessionModelMetrics(set, sessionId, metrics); },
           onAgentChange: (change) => {
             pushSessionAgentChange(set, sessionId, change);
           },

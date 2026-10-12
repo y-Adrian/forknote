@@ -10,6 +10,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "test:agent": "node scripts/test-agent-suite.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",

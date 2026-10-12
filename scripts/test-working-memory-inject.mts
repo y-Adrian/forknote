@@ -16,6 +16,24 @@ import {
 } from "../src/lib/agentLoop.ts";
 
 {
+  const loop = new AgentLoopController();
+  loop.enter("plan", "OLD_CONTEXT".repeat(200));
+  loop.enter("reflect", "LATEST_DECISION retry corrected path");
+  const memory = loop.formatWorkingMemory(100);
+  assert.ok(memory.length <= 100);
+  assert.match(memory, /LATEST_DECISION retry corrected path/);
+  assert.equal(loop.formatWorkingMemory(0), "");
+  const rolling = new AgentLoopController({ workingMemoryCompressAt: 4, workingMemoryKeepRecent: 1 });
+  for (let i = 0; i < 80; i++) {
+    rolling.enter("act", `batch_${i} ${"context ".repeat(10)}`);
+    rolling.recordToolResults([{ tool: "read_file", result: toToolResult({ ok: true, resultText: "ok" }) }]);
+  }
+  assert.ok(rolling.workingMemoryDigest.includes("batch_79"));
+  assert.ok(!rolling.workingMemoryDigest.includes("batch_0 "));
+  console.log("[PASS] memory budgets preserve latest decisions and rolling summaries");
+}
+
+{
   const turn = readFileSync("src/lib/agentTurn.ts", "utf8");
   assert.ok(
     turn.includes("upsertWorkingMemoryAddendum"),
