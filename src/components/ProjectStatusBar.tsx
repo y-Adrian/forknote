@@ -67,6 +67,7 @@ export function ProjectStatusBar({
 }) {
   const { t } = useLocale();
   const projectRoot = useAppStore((s) => s.projectRoot);
+  const metrics = useAppStore(s => s.sessions.find(session => session.id === s.activeSessionId)?.modelMetrics);
   const disconnectProject = useAppStore((s) => s.disconnectProject);
 
   const pathParts = projectRoot
@@ -112,6 +113,14 @@ export function ProjectStatusBar({
         >
           {t("common.disconnect")}
         </button>
+      )}
+      {metrics && (
+        <span className="fn-model-usage" title={t("projectBar.usageDetail", {
+          input: String(metrics.inputTokens), output: String(metrics.outputTokens),
+          unknown: String(metrics.unknownCalls), calls: String(metrics.calls),
+        })}>
+          {t("projectBar.usage", { tokens: metrics.calls === metrics.unknownCalls ? "?" : `${metrics.totalTokens}${metrics.unknownCalls ? "+?" : ""}`, seconds: (metrics.durationMs / 1000).toFixed(1) })}
+        </span>
       )}
     </div>
   ) : null;

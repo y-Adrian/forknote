@@ -1,6 +1,7 @@
 import type { ApiSettings } from "../types";
 import type { ReflectDecision } from "./agentLoop";
 import { coerceApiBaseUrl, isValidApiBaseUrl } from "./settings";
+import { parseTokenUsage, type ModelMetrics } from "./modelMetrics";
 
 type JevChoiceAnswer = {
   choice?: unknown;
@@ -70,6 +71,7 @@ export function parseJevReflectResponse(
 }
 
 export async function askJevReflectDecision(args: {
+  onMetrics?: (metrics: Omit<ModelMetrics, "phase">) => void;
   settings: ApiSettings;
   state: Record<string, unknown>;
   allowed: ReflectDecision[];
@@ -93,9 +95,11 @@ export async function askJevReflectDecision(args: {
 
   const criteria = Object.fromEntries(allowed.map((decision) => [decision, null]));
   const controller = new AbortController();
+  const startedAt = Date.now();
   const relayAbort = () => controller.abort();
   args.signal?.addEventListener("abort", relayAbort, { once: true });
-  const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  if (args.signal?.aborted) relayAbort();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -115,11 +119,17 @@ export async function askJevReflectDecision(args: {
       }),
     });
     if (!response.ok) return null;
-    return parseJevReflectResponse(await response.json(), allowed);
+    const raw = await response.json();
+    args.onMetrics?.({
+      model: typeof raw.model === "string" ? raw.model : settings.jevModel?.trim() || "jev-latest",
+      durationMs: Date.now() - startedAt,
+      usage: parseTokenUsage(raw.usage),
+    });
+    return parseJevReflectResponse(raw, allowed);
   } catch {
     return null;
   } finally {
-    window.clearTimeout(timeout);
+    clearTimeout(timeout);
     args.signal?.removeEventListener("abort", relayAbort);
   }
 }

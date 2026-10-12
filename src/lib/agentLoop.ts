@@ -285,7 +285,11 @@ export class AgentLoopController {
     }
     const text = lines.join("\n");
     if (text.length <= maxChars) return text;
-    return `${text.slice(0, maxChars)}\n…(working memory truncated)`;
+    const limit = Math.max(0, Math.floor(maxChars));
+    if (limit === 0) return "";
+    const marker = "[older working memory omitted]\n";
+    if (limit <= marker.length) return text.slice(-limit);
+    return marker + text.slice(-(limit - marker.length));
   }
 
   private pushMemory(
@@ -315,7 +319,7 @@ export class AgentLoopController {
     this.workingMemoryDigest = [this.workingMemoryDigest, compressed]
       .filter(Boolean)
       .join(" | ")
-      .slice(0, 1_200);
+      .slice(-1_200);
     this.workingMemory = kept;
   }
 }

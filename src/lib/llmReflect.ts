@@ -13,6 +13,8 @@ import { observeBatchHasWebTools } from "./agentLoop";
 import { streamChat, type ChatMessage } from "./openai";
 import { withAgentPhaseModel } from "./agentModelRouting";
 import { askJevReflectDecision } from "./jev";
+import type { ModelMetrics } from "./modelMetrics";
+import { abortable } from "./abortable";
 
 const DECISIONS: ReflectDecision[] = [
   "continue",
@@ -137,6 +139,8 @@ function buildReflectPrompt(args: {
  * Ask the LLM for a Reflect decision; returns null on failure / empty.
  */
 export async function askLlmReflectDecision(args: {
+  timeoutMs?: number;
+  onMetrics?: (metrics: Omit<ModelMetrics, "phase">) => void;
   llm: ApiSettings;
   observed: ObserveSignal;
   expectedOutcome?: string;
@@ -153,14 +157,23 @@ export async function askLlmReflectDecision(args: {
     allowed: args.allowed,
     locale: args.locale,
   });
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  args.signal?.addEventListener("abort", cancel, { once: true });
+  if (args.signal?.aborted) cancel();
+  const timeout = setTimeout(cancel, args.timeoutMs ?? 8_000);
   try {
-    const result = await streamChat(settings, messages, () => {}, {
-      signal: args.signal,
+    const result = await abortable(streamChat(settings, messages, () => {}, {
+      signal: controller.signal,
       temperature: 0,
-    });
+      onMetrics: args.onMetrics,
+    }), controller.signal);
     return parseReflectDecision(result.content);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
+    args.signal?.removeEventListener("abort", cancel);
   }
 }
 
@@ -168,6 +181,7 @@ export async function askLlmReflectDecision(args: {
  * Full Reflect: rule peek → optional LLM (clamped) → commit counters once.
  */
 export async function reflectWithOptionalLlm(args: {
+  onMetrics?: (metrics: Omit<ModelMetrics, "phase">) => void;
   loop: AgentLoopController;
   input: ReflectInput;
   llm?: ApiSettings | null;
@@ -186,6 +200,7 @@ export async function reflectWithOptionalLlm(args: {
     shouldAskLlmReflect(args.input, ruleDecision)
   ) {
     const jev = await askJevReflectDecision({
+      onMetrics: args.onMetrics,
       settings: args.llm,
       allowed,
       signal: args.signal,
@@ -205,6 +220,7 @@ export async function reflectWithOptionalLlm(args: {
       source = "jev";
     } else {
       const llmDecision = await askLlmReflectDecision({
+        onMetrics: args.onMetrics,
         llm: args.llm,
         observed: args.input.observed,
         expectedOutcome: args.input.expectedOutcome,

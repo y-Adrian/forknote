@@ -48,6 +48,11 @@ React + Zustand + localStorage
 - `src/lib/thread.ts`：不可变更新主线和分支树。
 - `src/lib/contextBuilder.ts`：构建模型消息。
 - `src/lib/agentTurn.ts`：意图判断、记忆组装、模型流、工具循环和批准暂停。
+- `src/lib/agentAnswer.ts`：普通回答的流式显示与思考计时。
+- `src/lib/agentPlanProgress.ts`：批准计划的逐步骤执行证据与预期结果匹配；无法解析的步骤保持待确认。
+- `src/lib/agentBudget.ts`：同一条用户消息跨批准/分批共享的总执行轮数，以及相同参数失败调用的限制。
+- `src/lib/modelMetrics.ts`：供应商真实用量解码、按阶段会话累计和持久化校验。未返回用量的请求记为未知。
+- `src/lib/abortable.ts`：在传输层忽略取消时仍能及时结束等待；Reflect 的独立超时为 8 秒。
 - `src/lib/openai.ts`：兼容 API 和流式解析。
 - `src/lib/jev.ts`：Jev System One 请求、严格响应解码和超时回退。
 - `src/lib/llmReflect.ts`：工具批次后的规则、Jev 与聊天模型三级 Reflect 决策。
@@ -74,6 +79,8 @@ Composer
 `runAgentTurn` 不直接依赖具体 UI 节点，只通过 `patchContent`、`isOwned` 和事件回调工作，因此主线与澄清可共享同一执行逻辑。
 
 Jev 不参与回答生成，也不能走 `/chat/completions`。官方 TypeSafe 使用 `/v1/systemone`，`jevtypesafeai.com` 托管代理使用 `/api/v1/decide`；设置中的提供方负责选择正确端点。启用后，它只读取有界的工具观察摘要和预期结果，并只能返回当前 `AgentLoopController` 允许的 Reflect 选项。响应选项越界、置信度不足、8 秒超时或请求失败时，继续使用现有 LLM Reflect；后者仍失败时使用本地规则。
+
+会话 `modelMetrics` 累计已完成请求的实际输入/输出 tokens、未知用量请求数、耗时和阶段数据；主回答、规划、工具执行、Reflect、归档与压缩均归属发起会话。失败或中断且没有返回最终用量的请求目前不计入完成请求统计，不能将界面总数当作账单。工具栏的 `+?` 表示存在未知用量；耗时是各请求累计，不是整条消息的墙钟时间。旧会话没有该字段时保持兼容。
 
 ## 4. 会话与澄清模型
 

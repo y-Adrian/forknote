@@ -30,3 +30,6 @@ jobs:
 
       - name: Typecheck and build
         run: npm run build
+
+      - name: Agent regression tests
+        run: npm run test:agent

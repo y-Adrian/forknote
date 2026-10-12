@@ -1,6 +1,7 @@
 import type { ApiSettings } from "../types";
 import { formatApiError } from "./apiError";
 import { diffSplitReasoning } from "./reasoning";
+import { parseTokenUsage, type TokenUsage, type ModelMetrics } from "./modelMetrics";
 import {
   isLikelyLocalEndpoint,
   proxyTargetFromBaseUrl,
@@ -31,6 +32,7 @@ export type OpenAITool = {
 };
 
 export type StreamChatOptions = {
+  onMetrics?: (metrics: Omit<ModelMetrics, "phase">) => void;
   signal?: AbortSignal;
   /** 默认 0.6；追问澄清 / 工具调用建议更低 */
   temperature?: number;
@@ -53,6 +55,8 @@ export type StreamTiming = {
 };
 
 export type StreamChatResult = {
+  usage: TokenUsage | null;
+  durationMs: number;
   content: string;
   /** Accumulated reasoning (empty if provider omits it) */
   reasoning: string;
@@ -166,6 +170,7 @@ export async function streamChat(
     messages,
     stream: true,
     temperature,
+    stream_options: { include_usage: true },
   };
   if (opts.tools && opts.tools.length > 0) {
     body.tools = opts.tools;
@@ -182,6 +187,14 @@ export async function streamChat(
     });
 
   let response = await doFetch();
+
+  if (!response.ok && (response.status === 400 || response.status === 422)) {
+    const errorText = await response.clone().text();
+    if (/stream_options|include_usage/i.test(errorText)) {
+      delete body.stream_options;
+      response = await doFetch();
+    }
+  }
 
   if (!response.ok) {
     const errText = await response.text();
@@ -223,6 +236,7 @@ export async function streamChat(
   let contentClean = "";
   let reasoningFull = "";
   let finishReason: string | null = null;
+  let usage: TokenUsage | null = null;
   let splitCursor = { contentLen: 0, reasoningLen: 0 };
   const timing: StreamTiming = {
     startedAt: Date.now(),
@@ -296,6 +310,7 @@ export async function streamChat(
 
         try {
           const json = JSON.parse(data) as {
+            usage?: unknown;
             choices?: Array<{
               finish_reason?: string | null;
               delta?: {
@@ -313,6 +328,7 @@ export async function streamChat(
               };
             }>;
           };
+          usage = parseTokenUsage(json.usage) ?? usage;
           const choice = json.choices?.[0];
           if (choice?.finish_reason) {
             finishReason = choice.finish_reason;
@@ -372,7 +388,11 @@ export async function streamChat(
     }))
     .filter((tc) => Boolean(tc.function.name));
 
+  const durationMs = Date.now() - timing.startedAt;
+  opts.onMetrics?.({ model: settings.model, durationMs, usage });
   return {
+    usage,
+    durationMs,
     content: contentClean,
     reasoning: reasoningFull,
     toolCalls,

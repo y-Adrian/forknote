@@ -2,6 +2,8 @@
 
 ## 1. 最小检查
 
+Agent 核心回归入口为 `npm run test:agent`，CI 的 Build 作业也会执行它。覆盖计划完成判定、跨审批预算、诊断恢复、权限、会话隔离、真实用量解析、Reflect 超时和工作记忆。
+
 小改动至少执行：
 
 ```bash
@@ -45,7 +47,7 @@ node scripts/test-fs-agent-tools.mjs
 
 ## 4. 完整离线回归
 
-当前没有聚合脚本。可在 macOS/Linux 的 zsh/bash 中运行：
+`npm run test:agent` 运行核心子集；完整离线回归仍可在 macOS/Linux 的 zsh/bash 中运行：
 
 ```bash
 for f in scripts/test-*.mts; do

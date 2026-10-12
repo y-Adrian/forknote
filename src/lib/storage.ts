@@ -16,6 +16,7 @@ import { loadProjectPrefs } from "./project";
 import { migrateSessionApiFields } from "./sessionApi";
 import { migrateGlobalProjectBinding } from "./sessionProject";
 import { firstUserMessage, normalizeThread } from "./thread";
+import { isSessionModelMetrics } from "./modelMetrics";
 
 const STORE_KEY = "forknote-sessions-v1";
 const LEGACY_STORE_KEY = "branch-chat-sessions-v1";
@@ -123,6 +124,7 @@ function migrateLoadedStore(store: SessionStore): SessionStore {
 function normalizeLoadedSession(session: ChatSession): ChatSession {
   const thread = session.thread ? normalizeThread(session.thread) : null;
   const base = migrateSessionApiFields({ ...session, thread });
+  if (base.modelMetrics !== undefined && !isSessionModelMetrics(base.modelMetrics)) delete base.modelMetrics;
   // Drop stale archive mode so UI "Full thread" matches askMain.
   const resolved = resolveConversationContext(base);
   if (resolved.repairedToLive) {
@@ -524,6 +526,9 @@ function validateImportStoreShape(parsed: unknown): asserts parsed is SessionSto
   const sessionIds = new Set<string>();
   store.sessions.forEach((sessionRaw, index) => {
     const session = requireRecord(sessionRaw, `sessions[${index}]`);
+    if (session.modelMetrics !== undefined && !isSessionModelMetrics(session.modelMetrics)) {
+      throw new Error(`Invalid backup: sessions[${index}].modelMetrics is invalid`);
+    }
     const id = requireString(session.id, `sessions[${index}].id`);
     rejectDuplicateId(sessionIds, id, "session");
     if (typeof session.title !== "string") {

@@ -5329,6 +5329,14 @@ mark.branch-highlight:focus-visible {
   min-width: 0;
 }
 
+.fn-model-usage {
+  min-width: 0;
+  max-width: 160px;
+  overflow-wrap: anywhere;
+  font-size: var(--fn-text-ui-sm);
+  color: var(--ds-muted);
+}
+
 .fn-agent-activity {
   list-style: none;
   margin: 0;
