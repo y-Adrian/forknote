@@ -193,6 +193,27 @@ function testStructuredPlanHints() {
   console.log("ok parseStructuredPlanHints");
 }
 
+function testMixedPermissionErrors() {
+  for (const errors of [
+    ["permission denied", "ENOENT", "ENOENT"],
+    ["ENOENT", "ENOENT", "permission denied"],
+  ]) {
+    const loop = new AgentLoopController();
+    const observed = loop.recordToolResults([
+      { tool: "read_file", result: toToolResult({ ok: true, resultText: "ok" }) },
+      ...errors.map((resultText) => ({
+        tool: "read_file",
+        result: toToolResult({ ok: false, resultText }),
+      })),
+    ]);
+    assert.equal(observed.primaryErrorType, "permission");
+    assert.deepEqual(loop.allowedReflectDecisions(observed), ["abort"]);
+    assert.equal(loop.reflect({ observed }), "abort");
+    assert.equal(loop.stepRetries, 0);
+  }
+  console.log("ok mixed permission errors hard-stop regardless of majority");
+}
+
 function testMemoryBudget() {
   const huge = "X".repeat(MEMORY_CHAR_BUDGETS.longTerm + 5000);
   const out = assembleMemoryLayers([
@@ -257,6 +278,7 @@ testObserveNormalize();
 testWebObserveNormalize();
 testWebReflectNudge();
 testReflectCircuit();
+testMixedPermissionErrors();
 testStructuredPlanHints();
 testMemoryBudget();
 testUserModel();
