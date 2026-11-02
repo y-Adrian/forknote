@@ -83,6 +83,7 @@ import {
   formatAutoDiagnosticsFeedback,
 } from "./agentExecFeedback";
 import { REPEATED_FAILURE_MESSAGE, toToolResult } from "./agentResult";
+import { formatProjectRulesSystem, loadProjectRules } from "./projectRules";
 import {
   AgentLoopController,
   buildReflectNudge,
@@ -334,6 +335,17 @@ export async function runAgentTurn(
 
   if (extraMessages?.length) {
     apiMessages.push(...extraMessages);
+  }
+
+  // Repository-committed agent rules (AGENTS.md etc.) apply to every project
+  // turn except chat-only diagram asks, which never touch the repo.
+  if (projectRoot && !chatOnlyDiagramAsk) {
+    const rulesSystem = formatProjectRulesSystem(
+      await loadProjectRules(projectRoot, sidecarUrl, signal),
+      locale === "zh" ? "zh" : "en",
+    );
+    if (rulesSystem) apiMessages.push({ role: "system", content: rulesSystem });
+    if (signal.aborted || !isOwned()) return "aborted";
   }
 
   if (memoryAddendum) {
