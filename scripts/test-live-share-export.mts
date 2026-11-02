@@ -10,13 +10,12 @@ import type { ChatSession, ThreadRoot } from "../src/types.ts";
 import {
   buildSharePayload,
   getShareableMessages,
-  markdownToSafeHtml,
   resolveLiveShareSession,
   sessionToExportMarkdown,
   sessionToShareMarkdown,
-  shareMarkdownToHtml,
   sharePayloadToHtml,
 } from "../src/lib/sessionShare.ts";
+import { markdownToSafeHtml, shareMarkdownToHtml } from "../src/lib/exportHtml.ts";
 
 {
   const dialog = readFileSync("src/components/ShareSessionDialog.tsx", "utf8");
@@ -145,6 +144,25 @@ assert.match(renderedMarkdown, /<ul>/);
 assert.match(renderedMarkdown, /<pre><code class="language-ts">/);
 assert.doesNotMatch(renderedMarkdown, /<script>/);
 assert.match(renderedMarkdown, /&lt;script&gt;/);
+{
+  const gfm = markdownToSafeHtml([
+    "| A | B |", "| - | - |", "| 1 | 2 |", "",
+    "[site](https://example.com) [bad](javascript:alert(1))", "",
+    "![chart](https://example.com/c.png)", "",
+    "- top", "  - nested", "", "- [x] done", "", "~~old~~", "", "---", "",
+    "<img src=x onerror=alert(1)>",
+  ].join("\n"));
+  assert.match(gfm, /<table>[\s\S]*<th>A<\/th>[\s\S]*<td>2<\/td>/);
+  assert.match(gfm, /<a href="https:\/\/example.com">site<\/a>/);
+  assert.doesNotMatch(gfm, /javascript:/);
+  assert.match(gfm, /<img src="https:\/\/example.com\/c.png" alt="chart"\/>/);
+  assert.match(gfm, /top[\s\S]*?<ul>\n<li>nested<\/li>\n<\/ul>/);
+  assert.match(gfm, /type="checkbox"[^>]*checked/);
+  assert.match(gfm, /<del>old<\/del>/);
+  assert.match(gfm, /<hr\/>/);
+  assert.doesNotMatch(gfm, /onerror/);
+  console.log("[PASS] HTML export renders GFM tables, links, images, nested/task lists safely");
+}
 const richHtml = shareMarkdownToHtml("Rich", richMarkdown, {
   lang: "zh",
   roleUser: "You",
