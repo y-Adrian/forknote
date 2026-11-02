@@ -13,7 +13,6 @@ import {
   getShareableMessages,
   previewText,
   sessionToExportMarkdown,
-  shareMarkdownToHtml,
   type ShareableMessage,
 } from "../lib/sessionShare";
 import { copyTextToClipboard } from "../lib/clipboard";
@@ -113,7 +112,7 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
     empty: t("share.empty"),
   });
 
-  const exportHtml = () => {
+  const exportHtml = async () => {
     if (!session) return;
     if (selectedCount === 0 && messages.length > 0) {
       setError(t("share.noneSelected"));
@@ -128,6 +127,7 @@ export function ShareSessionDialog({ sessionId, onClose }: Props) {
         includeTimestamps,
         labels: exportLabels(),
       });
+      const { shareMarkdownToHtml } = await import("../lib/exportHtml");
       const html = shareMarkdownToHtml(session.title, markdown, {
         brand: "ForkNote",
         lang: locale,
