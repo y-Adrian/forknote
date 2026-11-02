@@ -36,6 +36,7 @@ import {
   CODING_MEMORY_FILE,
 } from "./contextMemory";
 import { isDeniedTerminalCommand } from "./terminalDenyList";
+import { formatTodos, parseTodos, summarizeTodos } from "./agentTodos";
 import {
   DEFAULT_AGENT_MAX_ROUNDS,
   MAX_AGENT_MAX_ROUNDS,
@@ -81,7 +82,8 @@ export type AgentToolName =
   | "git_commit"
   | "run_terminal"
   | "web_search"
-  | "web_fetch";
+  | "web_fetch"
+  | "update_todos";
 
 export type SpreadsheetCell = string | number | boolean | null;
 
@@ -123,6 +125,8 @@ export type AgentToolCall = {
   cells?: Array<{ row: number; col: number; value: SpreadsheetCell }>;
   /** Absolute http(s) URL for web_fetch. */
   url?: string;
+  /** Raw `update_todos` list; validated by `parseTodos`. */
+  todos?: unknown;
 };
 
 export type AgentActivity = {
@@ -176,6 +180,7 @@ const TOOL_NAMES = new Set<string>([
   "run_terminal",
   "web_search",
   "web_fetch",
+  "update_todos",
 ]);
 
 /** Native OpenAI-compatible tools — same mechanism Cursor uses with the model API. */
@@ -530,6 +535,34 @@ export const PROJECT_OPENAI_TOOLS: OpenAITool[] = [
           limit: { type: "number", description: "Max hits (default 8)" },
         },
         required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_todos",
+      description:
+        "Maintain your task checklist for multi-step work. Send the FULL list each time (it replaces the previous one). Mark exactly one item in_progress while working and set items to completed as soon as they are done. For an approved plan, use the approved steps as the items, in order. Skip for single-step tasks.",
+      parameters: {
+        type: "object",
+        properties: {
+          todos: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                content: { type: "string", description: "Short imperative step" },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in_progress", "completed"],
+                },
+              },
+              required: ["content", "status"],
+            },
+          },
+        },
+        required: ["todos"],
       },
     },
   },
@@ -1845,6 +1878,7 @@ export function agentCallFromOpenAI(tc: ToolCall): AgentToolCall | null {
       typeof args.from === "string" ? normalizeRelPath(args.from) : undefined,
     to: typeof args.to === "string" ? normalizeRelPath(args.to) : undefined,
     message: typeof args.message === "string" ? args.message : undefined,
+    todos: args.todos,
     paths: Array.isArray(args.paths)
       ? args.paths.map((p) => normalizeRelPath(String(p ?? "")))
       : undefined,
@@ -3782,6 +3816,21 @@ export async function executeToolCall(
       throw new DOMException("Aborted", "AbortError");
     }
     switch (call.tool) {
+      case "update_todos": {
+        const todos = parseTodos(call.todos);
+        if (typeof todos === "string") {
+          return {
+            ok: false,
+            resultText: `Error: invalid update_todos input: ${todos}`,
+            activity: { kind: "error", message: `update_todos: ${todos}` },
+          };
+        }
+        return {
+          ok: true,
+          resultText: `Todo list updated:\n${formatTodos(todos)}`,
+          activity: { kind: "info", message: summarizeTodos(todos) },
+        };
+      }
       case "list_dir": {
         const path = normalizeRelPath(call.path?.trim() || ".", projectRoot);
         const { entries } = await listDir(path, sidecarUrl, signal, projectRoot ?? undefined);

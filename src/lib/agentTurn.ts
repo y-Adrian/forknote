@@ -84,6 +84,7 @@ import {
 } from "./agentExecFeedback";
 import { REPEATED_FAILURE_MESSAGE, toToolResult } from "./agentResult";
 import { formatProjectRulesSystem, loadProjectRules } from "./projectRules";
+import { parseTodos } from "./agentTodos";
 import {
   AgentLoopController,
   buildReflectNudge,
@@ -1197,7 +1198,8 @@ export async function runAgentTurn(
       }
 
       let wroteTarget = false;
-      let batchHadTools = pending.length > 0;
+      // A todo update alone is bookkeeping, not progress on the user's task.
+      let batchHadTools = pending.some((p) => p.agent.tool !== "update_todos");
       let batchHadSuccess = false;
       /** Successful code-edit outcomes in this batch (for auto-diagnostics). */
       const batchEditOutcomes: Array<{
@@ -1292,7 +1294,14 @@ export async function runAgentTurn(
         });
         budget.record(item.agent, toolResult.ok);
         batchToolResults.push({ tool: item.agent.tool, result: toolResult });
-        opts?.progress?.record(item.agent, toolResult.ok);
+        if (item.agent.tool === "update_todos") {
+          const todos = parseTodos(item.agent.todos);
+          if (toolResult.ok && typeof todos !== "string") {
+            opts?.progress?.applyTodos(todos);
+          }
+        } else {
+          opts?.progress?.record(item.agent, toolResult.ok);
+        }
         if (toolResult.ok) {
           batchHadSuccess = true;
           if (
@@ -1782,8 +1791,8 @@ export async function runAgentTurn(
 
     const approvalExecutePrompt = (approvedPlanText: string): string =>
       locale === "zh"
-        ? `用户已批准以下计划（仅本轮步骤）。请立即用工具执行这些步骤：发出原生 tool_calls，或使用 <tool_call>…</tool_call>；禁止只描述、禁止假装已完成、禁止执行未列出的后续步骤。若某步需要写文件，必须调用 write_file / write_docx / write_xlsx 等。\n\n${approvedPlanText}`
-        : `User approved the following plan (this round's steps only). Execute those steps now with tools: emit native tool_calls or <tool_call>…</tool_call>. Do not only describe work, do not pretend it is done, and do not run steps that were not listed. If a step needs a file write, you must call write_file / write_docx / write_xlsx etc.\n\n${approvedPlanText}`;
+        ? `用户已批准以下计划（仅本轮步骤）。请立即用工具执行这些步骤：发出原生 tool_calls，或使用 <tool_call>…</tool_call>；禁止只描述、禁止假装已完成、禁止执行未列出的后续步骤。若某步需要写文件，必须调用 write_file / write_docx / write_xlsx 等。多步计划请用 update_todos 按顺序列出这些步骤，并在每步完成后标记 completed。\n\n${approvedPlanText}`
+        : `User approved the following plan (this round's steps only). Execute those steps now with tools: emit native tool_calls or <tool_call>…</tool_call>. Do not only describe work, do not pretend it is done, and do not run steps that were not listed. If a step needs a file write, you must call write_file / write_docx / write_xlsx etc. For multi-step plans, list these steps in order with update_todos and mark each completed as you finish it.\n\n${approvedPlanText}`;
 
     const presentPlanForApproval = (drafted: DraftedPlan): void => {
       const progress = new AgentPlanProgress(drafted.steps, projectRoot);
