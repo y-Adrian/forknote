@@ -13,6 +13,7 @@ import {
   buildNextPlanChunkPrompt,
   buildPlanningPhaseSystem,
   collectToolCalls,
+  checkpointTargets,
   executeToolCall,
   extractTerminalCommandsFromPlan,
   getNetworkOpenAITools,
@@ -116,6 +117,8 @@ export type AgentContentPatch = {
   content?: string;
   reasoning?: string;
   thinkingSeconds?: number;
+  /** Set once the turn edits files; the reply can then roll them back. */
+  checkpointId?: string;
 };
 
 export type AgentTurnOutcome =
@@ -624,6 +627,19 @@ export async function runAgentTurn(
   const patchAssistantState = (patch: AgentContentPatch) => {
     if (!isOwned() || signal.aborted) return;
     patchContent(patch);
+  };
+
+  /**
+   * One checkpoint per user turn (shared across approvals): the sidecar
+   * snapshots files before each edit so the whole turn can be rolled back.
+   */
+  const checkpointId = projectRoot ? `turn_${createId()}` : undefined;
+  let checkpointAnnounced = false;
+  const noteCheckpointedEdit = (call: AgentToolCall) => {
+    if (checkpointAnnounced || !checkpointId || !projectRoot) return;
+    if (checkpointTargets(call, projectRoot).length === 0) return;
+    checkpointAnnounced = true;
+    patchAssistantState({ checkpointId });
   };
 
   /**
@@ -1309,6 +1325,7 @@ export async function runAgentTurn(
         });
         budget.record(item.agent, toolResult.ok);
         batchToolResults.push({ tool: item.agent.tool, result: toolResult });
+        if (toolResult.ok) noteCheckpointedEdit(item.agent);
         if (item.agent.tool === "update_todos") {
           const todos = parseTodos(item.agent.todos);
           if (toolResult.ok && typeof todos !== "string") {
@@ -1413,6 +1430,7 @@ export async function runAgentTurn(
         return (
         abortable(
           executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
+            checkpointId,
             allowTerminal,
             allowOutsideProject: allowOutsideProject || permission === "allow",
             allowNetwork: allowNetworkTools,
@@ -1662,6 +1680,7 @@ export async function runAgentTurn(
       patchAssistantContent(t("agent.status.creating", { path: officeIntent.path }, locale));
       const executed = await abortable(
         executeToolCall(synth, sidecarUrl, signal, projectRoot, locale, {
+          checkpointId,
           allowTerminal,
           allowOutsideProject,
           allowNetwork: allowNetworkTools,
@@ -1677,6 +1696,7 @@ export async function runAgentTurn(
       if (executed.change) {
         onAgentChange({ ...executed.change, at: Date.now() });
       }
+      if (executed.ok) noteCheckpointedEdit(synth);
       toolBatchesExecuted += 1;
       if (executed.ok) {
         officeTargetWritten = true;

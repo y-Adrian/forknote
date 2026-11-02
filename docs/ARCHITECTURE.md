@@ -53,6 +53,7 @@ React + Zustand + localStorage
 - `src/lib/agentTodos.ts`：模型维护的 `update_todos` 待办列表（整表替换、校验、进度摘要）。
 - `src/lib/projectRules.ts`：读取仓库提交的 AGENTS.md / CLAUDE.md / .cursorrules / copilot-instructions，按字符预算作为项目规则注入每个项目回合。
 - `src/lib/agentPermissions.ts`：设置中的终端命令允许/禁止规则（前缀匹配、串联命令逐段判断、禁止优先）；允许的命令跳过批准卡片，禁止的命令不会执行。
+- `sidecar/checkpoints.mjs`：每轮 Agent 修改的文件检查点。修改类工具执行前先快照目标文件（失败则不执行修改），回复上的「回滚本轮修改」恢复到回合前状态；终端命令不覆盖，保留最近 30 个检查点。
 - `src/lib/agentBudget.ts`：同一条用户消息跨批准/分批共享的总执行轮数，以及相同参数失败调用的限制。
 - `src/lib/modelMetrics.ts`：供应商真实用量解码、按阶段会话累计和持久化校验。未返回用量的请求记为未知。
 - `src/lib/abortable.ts`：在传输层忽略取消时仍能及时结束等待；Reflect 的独立超时为 8 秒。
@@ -141,6 +142,7 @@ ChatSession
 - 原始线程是事实来源；摘要、归档和共享澄清都是派生数据。
 - 外部导入和 sidecar 请求都视为不可信输入。
 - 项目工具不能绕过 `expectedRoot`；项目外终端访问必须显式批准。
+- Agent 修改文件前必须能写入本轮检查点，否则该修改不执行。
 - 停止或失败不能留下空分支、卡住的 loading 状态或未刷新的最终内容。
 - 主会话和 Clarify 共用模型执行能力，但 Clarify 的写入目标和局部定位必须保持独立。
 - Jev 是可选增强层；关闭、无 Key 或服务不可用时不能改变原有 Agent 行为。

@@ -545,6 +545,60 @@ export async function semanticSearch(
   return parseJson(res);
 }
 
+export type CheckpointRestoreResult = {
+  id: string;
+  restored: string[];
+  removed: string[];
+  skipped: string[];
+};
+
+/** Snapshot paths into a turn checkpoint before a mutating tool runs. */
+export async function captureCheckpoint(
+  checkpointId: string,
+  relPaths: string[],
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  signal?: AbortSignal,
+  expectedRoot?: string,
+): Promise<{ id: string; paths: string[] }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/checkpoint/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkpointId, paths: relPaths, expectedRoot }),
+    signal,
+  });
+  return parseJson(res);
+}
+
+/** Captured paths of a checkpoint; `missing` when it was restored or never made. */
+export async function getCheckpoint(
+  checkpointId: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  expectedRoot?: string,
+): Promise<{ id: string; paths: string[]; skipped?: string[]; missing?: boolean }> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/checkpoint/info`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkpointId, expectedRoot }),
+  });
+  return parseJson(res);
+}
+
+/** Revert every file the turn touched to its pre-turn state. */
+export async function restoreCheckpoint(
+  checkpointId: string,
+  sidecarUrl = DEFAULT_SIDECAR_URL,
+  expectedRoot?: string,
+): Promise<CheckpointRestoreResult> {
+  const res = await fetch(`${base(sidecarUrl)}/fs/checkpoint/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkpointId, expectedRoot }),
+  });
+  const data = await parseJson<CheckpointRestoreResult>(res);
+  bustProjectFileHintCache(expectedRoot);
+  return data;
+}
+
 export async function deleteFile(
   relPath: string,
   sidecarUrl = DEFAULT_SIDECAR_URL,

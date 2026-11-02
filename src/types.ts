@@ -142,6 +142,8 @@ export interface ChatMessage {
   reasoning?: string;
   /** Best-effort reasoning span in seconds (excludes network / placeholder time). */
   thinkingSeconds?: number;
+  /** Sidecar checkpoint of files this Agent reply edited (cleared after rollback). */
+  checkpointId?: string;
 }
 
 export interface ThreadRoot {

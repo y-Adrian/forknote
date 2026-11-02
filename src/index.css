@@ -1356,6 +1356,21 @@ body {
   justify-content: flex-start;
 }
 
+.fn-checkpoint-rollback {
+  padding: 2px 8px;
+  font-size: var(--fn-text-ui);
+  color: var(--ds-text-dim);
+}
+
+.fn-checkpoint-rollback.is-armed {
+  color: var(--ds-text);
+  border-color: var(--ds-focus-border);
+}
+
+.fn-checkpoint-rollback.is-error {
+  color: var(--ds-danger, #c0392b);
+}
+
 .fn-msg-footer.is-end {
   justify-content: flex-end;
 }
