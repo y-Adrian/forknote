@@ -137,6 +137,20 @@ assert.doesNotMatch(
   sessionToExportMarkdown(rich, undefined, { includeClarifications: false }),
   /clarified answer/,
 );
+{
+  const multi = session("s-multi", [
+    { id: "a-m", role: "assistant", content: "answer", createdAt: 1, children: [
+      {
+        id: "b-m", parentId: "a-m",
+        anchor: { startOffset: 0, endOffset: 20, quotedText: "line one\n\nline two" },
+        userQuestion: "why?", assistantMessage: "because", createdAt: 2, children: [],
+      },
+    ] },
+  ] as ThreadRoot["messages"]);
+  const md = sessionToExportMarkdown(multi, undefined, { includeClarifications: true });
+  assert.match(md, /> line one\n>\n> line two/);
+  console.log("[PASS] multi-line clarification quotes stay quoted");
+}
 const renderedMarkdown = markdownToSafeHtml(
   "## Heading\n\n- item\n\n```ts\nconst x = '<script>';\n```\n\n<script>alert(1)</script>",
 );
