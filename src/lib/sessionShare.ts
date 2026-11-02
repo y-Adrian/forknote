@@ -137,7 +137,9 @@ function appendBranchMarkdown(
   lines.push(
     `${heading} ${labels.clarification ?? "Clarification"}${timestamp}`,
     "",
-    `> ${branch.anchor.quotedText.trim()}`,
+    // Prefix every line so multi-line selections stay inside the quote.
+    branch.anchor.quotedText.trim().replace(/\r\n?/g, "\n").split("\n")
+      .map((line) => (line.trim() ? `> ${line}` : ">")).join("\n"),
     "",
     `**${labels.question ?? "Question"}:** ${branch.userQuestion.trim()}`,
     "",
