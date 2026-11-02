@@ -3,6 +3,7 @@ import {
   type AgentToolCall,
 } from "./agentTools";
 import { parseStructuredPlanHints } from "./agentLoop";
+import { normalizeTodoText, type AgentTodo } from "./agentTodos";
 
 export class AgentPlanProgress {
   readonly steps: Array<{
@@ -36,6 +37,24 @@ export class AgentPlanProgress {
     // One result satisfies one step; repeated operations require separate evidence.
     const step = this.steps.find(s => s.status !== "succeeded" && s.call && this.matches(s.call, call));
     if (step) step.status = ok ? "succeeded" : "failed";
+  }
+
+  /**
+   * Steps without a parseable tool call can never be matched by evidence, so
+   * the model's `update_todos` status completes them. Todos map by position
+   * when the list mirrors the plan, otherwise by normalized text. Steps with
+   * a concrete call still require a successful matching tool result.
+   */
+  applyTodos(todos: AgentTodo[]): void {
+    const byIndex = todos.length === this.steps.length;
+    this.steps.forEach((step, i) => {
+      if (step.call || step.status === "succeeded") return;
+      const key = normalizeTodoText(step.description);
+      const todo = byIndex
+        ? todos[i]
+        : todos.find((t) => normalizeTodoText(t.content) === key);
+      if (todo?.status === "completed") step.status = "succeeded";
+    });
   }
 
   expectedFor(calls: AgentToolCall[]): string | undefined {
