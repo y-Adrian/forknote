@@ -1,4 +1,5 @@
 import type { ApiSettings } from "../types";
+import { normalizeCommandRules } from "./agentPermissions";
 import {
   safeLocalStorageRemoveItem,
   safeLocalStorageSetItem,
@@ -223,6 +224,8 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
       raw.agentRequireApproval ?? APP_DEFAULTS.agentRequireApproval,
     agentAllowTerminal:
       raw.agentAllowTerminal ?? APP_DEFAULTS.agentAllowTerminal,
+    agentCommandAllow: normalizeCommandRules(raw.agentCommandAllow),
+    agentCommandDeny: normalizeCommandRules(raw.agentCommandDeny),
     agentAutoDiagnostics:
       raw.agentAutoDiagnostics ?? APP_DEFAULTS.agentAutoDiagnostics,
     agentPlanModel:

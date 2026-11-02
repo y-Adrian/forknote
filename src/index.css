@@ -3472,7 +3472,8 @@ mark.branch-highlight:focus-visible {
 }
 
 .settings-modal input[type="text"],
-.settings-modal input[type="password"] {
+.settings-modal input[type="password"],
+.settings-modal textarea {
   width: 100%;
   border: 1px solid var(--ds-border);
   border-radius: 14px;
@@ -3484,7 +3485,8 @@ mark.branch-highlight:focus-visible {
 }
 
 .settings-modal input[type="text"]:focus,
-.settings-modal input[type="password"]:focus {
+.settings-modal input[type="password"]:focus,
+.settings-modal textarea:focus {
   outline: none;
   border-color: var(--ds-focus-border);
   box-shadow: 0 0 0 3px var(--ds-focus-ring);
@@ -5573,6 +5575,7 @@ mark.branch-highlight:focus-visible {
 }
 
 .fn-tool-approve-allow,
+.fn-tool-approve-always,
 .fn-tool-approve-stop,
 .fn-shell-approve-allow,
 .fn-shell-approve-reject {
