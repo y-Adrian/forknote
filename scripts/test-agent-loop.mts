@@ -7,6 +7,7 @@ import {
   normalizeObserveOutput,
   normalizeWebFetchOutput,
   normalizeWebSearchOutput,
+  REPEATED_FAILURE_MESSAGE,
   toToolResult,
 } from "../src/lib/agentResult.ts";
 import {
@@ -136,6 +137,21 @@ function testWebReflectNudge() {
   });
   assert.match(replan, /换检索|web_search/);
   console.log("ok web reflect nudge");
+}
+
+function testRepeatedFailureSkipsRetry() {
+  const blocked = toToolResult({ ok: false, resultText: REPEATED_FAILURE_MESSAGE });
+  assert.equal(blocked.errorType, "repeated_failure");
+  const loop = new AgentLoopController({ maxStepRetries: 2, maxReplans: 1 });
+  const observed = loop.recordToolResults([{ tool: "read_file", result: blocked }]);
+  assert.ok(!loop.allowedReflectDecisions(observed).includes("retry"));
+  assert.equal(shouldAskLlmReflect({ observed }, loop.peekReflect({ observed })), false);
+  assert.equal(loop.reflect({ observed }), "replan");
+  assert.equal(
+    loop.reflect({ observed: loop.recordToolResults([{ tool: "read_file", result: blocked }]) }),
+    "abort",
+  );
+  console.log("ok repeated failure replans without retry or LLM reflect");
 }
 
 function testReflectCircuit() {
@@ -278,6 +294,7 @@ testObserveNormalize();
 testWebObserveNormalize();
 testWebReflectNudge();
 testReflectCircuit();
+testRepeatedFailureSkipsRetry();
 testMixedPermissionErrors();
 testStructuredPlanHints();
 testMemoryBudget();

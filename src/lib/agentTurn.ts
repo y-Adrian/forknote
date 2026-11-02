@@ -68,6 +68,7 @@ import {
   isToolsUnsupportedError,
   streamChat,
   type ChatMessage as ApiChatMessage,
+  type StreamChatOptions,
   type ToolCall,
 } from "./openai";
 import { mergeReasoningChannels } from "./reasoning";
@@ -81,7 +82,7 @@ import {
   batchNeedsAutoDiagnostics,
   formatAutoDiagnosticsFeedback,
 } from "./agentExecFeedback";
-import { toToolResult } from "./agentResult";
+import { REPEATED_FAILURE_MESSAGE, toToolResult } from "./agentResult";
 import {
   AgentLoopController,
   buildReflectNudge,
@@ -166,6 +167,22 @@ export function shouldInjectProjectPackForPlainChat(userText: string): boolean {
   return /(?:之前|先前|前面|刚才|上次|历史|记录|记忆|归档|总结|结论|决策|做了什么|我们做过什么|操作记录|memory|history|previous|earlier|last time|what did we do|what have we done|decision|archive|summary)/i.test(
     t,
   );
+}
+
+type StreamToolChoice = StreamChatOptions["toolChoice"];
+
+/** Split a tool batch into runs of parallel read-only calls and single writes. */
+export function groupCallsForExecution<T>(
+  items: T[],
+  isReadOnly: (item: T) => boolean,
+): T[][] {
+  const groups: T[][] = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (isReadOnly(item) && last && isReadOnly(last[0]!)) last.push(item);
+    else groups.push([item]);
+  }
+  return groups;
 }
 
 export async function runAgentTurn(
@@ -458,34 +475,77 @@ export async function runAgentTurn(
     Boolean(onAwaitPlanApproval) &&
     (shellLeavesProject || (requireApproval && !shellIntent!.readOnly));
 
+  /** Fill arguments the model left blank from this turn's deterministic intent. */
+  const alignToIntent = (agent: AgentToolCall): AgentToolCall => {
+    const blankPath = !agent.path || agent.path === "." || agent.path === "file";
+    if (createPath && agent.tool === "write_file" && blankPath) {
+      return { ...agent, path: createPath };
+    }
+    if (officeIntent && agent.tool === officeIntent.tool) {
+      return alignOfficeToolCall(agent, officeIntent, trimmed);
+    }
+    if (exploreIntent?.kind === "list" && agent.tool === "list_dir" &&
+      (!agent.path || agent.path === "file")) {
+      return { ...agent, path: exploreIntent.path };
+    }
+    if (exploreIntent?.kind === "read" && agent.tool === "read_file" && blankPath) {
+      return { ...agent, path: exploreIntent.path };
+    }
+    if (exploreIntent?.kind === "search" && agent.tool === "search_files" &&
+      !agent.query?.trim()) {
+      return { ...agent, query: exploreIntent.query };
+    }
+    if (shellIntent && agent.tool === "run_terminal" && !agent.command?.trim()) {
+      return { ...agent, command: shellIntent.command };
+    }
+    return agent;
+  };
+
+  let executionHintsAdded = false;
   const addExecutionHints = () => {
+    // Hints describe the turn's intent; approvals must not stack duplicates.
+    if (executionHintsAdded) return;
+    executionHintsAdded = true;
+    const zh = locale === "zh";
     if (createPath) {
       apiMessages.push({
         role: "system",
-        content: `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`,
+        content: zh
+          ? `用户要求在项目中创建文件。你必须调用函数 write_file：path 必须精确为 "${createPath}"（相对项目根），content 为完整源码。禁止只输出 Markdown 代码块而不调用工具。`
+          : `The user asked to create a file in the project. You must call write_file with path exactly "${createPath}" (relative to the project root) and the full source as content. Do not only output a Markdown code block.`,
       });
     } else if (officeIntent) {
       apiMessages.push({
         role: "system",
         content:
           officeIntent.tool === "write_xlsx"
-            ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
-            : `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落数组（空白文档用 [] 或 [""]）。禁止只把 JSON 贴在 Markdown 里；禁止未调用工具就声称已创建。禁止用 write_file。`,
+            ? zh
+              ? `用户要求创建 Excel。你必须调用函数 write_xlsx：path="${officeIntent.path}"，rows 为二维数组（首行可为表头）。禁止只把 JSON/表格贴在 Markdown 里让用户自己执行。禁止用 write_file。`
+              : `The user asked for an Excel file. You must call write_xlsx with path="${officeIntent.path}" and rows as a 2D array (first row may be headers). Do not paste JSON/tables in Markdown for the user to run. Do not use write_file.`
+            : zh
+              ? `用户要求创建 Word。你必须调用函数 write_docx：path="${officeIntent.path}"，paragraphs 为段落数组（空白文档用 [] 或 [""]）。禁止只把 JSON 贴在 Markdown 里；禁止未调用工具就声称已创建。禁止用 write_file。`
+              : `The user asked for a Word file. You must call write_docx with path="${officeIntent.path}" and paragraphs as an array ([] or [""] for a blank document). Do not paste JSON in Markdown or claim it was created without calling the tool. Do not use write_file.`,
       });
     } else if (shellIntent) {
       apiMessages.push({
         role: "system",
-        content: `用户最新消息要求执行 shell/终端命令。你必须调用函数 run_terminal：command 必须为 ${JSON.stringify(shellIntent.command)}。禁止用 list_dir 代替；禁止只描述命令而不调用工具；禁止添加用户未要求的操作（如删除 node_modules）。忽略历史中未完成的旧计划，除非用户明确要求继续。`,
+        content: zh
+          ? `用户最新消息要求执行 shell/终端命令。你必须调用函数 run_terminal：command 必须为 ${JSON.stringify(shellIntent.command)}。禁止用 list_dir 代替；禁止只描述命令而不调用工具；禁止添加用户未要求的操作（如删除 node_modules）。忽略历史中未完成的旧计划，除非用户明确要求继续。`
+          : `The latest user message asks to run a shell command. You must call run_terminal with command ${JSON.stringify(shellIntent.command)}. Do not substitute list_dir, only describe the command, or add unrequested operations (e.g. deleting node_modules). Ignore unfinished old plans in history unless the user asks to continue.`,
       });
     } else if (exploreIntent) {
+      const target = exploreIntent.kind === "search"
+        ? `search_files query="${exploreIntent.query}"`
+        : `${exploreIntent.kind === "list" ? "list_dir" : "read_file"} path="${exploreIntent.path}"`;
       apiMessages.push({
         role: "system",
-        content:
-          exploreIntent.kind === "list"
+        content: zh
+          ? exploreIntent.kind === "list"
             ? `用户要求查看目录。你必须调用函数 list_dir：path 必须为 "${exploreIntent.path}"（相对项目根；根目录用 "."）。禁止凭猜测罗列文件。`
             : exploreIntent.kind === "read"
               ? `用户要求阅读文件。你必须调用函数 read_file：path 必须为 "${exploreIntent.path}"。禁止编造文件内容。`
-              : `用户要求搜索代码。你必须调用函数 search_files：query 必须为 "${exploreIntent.query}"。禁止凭记忆假装已搜索。`,
+              : `用户要求搜索代码。你必须调用函数 search_files：query 必须为 "${exploreIntent.query}"。禁止凭记忆假装已搜索。`
+          : `The user asked to inspect the project. You must call ${target} (paths relative to the project root). Do not guess or invent the result.`,
       });
     } else if (multiStepPlan.length >= 2) {
       apiMessages.push({
@@ -539,6 +599,37 @@ export async function runAgentTurn(
   const patchAssistantState = (patch: AgentContentPatch) => {
     if (!isOwned() || signal.aborted) return;
     patchContent(patch);
+  };
+
+  /**
+   * Loop-control nudges ("call a tool now", reflect guidance, "wrap up") are
+   * only meaningful for the next request. Once a later assistant reply exists
+   * they are stale, so drop them before adding a new one; nudges from the
+   * same round (e.g. reflect + follow-up guidance) are kept together.
+   */
+  const transientNudges = new WeakSet<ApiChatMessage>();
+  const pushNudge = (content: string) => {
+    let lastAssistant = -1;
+    for (let i = apiMessages.length - 1; i >= 0; i--) {
+      if (apiMessages[i]!.role === "assistant") { lastAssistant = i; break; }
+    }
+    for (let i = lastAssistant - 1; i >= 0; i--) {
+      if (transientNudges.has(apiMessages[i]!)) apiMessages.splice(i, 1);
+    }
+    const msg: ApiChatMessage = { role: "user", content };
+    transientNudges.add(msg);
+    apiMessages.push(msg);
+  };
+
+  /** Planning and execution phase rules replace each other instead of stacking. */
+  let phaseSystemMessage: ApiChatMessage | null = null;
+  const setPhaseSystem = (content: string) => {
+    if (phaseSystemMessage) {
+      const i = apiMessages.indexOf(phaseSystemMessage);
+      if (i >= 0) apiMessages.splice(i, 1);
+    }
+    phaseSystemMessage = { role: "system", content };
+    apiMessages.push(phaseSystemMessage);
   };
 
   const executeTools = async (opts?: {
@@ -598,8 +689,12 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content: pre.ok
-              ? `【工具结果：run_terminal command=${JSON.stringify(shellIntent.command)}】\n${pre.resultText}\n\n（以上为真实终端输出。）\n用户任务：${trimmed}\n请据此用中文凝练回答用户目标；若任务已完成则不要再调工具，不要展开无关步骤。`
-              : `【run_terminal 失败】${pre.resultText}\n\n请向用户说明 sidecar/终端权限问题，不要编造命令输出。`,
+              ? locale === "zh"
+                ? `【工具结果：run_terminal command=${JSON.stringify(shellIntent.command)}】\n${pre.resultText}\n\n（以上为真实终端输出。）\n用户任务：${trimmed}\n请据此用中文凝练回答用户目标；若任务已完成则不要再调工具，不要展开无关步骤。`
+                : `[Tool result: run_terminal command=${JSON.stringify(shellIntent.command)}]\n${pre.resultText}\n\n(Real terminal output above.)\nUser task: ${trimmed}\nAnswer the user's goal concisely from this; if the task is done, call no more tools and do not add unrelated steps.`
+              : locale === "zh"
+                ? `【run_terminal 失败】${pre.resultText}\n\n请向用户说明 sidecar/终端权限问题，不要编造命令输出。`
+                : `[run_terminal failed] ${pre.resultText}\n\nExplain the sidecar/terminal permission problem to the user; do not invent command output.`,
           });
           if (!pre.ok) {
             patchAssistantContent(
@@ -642,8 +737,12 @@ export async function runAgentTurn(
           apiMessages.push({
             role: "user",
             content: pre.ok
-              ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此凝练作答。仅当用户原话仍要求的后续步骤未完成时才继续调工具；不要自行扩展到 package.json、README 或其他未提及的文件/验证。若用户只是要看目录，列完后一两句说明即可，不要再调工具。`
-              : `【list_dir 失败】${pre.resultText}\n\n请向用户说明 sidecar/项目绑定问题，不要编造目录内容。`,
+              ? locale === "zh"
+                ? `【工具结果：list_dir path="${listCall.path ?? "."}"】\n${pre.resultText}\n\n（以上为真实磁盘 listing，不是猜测。）\n用户任务：${trimmed}\n请据此凝练作答。仅当用户原话仍要求的后续步骤未完成时才继续调工具；不要自行扩展到 package.json、README 或其他未提及的文件/验证。若用户只是要看目录，列完后一两句说明即可，不要再调工具。`
+                : `[Tool result: list_dir path="${listCall.path ?? "."}"]\n${pre.resultText}\n\n(Real disk listing above, not a guess.)\nUser task: ${trimmed}\nAnswer concisely from this. Only call more tools if steps the user explicitly asked for remain; do not expand to package.json, README, or other unmentioned files/checks. If the user only wanted the listing, add a sentence or two and stop.`
+              : locale === "zh"
+                ? `【list_dir 失败】${pre.resultText}\n\n请向用户说明 sidecar/项目绑定问题，不要编造目录内容。`
+                : `[list_dir failed] ${pre.resultText}\n\nExplain the sidecar/project binding problem to the user; do not invent directory contents.`,
           });
           if (!pre.ok) {
             patchAssistantContent(
@@ -691,6 +790,17 @@ export async function runAgentTurn(
     const batchesAtStart = toolBatchesExecuted;
 
     const forcedOfficeTool = officeIntent?.tool ?? null;
+    /** Forced tool_choice applies to the first request and after an intent nudge. */
+    let forceToolThisRound = true;
+    const pickToolChoice = (): StreamToolChoice | undefined => {
+      if (!useNativeTools) return undefined;
+      const forced = !forceToolThisRound
+        ? null
+        : forcedWrite
+          ? "write_file"
+          : (forcedOfficeTool ?? forcedShellTool ?? forcedPlanTool ?? forcedExploreTool);
+      return forced ? { type: "function", function: { name: forced } } : "auto";
+    };
 
     while (round < agentMaxRounds) {
       if (signal.aborted || !isOwned() || !budget.reserveRound()) break;
@@ -749,32 +859,7 @@ export async function runAgentTurn(
             temperature: projectRoot ? 0.2 : 0.6,
             onMetrics: m => onModelMetrics?.({ ...m, phase: "code" }),
             tools: useNativeTools ? activeTools : undefined,
-            toolChoice:
-              useNativeTools && forcedWrite && round === 0
-                ? { type: "function", function: { name: "write_file" } }
-                : useNativeTools && forcedOfficeTool && round === 0
-                  ? {
-                      type: "function",
-                      function: { name: forcedOfficeTool },
-                    }
-                  : useNativeTools && forcedShellTool && round === 0
-                    ? {
-                        type: "function",
-                        function: { name: "run_terminal" },
-                      }
-                    : useNativeTools && forcedPlanTool && round === 0
-                      ? {
-                          type: "function",
-                          function: { name: forcedPlanTool },
-                        }
-                      : useNativeTools && forcedExploreTool && round === 0
-                        ? {
-                            type: "function",
-                            function: { name: forcedExploreTool },
-                          }
-                        : useNativeTools
-                          ? "auto"
-                          : undefined,
+            toolChoice: pickToolChoice(),
             onReasoningDelta: (piece) => {
               apiReasoning += piece;
               if (apiReasoning.trim()) {
@@ -793,6 +878,7 @@ export async function runAgentTurn(
       }
 
       if (signal.aborted) break;
+      forceToolThisRound = false;
 
       roundText = streamResult.content || roundText;
       if (streamResult.reasoning.length >= apiReasoning.length) {
@@ -842,99 +928,16 @@ export async function runAgentTurn(
       };
       const pending: PendingCall[] = [];
 
-      if (streamResult.toolCalls.length > 0) {
-        for (const tc of streamResult.toolCalls) {
-          let agent = agentCallFromOpenAI(tc);
-          if (agent) {
-            if (
-              createPath &&
-              agent.tool === "write_file" &&
-              (!agent.path || agent.path === "." || agent.path === "file")
-            ) {
-              agent.path = createPath;
-            }
-            if (officeIntent && agent.tool === officeIntent.tool) {
-              agent = alignOfficeToolCall(agent, officeIntent, trimmed);
-            }
-            if (
-              exploreIntent?.kind === "list" &&
-              agent.tool === "list_dir" &&
-              (!agent.path || agent.path === "file")
-            ) {
-              agent.path = exploreIntent.path;
-            }
-            if (
-              exploreIntent?.kind === "read" &&
-              agent.tool === "read_file" &&
-              (!agent.path || agent.path === "." || agent.path === "file")
-            ) {
-              agent.path = exploreIntent.path;
-            }
-            if (
-              exploreIntent?.kind === "search" &&
-              agent.tool === "search_files" &&
-              !agent.query?.trim()
-            ) {
-              agent.query = exploreIntent.query;
-            }
-            if (
-              shellIntent &&
-              agent.tool === "run_terminal" &&
-              !agent.command?.trim()
-            ) {
-              agent.command = shellIntent.command;
-            }
-            pending.push({ agent, native: tc });
-          }
-        }
+      for (const tc of streamResult.toolCalls) {
+        const agent = agentCallFromOpenAI(tc);
+        if (agent) pending.push({ agent: alignToIntent(agent), native: tc });
       }
 
       // Ollama / small models often paste tool JSON in content while also
       // emitting empty or unparseable native tool_calls — always fall back.
       if (pending.length === 0 && (projectRoot || networkOnlyTurn)) {
-        for (const raw of collectToolCalls(
-          roundText,
-          trimmed,
-          apiReasoning,
-        )) {
-          let agent = raw;
-          if (networkOnlyTurn) {
-            if (agent.tool !== "web_search" && agent.tool !== "web_fetch") {
-              continue;
-            }
-          }
-          if (officeIntent && agent.tool === officeIntent.tool) {
-            agent = alignOfficeToolCall(agent, officeIntent, trimmed);
-          }
-          if (
-            exploreIntent?.kind === "list" &&
-            agent.tool === "list_dir" &&
-            (!agent.path || agent.path === "file")
-          ) {
-            agent.path = exploreIntent.path;
-          }
-          if (
-            exploreIntent?.kind === "read" &&
-            agent.tool === "read_file" &&
-            (!agent.path || agent.path === "." || agent.path === "file")
-          ) {
-            agent.path = exploreIntent.path;
-          }
-          if (
-            exploreIntent?.kind === "search" &&
-            agent.tool === "search_files" &&
-            !agent.query?.trim()
-          ) {
-            agent.query = exploreIntent.query;
-          }
-          if (
-            shellIntent &&
-            agent.tool === "run_terminal" &&
-            !agent.command?.trim()
-          ) {
-            agent.command = shellIntent.command;
-          }
-          pending.push({ agent });
+        for (const agent of collectToolCalls(roundText, trimmed, apiReasoning)) {
+          pending.push({ agent: alignToIntent(agent) });
         }
       }
 
@@ -1026,102 +1029,81 @@ export async function runAgentTurn(
       const cleanedRound = stripToolCalls(roundText);
 
       if (pending.length === 0) {
-        if (createPath && projectRoot && round === 0) {
-          apiMessages.push({
-            role: "assistant",
-            content: cleanedRound || roundText || "",
-          });
-          apiMessages.push({
-            role: "user",
-            content: `请立刻调用 write_file，path="${createPath}"，content=完整源码。不要只贴代码。`,
-          });
+        const zh = locale === "zh";
+        /** Keep the model's text reply, replace the previous nudge, go again. */
+        const nudgeAgain = (
+          content: string,
+          placeholder: string | null,
+          forceIntentTool = false,
+        ) => {
+          apiMessages.push({ role: "assistant", content: cleanedRound || roundText || "" });
+          pushNudge(content);
           visibleContent = cleanedRound;
           patchAssistantContent(
-            visibleContent || t("agent.status.creating", { path: createPath }, locale),
+            visibleContent || placeholder || t("agent.status.tools", undefined, locale),
           );
+          if (forceIntentTool) forceToolThisRound = true;
           round += 1;
+        };
+
+        if (createPath && projectRoot && round === 0) {
           forcedWrite = useNativeTools;
+          nudgeAgain(
+            zh
+              ? `请立刻调用 write_file，path="${createPath}"，content=完整源码。不要只贴代码。`
+              : `Call write_file now with path="${createPath}" and the full source as content. Do not only paste code.`,
+            t("agent.status.creating", { path: createPath }, locale),
+            true,
+          );
           continue;
         }
-        if (
-          officeIntent &&
-          projectRoot &&
-          round === 0 &&
-          toolBatchesExecuted === 0
-        ) {
-          apiMessages.push({
-            role: "assistant",
-            content: cleanedRound || roundText || "",
-          });
-          apiMessages.push({
-            role: "user",
-            content:
-              officeIntent.tool === "write_xlsx"
-                ? `不要把工具 JSON 贴给用户。请立刻调用函数 write_xlsx，path="${officeIntent.path}"，rows=完整二维数组。`
-                : `不要把工具 JSON 贴给用户。请立刻调用函数 write_docx，path="${officeIntent.path}"，paragraphs 为段落数组（空白文档可用 []）。`,
-          });
-          visibleContent = cleanedRound;
-          patchAssistantContent(
-            visibleContent || t("agent.status.creating", { path: officeIntent.path }, locale),
+        if (officeIntent && projectRoot && round === 0 && toolBatchesExecuted === 0) {
+          const args = officeIntent.tool === "write_xlsx"
+            ? zh ? "rows=完整二维数组" : "rows as a full 2D array"
+            : zh ? "paragraphs 为段落数组（空白文档可用 []）" : "paragraphs as an array (use [] for a blank document)";
+          nudgeAgain(
+            zh
+              ? `不要把工具 JSON 贴给用户。请立刻调用函数 ${officeIntent.tool}，path="${officeIntent.path}"，${args}。`
+              : `Do not paste tool JSON to the user. Call ${officeIntent.tool} now with path="${officeIntent.path}" and ${args}.`,
+            t("agent.status.creating", { path: officeIntent.path }, locale),
+            true,
           );
-          round += 1;
           continue;
         }
         if (exploreIntent && projectRoot && round === 0) {
-          apiMessages.push({
-            role: "assistant",
-            content: cleanedRound || roundText || "",
-          });
-          apiMessages.push({
-            role: "user",
-            content:
-              exploreIntent.kind === "list"
-                ? `请立刻调用 list_dir，path="${exploreIntent.path}"。不要凭猜测列目录。`
-                : exploreIntent.kind === "read"
-                  ? `请立刻调用 read_file，path="${exploreIntent.path}"。不要编造文件内容。`
-                  : `请立刻调用 search_files，query="${exploreIntent.query}"。不要假装已搜索。`,
-          });
-          visibleContent = cleanedRound;
-          patchAssistantContent(
-            visibleContent || explorePlaceholder || t("agent.status.tools", undefined, locale),
+          const call = exploreIntent.kind === "list"
+            ? `list_dir，path="${exploreIntent.path}"`
+            : exploreIntent.kind === "read"
+              ? `read_file，path="${exploreIntent.path}"`
+              : `search_files，query="${exploreIntent.query}"`;
+          nudgeAgain(
+            zh
+              ? `请立刻调用 ${call}。不要凭猜测作答或编造内容。`
+              : `Call ${call.replace("，", " with ")} now. Do not guess or invent the result.`,
+            explorePlaceholder,
+            true,
           );
-          round += 1;
           continue;
         }
-
         if (shellIntent && projectRoot && allowTerminal && round === 0) {
-          apiMessages.push({
-            role: "assistant",
-            content: cleanedRound || roundText || "",
-          });
-          apiMessages.push({
-            role: "user",
-            content: `请立刻调用 run_terminal，command=${JSON.stringify(shellIntent.command)}。不要用 list_dir 代替，不要只描述命令。`,
-          });
-          visibleContent = cleanedRound;
-          patchAssistantContent(
-            visibleContent ||
-              shellPlaceholder ||
-              t("agent.status.tools", undefined, locale),
-          );
-          round += 1;
           forcedShellTool = "run_terminal";
+          nudgeAgain(
+            zh
+              ? `请立刻调用 run_terminal，command=${JSON.stringify(shellIntent.command)}。不要用 list_dir 代替，不要只描述命令。`
+              : `Call run_terminal now with command=${JSON.stringify(shellIntent.command)}. Do not substitute list_dir or only describe the command.`,
+            shellPlaceholder,
+            true,
+          );
           continue;
         }
 
         if (projectRoot && toolBatchesExecuted === batchesAtStart && round < 2) {
-          apiMessages.push({
-            role: "assistant",
-            content: cleanedRound || roundText || "",
-          });
-          apiMessages.push({
-            role: "user",
-            content:
-              "请立刻调用工具执行（list_dir / glob_files / read_file / write_file / search_replace / write_docx / git_status / run_terminal 等），根据工具返回结果继续完成用户目标；全部完成后用凝练中文收束。不要只描述计划或假装已完成，不要自行添加未要求的步骤。",
-          });
-          visibleContent = cleanedRound;
-          patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
-          round += 1;
+          nudgeAgain(
+            zh
+              ? "请立刻调用工具执行（list_dir / glob_files / read_file / write_file / search_replace / write_docx / git_status / run_terminal 等），根据工具返回结果继续完成用户目标；全部完成后用凝练中文收束。不要只描述计划或假装已完成，不要自行添加未要求的步骤。"
+              : "Call tools now (list_dir / glob_files / read_file / write_file / search_replace / write_docx / git_status / run_terminal, etc.) and continue from their results toward the user goal; finish with a concise reply. Do not only describe a plan or pretend it is done, and do not add unrequested steps.",
+            null,
+          );
           continue;
         }
 
@@ -1133,23 +1115,15 @@ export async function runAgentTurn(
           toolBatchesExecuted === batchesAtStart &&
           round < agentMaxRounds - 1
         ) {
-          apiMessages.push({
-            role: "assistant",
-            content: cleanedRound || roundText || "",
-          });
-          apiMessages.push({
-            role: "user",
-            content:
-              locale === "zh"
-                ? "批准的计划尚未执行任何工具。请立刻发出 tool_calls（或 <tool_call>）完成已批准步骤；不要只总结、不要进入下一批计划。"
-                : "No tools ran for the approved plan yet. Emit tool_calls (or <tool_call>) for the approved steps now; do not only summarize, and do not move on to the next plan chunk.",
-          });
-          visibleContent = cleanedRound;
-          patchAssistantContent(visibleContent || t("agent.status.tools", undefined, locale));
           // Drop forced tool_choice after the first miss so the model can pick
           // any required tool on later rounds.
           if (round >= 1) forcedPlanTool = null;
-          round += 1;
+          nudgeAgain(
+            zh
+              ? "批准的计划尚未执行任何工具。请立刻发出 tool_calls（或 <tool_call>）完成已批准步骤；不要只总结、不要进入下一批计划。"
+              : "No tools ran for the approved plan yet. Emit tool_calls (or <tool_call>) for the approved steps now; do not only summarize, and do not move on to the next plan chunk.",
+            null,
+          );
           continue;
         }
 
@@ -1159,20 +1133,21 @@ export async function runAgentTurn(
           !cleanedRound.trim() &&
           round < agentMaxRounds - 1
         ) {
-          apiMessages.push({
-            role: "user",
-            content:
-              "工具已执行。请根据上述工具结果给出凝练最终回复（对准用户原目标，勿长篇总结或展开无关内容），不要再调用工具。",
-          });
+          pushNudge(
+            zh
+              ? "工具已执行。请根据上述工具结果给出凝练最终回复（对准用户原目标，勿长篇总结或展开无关内容），不要再调用工具。"
+              : "Tools have run. Give a concise final reply from the results above (aimed at the user's original goal, no long summary or digressions) and do not call more tools.",
+          );
           round += 1;
           continue;
         }
 
         if (opts?.progress && (!opts.progress.complete || validationFailed) && round < agentMaxRounds - 1) {
-          apiMessages.push({
-            role: "user",
-            content: `Approved steps still require completion or validation:\n${opts.progress.remaining.join("\n")}\nUse tools to finish the approved work; do not claim completion without evidence.`,
-          });
+          pushNudge(
+            zh
+              ? `已批准步骤仍未完成或未通过验证：\n${opts.progress.remaining.join("\n")}\n请用工具完成已批准的工作；没有证据不要声称已完成。`
+              : `Approved steps still require completion or validation:\n${opts.progress.remaining.join("\n")}\nUse tools to finish the approved work; do not claim completion without evidence.`,
+          );
           round += 1;
           continue;
         }
@@ -1242,6 +1217,23 @@ export async function runAgentTurn(
               .map((c) => `run_terminal: ${c}`)
               .join("\n");
             const steps = uniqueCmds.map((c) => `run_terminal: ${c}`);
+            // The assistant tool_calls message is already in history; every id
+            // needs a tool reply or the resumed request is rejected by the API.
+            for (const item of pending) {
+              if (!item.native) continue;
+              const gated = outsideItems.includes(item);
+              apiMessages.push(
+                nativeToolResultMessage(
+                  item.native.id,
+                  item.native.function.name,
+                  gated
+                    ? "Error: paused — awaiting user approval for outside-project terminal access."
+                    : "Error: not executed — the batch paused for user approval; call it again if still needed.",
+                  false,
+                  gated ? "permission" : undefined,
+                ),
+              );
+            }
             patchAssistantContent(
               locale === "zh"
                 ? "需要批准后才能运行："
@@ -1253,10 +1245,7 @@ export async function runAgentTurn(
               commands: uniqueCmds,
               totalStepCount: uniqueCmds.length,
               continueExecution: async () => {
-                apiMessages.push({
-                  role: "system",
-                  content: buildExecutionPhaseSystem(locale),
-                });
+                setPhaseSystem(buildExecutionPhaseSystem(locale));
                 apiMessages.push({
                   role: "user",
                   content:
@@ -1370,7 +1359,7 @@ export async function runAgentTurn(
         if (!budget.canRun(item.agent)) {
           return Promise.resolve({
             ok: false,
-            resultText: "Error: identical tool call repeatedly failed; change its parameters or approach.",
+            resultText: REPEATED_FAILURE_MESSAGE,
             activity: { kind: "error" as const, message: "Repeated failing tool call blocked" },
           });
         }
@@ -1386,32 +1375,25 @@ export async function runAgentTurn(
         ));
       };
 
-      const parallel =
-        pending.length > 1 &&
-        pending.every((item) =>
-          isReadOnlyAgentTool(
-            item.agent.tool,
-            item.agent.command,
-            projectRoot,
-            item.agent.action,
-          ),
-        );
-
-      if (parallel) {
+      // Consecutive read-only calls run together; any mutating call is a
+      // barrier so writes keep their order relative to the reads around them.
+      const groups = groupCallsForExecution(pending, (item) =>
+        isReadOnlyAgentTool(
+          item.agent.tool,
+          item.agent.command,
+          projectRoot,
+          item.agent.action,
+        ),
+      );
+      for (const group of groups) {
+        if (signal.aborted) break;
         const executedList = await abortable(
-          Promise.all(pending.map((item) => runOne(item))),
+          Promise.all(group.map((item) => runOne(item))),
           signal,
         );
-        for (let i = 0; i < pending.length; i++) {
+        for (let i = 0; i < group.length; i++) {
           if (signal.aborted) break;
-          applyExecuted(pending[i]!, executedList[i]!);
-        }
-      } else {
-        for (const item of pending) {
-          if (signal.aborted) break;
-          const executed = await runOne(item);
-          if (signal.aborted) break;
-          applyExecuted(item, executed);
+          applyExecuted(group[i]!, executedList[i]!);
         }
       }
 
@@ -1430,6 +1412,7 @@ export async function runAgentTurn(
             ok: diag.ok,
             skipped: diag.skipped,
             output: diag.output,
+            locale: locale === "zh" ? "zh" : "en",
           });
           // Validation belongs to the same observation as the edit it checks.
           // A skipped check is neither passed validation nor a tool failure.
@@ -1469,7 +1452,9 @@ export async function runAgentTurn(
           });
           apiMessages.push({
             role: "user",
-            content: `【自动诊断】运行失败：${msg}`,
+            content: locale === "zh"
+              ? `【自动诊断】运行失败：${msg}`
+              : `[Auto diagnostics] Failed to run: ${msg}`,
           });
         }
       }
@@ -1508,15 +1493,14 @@ export async function runAgentTurn(
         }
 
         if (decision !== "continue") {
-          apiMessages.push({
-            role: "user",
-            content: buildReflectNudge({
+          pushNudge(
+            buildReflectNudge({
               decision,
               observed,
               expectedOutcome: expected,
               locale: locale === "zh" ? "zh" : "en",
             }),
-          });
+          );
           onAgentActivity({
             id: createId(),
             at: Date.now(),
@@ -1550,16 +1534,19 @@ export async function runAgentTurn(
         batchDecision === "continue" &&
         batchToolResults.every((item) => item.result.ok);
       if (createPath && wroteTarget) forcedWrite = false;
+      const zh = locale === "zh";
       if (createPath && wroteTarget && batchValidated) {
-        apiMessages.push({
-          role: "user",
-          content: `文件 ${createPath} 已写入。请用一两句中文确认路径与作用，不要再调用工具。`,
-        });
+        pushNudge(
+          zh
+            ? `文件 ${createPath} 已写入。请用一两句中文确认路径与作用，不要再调用工具。`
+            : `File ${createPath} was written. Confirm its path and purpose in one or two sentences; do not call more tools.`,
+        );
       } else if (officeIntent && wroteTarget && batchValidated) {
-        apiMessages.push({
-          role: "user",
-          content: `文件 ${officeIntent.path} 已写入磁盘。请用一两句中文确认路径，不要再调用工具，也不要把工具 JSON 贴给用户。`,
-        });
+        pushNudge(
+          zh
+            ? `文件 ${officeIntent.path} 已写入磁盘。请用一两句中文确认路径，不要再调用工具，也不要把工具 JSON 贴给用户。`
+            : `File ${officeIntent.path} was written to disk. Confirm the path in one or two sentences; do not call more tools or paste tool JSON.`,
+        );
       } else if (
         officeIntent &&
         batchHadTools &&
@@ -1567,10 +1554,11 @@ export async function runAgentTurn(
         pending.some((p) => p.agent.tool === officeIntent.tool)
       ) {
         // Wrong-path or failed office write — do not let the model claim success
-        apiMessages.push({
-          role: "user",
-          content: `目标文件 ${officeIntent.path} 尚未成功写入磁盘。禁止声称创建成功。请立即调用 ${officeIntent.tool}，path 必须精确为 "${officeIntent.path}"。`,
-        });
+        pushNudge(
+          zh
+            ? `目标文件 ${officeIntent.path} 尚未成功写入磁盘。禁止声称创建成功。请立即调用 ${officeIntent.tool}，path 必须精确为 "${officeIntent.path}"。`
+            : `Target file ${officeIntent.path} has not been written to disk. Do not claim it was created. Call ${officeIntent.tool} now with path exactly "${officeIntent.path}".`,
+        );
       } else if (
         projectRoot &&
         toolBatchesExecuted > 0 &&
@@ -1581,11 +1569,11 @@ export async function runAgentTurn(
         !createPath &&
         !officeIntent
       ) {
-        apiMessages.push({
-          role: "user",
-          content:
-            "请根据上述工具结果判断：若用户任务已完成，请给出凝练最终回复（对准用户原目标）且不要再调用工具；仅当原请求仍有未完成的必要步骤时才继续调工具。禁止添加用户未要求的验证操作（如多余的 list_dir）或自行扩展到未提及文件。",
-        });
+        pushNudge(
+          zh
+            ? "请根据上述工具结果判断：若用户任务已完成，请给出凝练最终回复（对准用户原目标）且不要再调用工具；仅当原请求仍有未完成的必要步骤时才继续调工具。禁止添加用户未要求的验证操作（如多余的 list_dir）或自行扩展到未提及文件。"
+            : "Judge from the tool results above: if the user's task is done, give a concise final reply aimed at the original goal and call no more tools; only continue with tools if necessary steps of the original request remain. Do not add unrequested checks (e.g. extra list_dir) or expand to unmentioned files.",
+        );
       } else if (officeIntent && officeToolFailed && !officeTargetWritten) {
         visibleContent =
           (visibleContent || cleanedRound) +
@@ -1690,10 +1678,7 @@ export async function runAgentTurn(
       commands: [cmd],
       totalStepCount: 1,
       continueExecution: async () => {
-        apiMessages.push({
-          role: "system",
-          content: buildExecutionPhaseSystem(locale),
-        });
+        setPhaseSystem(buildExecutionPhaseSystem(locale));
         apiMessages.push({
           role: "user",
           content:
@@ -1722,10 +1707,7 @@ export async function runAgentTurn(
   }
 
   if (requireApproval && !skipPlanApproval && !signal.aborted) {
-    apiMessages.push({
-      role: "system",
-      content: buildPlanningPhaseSystem(locale),
-    });
+    setPhaseSystem(buildPlanningPhaseSystem(locale));
     if (createPath) {
       apiMessages.push({
         role: "system",
@@ -1825,10 +1807,7 @@ export async function runAgentTurn(
         commands: planCommands,
         totalStepCount: drafted.totalSteps,
         continueExecution: async () => {
-          apiMessages.push({
-            role: "system",
-            content: buildExecutionPhaseSystem(locale),
-          });
+          setPhaseSystem(buildExecutionPhaseSystem(locale));
           apiMessages.push({
             role: "user",
             content: approvalExecutePrompt(approvedPlanText),

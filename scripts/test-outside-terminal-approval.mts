@@ -133,10 +133,18 @@ function mockSseWithToolCall(command: string): Response {
 {
   const originalFetch = globalThis.fetch;
   let llmCalls = 0;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  const resumeBodies: Array<{ messages: Array<Record<string, unknown>> }> = [];
+  const controller = new AbortController();
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes("/chat/completions")) {
       llmCalls += 1;
+      if (llmCalls > 1) {
+        // Resumed after Allow: capture history, then stop the turn.
+        resumeBodies.push(JSON.parse(String(init?.body)));
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      }
       // Soft informational ask — no forceDirectShellApproval — model still
       // emits outside-project run_terminal.
       return mockSseWithToolCall("ls /tmp");
@@ -182,6 +190,7 @@ function mockSseWithToolCall(command: string): Response {
     planText: string;
     steps: string[];
     commands?: string[];
+    continueExecution: () => Promise<void>;
   } | null = null;
   const activities: { kind: string; message: string }[] = [];
 
@@ -195,7 +204,7 @@ function mockSseWithToolCall(command: string): Response {
       thread,
       projectRoot: root,
       sidecarUrl: "http://127.0.0.1:8787",
-      signal: new AbortController().signal,
+      signal: controller.signal,
       isOwned: () => true,
       patchContent: () => {},
       onAgentActivity: (a) => {
@@ -207,6 +216,7 @@ function mockSseWithToolCall(command: string): Response {
           planText: plan.planText,
           steps: plan.steps,
           commands: plan.commands,
+          continueExecution: plan.continueExecution,
         };
       },
     });
@@ -232,6 +242,23 @@ function mockSseWithToolCall(command: string): Response {
     );
     assert.ok(llmCalls >= 1, "model must have been called");
     console.log("[PASS] mid-loop outside run_terminal opens plan approval");
+
+    await awaitArgs!.continueExecution().catch(() => {});
+    assert.equal(resumeBodies.length, 1, "Allow must resume the model loop");
+    const msgs = resumeBodies[0]!.messages;
+    const callIds = msgs.flatMap((m) =>
+      Array.isArray(m.tool_calls)
+        ? (m.tool_calls as Array<{ id: string }>).map((c) => c.id)
+        : [],
+    );
+    const answered = new Set(
+      msgs.filter((m) => m.role === "tool").map((m) => m.tool_call_id),
+    );
+    assert.ok(callIds.includes("call_outside"));
+    for (const id of callIds) {
+      assert.ok(answered.has(id), `tool_call ${id} has no tool reply on resume`);
+    }
+    console.log("[PASS] resumed history pairs every tool_call with a tool reply");
   } finally {
     globalThis.fetch = originalFetch;
   }

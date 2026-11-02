@@ -35,8 +35,13 @@ export function formatAutoDiagnosticsFeedback(opts: {
   ok: boolean;
   skipped?: boolean;
   output: string;
+  locale?: "zh" | "en";
 }): string {
+  const en = opts.locale === "en";
   if (opts.skipped) {
+    if (en) {
+      return "[Auto diagnostics] Skipped (no tsconfig.json or unsupported project). Configure TypeScript first if type checking is needed.";
+    }
     return [
       "【自动诊断】已跳过（项目无 tsconfig.json 或不支持）。",
       "若需要类型检查，请自行配置 TypeScript 后再改。",
@@ -45,6 +50,11 @@ export function formatAutoDiagnosticsFeedback(opts: {
   const body = (opts.output || "").trim() || "(no output)";
   const truncated =
     body.length > 6000 ? `${body.slice(0, 6000)}\n…(truncated)` : body;
+  if (en) {
+    return opts.ok
+      ? `[Auto diagnostics] TypeScript check passed (run_diagnostics).\n${truncated}\nIf the task is unfinished, continue the steps the user goal needs; if done, give a concise final reply.`
+      : `[Auto diagnostics] TypeScript check failed (run_diagnostics). Fix the errors below; diagnostics re-run after each edit.\n${truncated}\nDo not claim it is fixed unless a later check passes or you confirmed the errors are unrelated to this change.`;
+  }
   if (opts.ok) {
     return [
       "【自动诊断】TypeScript 检查通过（run_diagnostics）。",
