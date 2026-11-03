@@ -6842,7 +6842,8 @@ mark.branch-highlight:focus-visible {
 }
 
 .fn-main-empty { background: var(--ds-main); }
-.fn-empty { gap: 26px; }
+.fn-empty { gap: 26px; min-height: 0; overflow-y: auto; }
+.fn-empty-footer { width: 100%; }
 .fn-empty-logo .fn-brand-wordmark { filter: none; }
 .fn-empty-logo .fn-brand-icon { animation: none; filter: none; }
 .fn-empty-tagline, .fn-empty-steps li { color: var(--ds-text-dim); }
