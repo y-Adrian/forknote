@@ -353,6 +353,13 @@ export interface ApiSettings {
    */
   agentAllowTerminal?: boolean;
   /**
+   * Terminal command prefixes that run without an approval card.
+   * See `agentPermissions.ts` for matching rules.
+   */
+  agentCommandAllow?: string[];
+  /** Terminal command prefixes that never run (deny wins over allow). */
+  agentCommandDeny?: string[];
+  /**
    * When true, expose `web_search` / `web_fetch` agent tools (via sidecar).
    * Default false — user opts in from the composer Network toggle.
    * Tools still require actual network reachability at call time.

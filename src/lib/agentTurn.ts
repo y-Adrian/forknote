@@ -85,6 +85,10 @@ import {
 import { REPEATED_FAILURE_MESSAGE, toToolResult } from "./agentResult";
 import { formatProjectRulesSystem, loadProjectRules } from "./projectRules";
 import {
+  commandPermissionFromSettings,
+  deniedCommandMessage,
+} from "./agentPermissions";
+import {
   AgentLoopController,
   buildReflectNudge,
   parseStructuredPlanHints,
@@ -467,8 +471,15 @@ export async function runAgentTurn(
     Boolean(shellIntent) &&
     Boolean(projectRoot) &&
     commandLeavesProject(shellIntent!.command, projectRoot);
+  /** User allow/deny rules (Settings → Project) for the turn's explicit command. */
+  const commandPermission = (command: string | undefined) =>
+    commandPermissionFromSettings(command, settings);
+  const shellIntentPermission = shellIntent
+    ? commandPermission(shellIntent.command)
+    : "ask";
   const skipPlanApproval =
     networkOnlyTurn ||
+    (Boolean(projectRoot) && shellIntentPermission === "allow") ||
     (Boolean(projectRoot) &&
       !looksLikeMutationRequest(trimmed) &&
       multiStepPlan.length < 2 &&
@@ -485,6 +496,7 @@ export async function runAgentTurn(
     Boolean(projectRoot) &&
     Boolean(shellIntent?.command) &&
     Boolean(onAwaitPlanApproval) &&
+    shellIntentPermission === "ask" &&
     (shellLeavesProject || (requireApproval && !shellIntent!.readOnly));
 
   /** Fill arguments the model left blank from this turn's deterministic intent. */
@@ -674,6 +686,7 @@ export async function runAgentTurn(
         !signal.aborted &&
         shellIntent &&
         shellIntent.readOnly &&
+        shellIntentPermission !== "deny" &&
         !commandLeavesProject(shellIntent.command, projectRoot);
       if (preflightShell) {
         const shellCall = synthesizeShellToolCall(shellIntent);
@@ -1214,8 +1227,10 @@ export async function runAgentTurn(
       // terminal without prior Allow — pause for InlineToolApproval instead of
       // only emitting the dead-end "已拦截项目外终端" activity row.
       if (!allowOutsideProject && projectRoot && pending.length > 0) {
+        // Allowed commands run without a card; denied ones fail in runOne.
         const outsideItems = pending.filter((p) =>
-          terminalCallNeedsOutsideApproval(p.agent, projectRoot),
+          terminalCallNeedsOutsideApproval(p.agent, projectRoot) &&
+          commandPermission(p.agent.command) === "ask",
         );
         if (outsideItems.length > 0) {
           const cmds = outsideItems
@@ -1375,11 +1390,22 @@ export async function runAgentTurn(
             activity: { kind: "error" as const, message: "Repeated failing tool call blocked" },
           });
         }
+        const permission = item.agent.tool === "run_terminal"
+          ? commandPermission(item.agent.command)
+          : "ask";
+        if (permission === "deny") {
+          const cmd = item.agent.command?.trim() ?? "";
+          return Promise.resolve({
+            ok: false,
+            resultText: deniedCommandMessage(cmd),
+            activity: { kind: "error" as const, message: `Denied by rule: ${cmd}` },
+          });
+        }
         return (
         abortable(
           executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
-            allowOutsideProject,
+            allowOutsideProject: allowOutsideProject || permission === "allow",
             allowNetwork: allowNetworkTools,
             session,
           }),

@@ -337,6 +337,10 @@ const en = {
   "projectSettings.agentAllowTerminal": "Allow terminal tool (run_terminal)",
   "projectSettings.agentAllowTerminalHint":
     "Lets the agent run shell commands in the bound project via the sidecar. Default on. Commands start at the project root (not the sidecar process directory). Read-only in-project commands (ls/pwd/…) skip plan approval; mutating or outside-project commands require approval (权限).",
+  "projectSettings.agentCommandAllow": "Always-allowed commands",
+  "projectSettings.agentCommandDeny": "Denied commands",
+  "projectSettings.agentCommandRulesHint":
+    "One command prefix per line (e.g. npm test, git status). Allowed commands run without an approval card, even outside the project; denied commands never run. Deny wins; chained commands are allowed only when every part is allowed.",
   "projectSettings.agentAutoDiagnostics": "Auto typecheck after code edits",
   "projectSettings.agentAutoDiagnosticsHint":
     "After successful TypeScript/JavaScript edits, automatically run run_diagnostics and feed errors back into the agent loop. Default on.",
@@ -374,6 +378,8 @@ const en = {
 
   "agentTool.aria": "Tool approval",
   "agentTool.allow": "Allow",
+  "agentTool.alwaysAllow": "Always allow",
+  "agentTool.alwaysAllowTitle": "Allow now and add these commands to Settings → Project → Always-allowed commands",
   "agentTool.stop": "Stop",
   "agentTool.running": "Running…",
   "agentTool.actionPending":
@@ -1093,6 +1099,10 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentAllowTerminal": "允许终端工具（run_terminal）",
   "projectSettings.agentAllowTerminalHint":
     "允许 Agent 通过 sidecar 在已绑定项目内执行 shell 命令。默认开启。命令从项目根启动（不是 sidecar 进程目录）。项目内只读命令（ls/pwd 等）可跳过计划批准；改动命令或访问项目外路径需先批准权限。",
+  "projectSettings.agentCommandAllow": "始终允许的命令",
+  "projectSettings.agentCommandDeny": "禁止的命令",
+  "projectSettings.agentCommandRulesHint":
+    "每行一个命令前缀（如 npm test、git status）。允许的命令无需批准卡片即可运行（包括项目外）；禁止的命令永不执行。禁止优先；用 && / | 串联的命令只有每一段都被允许时才自动放行。",
   "projectSettings.agentAutoDiagnostics": "改代码后自动类型检查",
   "projectSettings.agentAutoDiagnosticsHint":
     "成功改写 TypeScript/JavaScript 后自动跑 run_diagnostics，并把错误喂回 Agent 循环。默认开启。",
@@ -1130,6 +1140,8 @@ const zh: Record<MessageKey, string> = {
 
   "agentTool.aria": "工具批准",
   "agentTool.allow": "允许",
+  "agentTool.alwaysAllow": "始终允许",
+  "agentTool.alwaysAllowTitle": "本次允许，并把这些命令加入 设置 → 项目 → 始终允许的命令",
   "agentTool.stop": "停止",
   "agentTool.running": "执行中…",
   "agentTool.actionPending": "批准后将由代理确定具体操作。",

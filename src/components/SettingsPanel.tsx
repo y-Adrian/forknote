@@ -898,6 +898,12 @@ function ProjectSettingsPanel() {
   const [autoDiagDraft, setAutoDiagDraft] = useState(
     settings.agentAutoDiagnostics ?? true,
   );
+  const [allowRulesDraft, setAllowRulesDraft] = useState(
+    (settings.agentCommandAllow ?? []).join("\n"),
+  );
+  const [denyRulesDraft, setDenyRulesDraft] = useState(
+    (settings.agentCommandDeny ?? []).join("\n"),
+  );
   const [planModelDraft, setPlanModelDraft] = useState(
     settings.agentPlanModel ?? "",
   );
@@ -934,6 +940,8 @@ function ProjectSettingsPanel() {
     setApprovalDraft(settings.agentRequireApproval ?? true);
     setTerminalDraft(settings.agentAllowTerminal ?? true);
     setAutoDiagDraft(settings.agentAutoDiagnostics ?? true);
+    setAllowRulesDraft((settings.agentCommandAllow ?? []).join("\n"));
+    setDenyRulesDraft((settings.agentCommandDeny ?? []).join("\n"));
     setPlanModelDraft(settings.agentPlanModel ?? "");
     setCodeModelDraft(settings.agentCodeModel ?? "");
     setSummaryModelDraft(settings.agentSummaryModel ?? "");
@@ -952,6 +960,8 @@ function ProjectSettingsPanel() {
     settings.agentRequireApproval,
     settings.agentAllowTerminal,
     settings.agentAutoDiagnostics,
+    settings.agentCommandAllow,
+    settings.agentCommandDeny,
     settings.agentPlanModel,
     settings.agentCodeModel,
     settings.agentSummaryModel,
@@ -980,6 +990,8 @@ function ProjectSettingsPanel() {
       agentRequireApproval: approvalDraft,
       agentAllowTerminal: terminalDraft,
       agentAutoDiagnostics: autoDiagDraft,
+      agentCommandAllow: allowRulesDraft.split("\n"),
+      agentCommandDeny: denyRulesDraft.split("\n"),
       agentPlanModel: planModelDraft.trim(),
       agentCodeModel: codeModelDraft.trim(),
       agentSummaryModel: summaryModelDraft.trim(),
@@ -1059,6 +1071,36 @@ function ProjectSettingsPanel() {
       </label>
       <p className="hint local-hint">
         {t("projectSettings.agentAllowTerminalHint")}
+      </p>
+
+      <label>
+        {t("projectSettings.agentCommandAllow")}
+        <textarea
+          rows={3}
+          value={allowRulesDraft}
+          onChange={(e) => {
+            setAllowRulesDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={"npm test\ngit status"}
+          spellCheck={false}
+        />
+      </label>
+      <label>
+        {t("projectSettings.agentCommandDeny")}
+        <textarea
+          rows={3}
+          value={denyRulesDraft}
+          onChange={(e) => {
+            setDenyRulesDraft(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={"git push\nnpm publish"}
+          spellCheck={false}
+        />
+      </label>
+      <p className="hint local-hint">
+        {t("projectSettings.agentCommandRulesHint")}
       </p>
 
       <label className="checkbox-row">

@@ -6,6 +6,7 @@ import {
   usesInlineToolApproval,
 } from "../lib/agentTools";
 import { useLocale } from "../lib/i18n";
+import { normalizeApiSettings, saveSettings } from "../lib/settings";
 import { useAppStore } from "../store/useAppStore";
 
 type Scope =
@@ -41,6 +42,8 @@ export function InlineToolApproval({
   const projectRoot = useAppStore((s) => s.projectRoot);
   const approveAgentPlan = useAppStore((s) => s.approveAgentPlan);
   const rejectAgentPlan = useAppStore((s) => s.rejectAgentPlan);
+  const settings = useAppStore((s) => s.settings);
+  const setSettings = useAppStore((s) => s.setSettings);
   const running = useAppStore((s) => {
     if (!s.activeSessionId) return false;
     if (scope.kind === "branch") {
@@ -128,6 +131,28 @@ export function InlineToolApproval({
           >
             {running ? t("agentTool.running") : t("agentTool.allow")}
           </button>
+          {isTerminal && commands.length > 0 ? (
+            <button
+              type="button"
+              className="btn ghost fn-tool-approve-always"
+              disabled={running}
+              title={t("agentTool.alwaysAllowTitle")}
+              onClick={() => {
+                const next = normalizeApiSettings({
+                  ...settings,
+                  agentCommandAllow: [
+                    ...(settings.agentCommandAllow ?? []),
+                    ...commands,
+                  ],
+                });
+                saveSettings(next);
+                setSettings(next);
+                void approveAgentPlan();
+              }}
+            >
+              {t("agentTool.alwaysAllow")}
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn ghost fn-tool-approve-stop"
