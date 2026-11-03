@@ -14,6 +14,7 @@ import {
 } from "./InlineToolApproval";
 import { AsyncMarkdownBody } from "./AsyncMarkdownBody";
 import { MessageActions } from "./MessageActions";
+import { CheckpointRollbackButton } from "./CheckpointRollbackButton";
 import { AgentActivityPanels } from "./ProjectStatusBar";
 import { SelectableAnswer } from "./SelectableAnswer";
 import { ThinkingBlock } from "./ThinkingBlock";
@@ -191,6 +192,12 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               onCopy={() => onCopyMessage(msg.id)}
               onDiagnose={() => onDiagnoseMessage(msg.id)}
             />
+            {msg.checkpointId && !(loadingMain && isTail) ? (
+              <CheckpointRollbackButton
+                messageId={msg.id}
+                checkpointId={msg.checkpointId}
+              />
+            ) : null}
             {loadingMain && isTail && isAgentTurnPlaceholder(msg.content) ? (
               <TurnBusyIndicator label={t("chat.generating")} />
             ) : null}

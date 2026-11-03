@@ -10,6 +10,7 @@ let approval: Parameters<RunAgentTurnOptions["onAwaitPlanApproval"]>[0] | undefi
 globalThis.fetch = async (url) => {
   if (String(url).endsWith("/fs/write")) { writes++; return Response.json({ size: 1, diff: "" }); }
   if (String(url).includes("/fs/list")) return Response.json({ entries: [] });
+  if (String(url).includes("/fs/checkpoint/capture")) return Response.json({ id: "c", paths: [] });
   assert.ok(String(url).endsWith("/chat/completions"));
   calls++;
   const delta = calls === 1

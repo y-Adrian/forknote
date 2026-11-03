@@ -46,6 +46,7 @@ globalThis.fetch = async (input, init) => {
       ? reply("", { path: "probe.ts", content: writes ? "export const n: number = 1;" : "export const n: number = 'bad';" })
       : reply("已创建并通过检查。");
   }
+  if (url.endsWith("/fs/checkpoint/capture")) return Response.json({ id: "c", paths: [] });
   if (url.endsWith("/fs/write")) {
     writes++;
     return Response.json({ size: 30, diff: "" });

@@ -3,6 +3,7 @@ import type { ChatMessage, OpenAITool, ToolCall } from "./openai";
 import type { ChatSession } from "../types";
 import {
   applyPatch,
+  captureCheckpoint,
   deleteFile,
   dependencyGraph,
   findReferences,
@@ -3789,6 +3790,23 @@ function normalizeDocxPayload(
   return { title: t, paragraphs: paras };
 }
 
+/** Tools whose file targets are captured into the turn checkpoint. */
+const CHECKPOINT_TOOLS = new Set<AgentToolName>([
+  "write_file", "search_replace", "apply_patch", "write_docx", "write_xlsx",
+  "patch_xlsx", "mkdir", "delete_file", "rename_file",
+]);
+
+/** Project-relative paths a mutating call may change (empty for other tools). */
+export function checkpointTargets(call: AgentToolCall, projectRoot: string): string[] {
+  if (!CHECKPOINT_TOOLS.has(call.tool)) return [];
+  const raw = call.tool === "rename_file"
+    ? [call.from ?? call.path, call.to]
+    : [call.path];
+  return raw
+    .map((p) => normalizeRelPath(p?.trim() || "", projectRoot))
+    .filter((p) => p && p !== ".");
+}
+
 export async function executeToolCall(
   call: AgentToolCall,
   sidecarUrl: string,
@@ -3800,6 +3818,8 @@ export async function executeToolCall(
     allowOutsideProject?: boolean;
     allowNetwork?: boolean;
     session?: ChatSession | null;
+    /** Snapshot target files into this turn checkpoint before mutating. */
+    checkpointId?: string;
   },
 ): Promise<{
   ok: boolean;
@@ -3814,6 +3834,25 @@ export async function executeToolCall(
   try {
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
+    }
+    const checkpointPaths = options?.checkpointId && projectRoot
+      ? checkpointTargets(call, projectRoot)
+      : [];
+    if (checkpointPaths.length > 0) {
+      // Fail closed: never edit a file the turn could not roll back.
+      try {
+        await captureCheckpoint(
+          options!.checkpointId!, checkpointPaths, sidecarUrl, signal, projectRoot ?? undefined,
+        );
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        return {
+          ok: false,
+          resultText: `Error: could not snapshot ${checkpointPaths.join(", ")} for rollback; the edit was not applied. ${msg}`,
+          activity: { kind: "error", message: `checkpoint failed: ${msg}` },
+        };
+      }
     }
     switch (call.tool) {
       case "update_todos": {
