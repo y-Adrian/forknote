@@ -764,6 +764,11 @@ export function MainPanel({
     return true;
   }, []);
 
+  const hasMessageTrace = useCallback(async (messageId: NodeId) => {
+    const { getAgentTrace } = await import("../lib/agentTraceStore");
+    return (await getAgentTrace(messageId)) !== null;
+  }, []);
+
   const editUserMessage = useCallback((text: string) => {
     lastSentPromptRef.current = text;
     focusComposerAfterEditRef.current = true;
@@ -1007,6 +1012,7 @@ export function MainPanel({
             onCopyMessage={copyMessage}
             onDiagnoseMessage={diagnoseMessage}
             onSaveMessageTrace={saveMessageTrace}
+            onCheckMessageTrace={hasMessageTrace}
             onSwitchToLiveConversation={switchToLiveConversation}
           />
 

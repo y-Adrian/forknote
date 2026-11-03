@@ -42,5 +42,19 @@ assert.ok(
   "diagnostic copy must not record passive copy",
 );
 
+// Diagnose and Save Agent trace live in one labelled "Report a problem" menu
+// instead of two unlabelled icons; every icon gets an instant name label.
+assert.ok(/aria-haspopup="menu"/.test(actions), "report button opens a menu");
+assert.equal((actions.match(/role="menuitem"/g) ?? []).length, 2, "menu has diagnose + save trace items");
+assert.ok(/onClick=\{\(\) => void diagnose\(\)\}[\s\S]*chat\.diagnose[\s\S]*chat\.diagnoseTitle/.test(actions),
+  "diagnose item shows its name and a hint");
+assert.ok(/disabled=\{traceDisabled\}[\s\S]*chat\.saveTrace[\s\S]*chat\.traceMissing/.test(actions),
+  "save trace item is greyed out with a reason when the reply has no trace");
+assert.ok(!/\btitle=\{/.test(actions), "icons use the instant data-tip label, not the slow native title");
+assert.equal((actions.match(/data-tip=/g) ?? []).length, 3, "copy, edit and report all have labels");
+const css = readFileSync("src/index.css", "utf8");
+assert.ok(/\.fn-msg-action\[data-tip\]:hover::after/.test(css), "label shows on hover without delay");
+assert.ok(/const hasMessageTrace = useCallback[\s\S]*getAgentTrace/.test(panel), "menu asks whether a trace exists");
+
 console.log("[PASS] diagnostic copy action");
 console.log("test-diagnostic-copy-action: ok");
