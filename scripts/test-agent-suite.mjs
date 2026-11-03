@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 const tests = [
+  "test-stream-scroll",
   "test-agent-plan-progress",
   "test-agent-budget",
   "test-agent-approval-budget",

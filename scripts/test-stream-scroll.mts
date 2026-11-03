@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { bindStreamingScroll } from "../src/lib/streamScroll.ts";
+class Scroller extends EventTarget {
+  scrollTop = 900;
+  scrollHeight = 1000;
+  clientHeight = 100;
+}
+const root = new Scroller();
+const follow = { current: true };
+const cleanup = bindStreamingScroll(root as unknown as HTMLElement, follow);
+root.dispatchEvent(Object.assign(new Event("wheel"), { deltaY: -10 }));
+assert.equal(follow.current, false, "upward intent must unpin before streaming resizes");
+root.scrollTop = 890;
+root.dispatchEvent(new Event("scroll"));
+assert.equal(follow.current, false, "a small upward movement inside 96px must stay unpinned");
+root.scrollHeight = 1100;
+root.dispatchEvent(new Event("scroll"));
+assert.equal(follow.current, false, "content growth must not repin the reader");
+root.scrollTop = 1000;
+root.dispatchEvent(new Event("scroll"));
+assert.equal(follow.current, true, "returning to bottom resumes following");
+root.dispatchEvent(Object.assign(new Event("touchstart"), { touches: [{ clientY: 100 }] }));
+root.dispatchEvent(Object.assign(new Event("touchmove"), { touches: [{ clientY: 110 }] }));
+assert.equal(follow.current, false);
+follow.current = true;
+root.dispatchEvent(Object.assign(new Event("keydown"), { key: "PageUp" }));
+assert.equal(follow.current, false);
+// Content shrinking while at the bottom clamps scrollTop down: keep following.
+root.scrollTop = 1000;
+root.scrollHeight = 1100;
+root.dispatchEvent(new Event("scroll"));
+follow.current = true;
+root.scrollHeight = 1050;
+root.scrollTop = 950;
+root.dispatchEvent(new Event("scroll"));
+assert.equal(follow.current, true, "a shrink clamp at the bottom is not an upward scroll");
+cleanup();
+follow.current = true;
+root.dispatchEvent(Object.assign(new Event("wheel"), { deltaY: -10 }));
+assert.equal(follow.current, true, "cleanup removes the listeners");
+console.log("test-stream-scroll: ok");

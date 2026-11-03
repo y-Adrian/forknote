@@ -35,6 +35,7 @@ node scripts/test-fs-agent-tools.mjs
 | 澄清与共享记忆 | `test-clarification-shared-memory.mts`、`test-clarify-branch-rollback.mts`、`smoke-clarify-during-main.mts` |
 | 归档 | `test-archive-source-sizing.mts`、`test-incremental-archive.mts`、`test-archive-mode-rollback.mts` |
 | 会话并发 | `test-session-summary-jobs.mts`、`test-session-summary-store.mts`、`test-agent-activity-by-session.mts` |
+| 流式滚动 | `test-stream-scroll.mts`；浏览器用持续输出验证首条回答时向上翻页不被拉回，回到底部后恢复跟随；主会话和澄清浮层均使用同一滚动策略 |
 | 提示和回答结构 | `test-answer-structure-mode.mts`、`smoke-agent-goal-focus.mts`、`smoke-answer-only-intent.mts` |
 | Jev / Agent Reflect | `test-jev-reflect.mts`、相关 `test-agent-*` 脚本；真实 API 仅在有专用测试 Key 时运行 |
 | 流式与持久化 | `test-stream-storage-throttle.mts`、`test-stream-render-crash-guard.mts`、`test-localstorage-quota.mts` |
