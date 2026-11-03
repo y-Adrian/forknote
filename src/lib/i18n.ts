@@ -124,6 +124,12 @@ const en = {
   "general.font.sourceFallback":
     "This browser cannot list all installed fonts — showing a common-font list. Chrome / Edge / the desktop app can load the full set.",
   "general.font.loadError": "Could not read installed fonts: {error}",
+  "general.chatTextSize": "Chat text size",
+  "general.chatTextSizeDesc":
+    "Answers, messages and the input box. Also Cmd/Ctrl + and − (Cmd/Ctrl 0 resets).",
+  "general.uiTextSize": "Interface text size",
+  "general.uiTextSizeDesc": "Sidebar, menus, settings and buttons.",
+  "general.textSize.reset": "Reset",
   "general.font.installedGroup": "Installed fonts",
   "general.font.commonGroup": "Common fonts",
   "general.language": "Interface language",
@@ -297,6 +303,8 @@ const en = {
   "data.key.theme": "theme preference",
   "data.key.locale": "interface language",
   "data.key.uiFont": "interface font preference",
+  "data.key.textZoom": "chat text size",
+  "data.key.uiTextZoom": "interface text size",
 
   "projectSettings.title": "Project",
   "projectSettings.lead":
@@ -905,6 +913,11 @@ const zh: Record<MessageKey, string> = {
   "general.font.sourceFallback":
     "当前环境无法枚举全部本机字体，已显示常用字体列表。Chrome / Edge / 桌面端可读取完整列表。",
   "general.font.loadError": "无法读取本机字体：{error}",
+  "general.chatTextSize": "对话字号",
+  "general.chatTextSizeDesc": "回答、消息和输入框。也可用 Cmd/Ctrl + 和 −（Cmd/Ctrl 0 恢复）。",
+  "general.uiTextSize": "界面字号",
+  "general.uiTextSizeDesc": "侧边栏、菜单、设置和按钮。",
+  "general.textSize.reset": "恢复默认",
   "general.font.installedGroup": "已安装字体",
   "general.font.commonGroup": "常用字体",
   "general.language": "界面语言",
@@ -1074,6 +1087,8 @@ const zh: Record<MessageKey, string> = {
   "data.key.theme": "主题偏好",
   "data.key.locale": "界面语言",
   "data.key.uiFont": "界面字体偏好",
+  "data.key.textZoom": "对话字号",
+  "data.key.uiTextZoom": "界面字号",
 
   "projectSettings.title": "项目",
   "projectSettings.lead":
