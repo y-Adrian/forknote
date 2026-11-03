@@ -124,6 +124,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   onCopyMessage,
   onDiagnoseMessage,
   onSaveMessageTrace,
+  onCheckMessageTrace,
   pendingInline,
   pendingInlineAssistantId,
 }: {
@@ -139,6 +140,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   onCopyMessage: (messageId: NodeId) => void;
   onDiagnoseMessage: (messageId: NodeId) => Promise<boolean>;
   onSaveMessageTrace: (messageId: NodeId) => Promise<boolean>;
+  onCheckMessageTrace: (messageId: NodeId) => Promise<boolean>;
   pendingInline: boolean;
   pendingInlineAssistantId: string | null | undefined;
 }) {
@@ -194,6 +196,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               onCopy={() => onCopyMessage(msg.id)}
               onDiagnose={() => onDiagnoseMessage(msg.id)}
               onSaveTrace={() => onSaveMessageTrace(msg.id)}
+              onCheckTrace={() => onCheckMessageTrace(msg.id)}
             />
             {msg.checkpointId && !(loadingMain && isTail) ? (
               <CheckpointRollbackButton
@@ -247,6 +250,7 @@ export interface MainChatMessageListProps {
   onCopyMessage: (messageId: NodeId) => void;
   onDiagnoseMessage: (messageId: NodeId) => Promise<boolean>;
   onSaveMessageTrace: (messageId: NodeId) => Promise<boolean>;
+  onCheckMessageTrace: (messageId: NodeId) => Promise<boolean>;
   onSwitchToLiveConversation: () => void;
 }
 
@@ -276,6 +280,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
   onCopyMessage,
   onDiagnoseMessage,
   onSaveMessageTrace,
+  onCheckMessageTrace,
   onSwitchToLiveConversation,
 }: MainChatMessageListProps) {
   const { t } = useLocale();
@@ -372,6 +377,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
               onCopyMessage={onCopyMessage}
               onDiagnoseMessage={onDiagnoseMessage}
               onSaveMessageTrace={onSaveMessageTrace}
+              onCheckMessageTrace={onCheckMessageTrace}
               pendingInline={pendingInline}
               pendingInlineAssistantId={pendingInlineAssistantId}
             />

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import {
   copyTextToClipboard,
   type CopyTextFeedback,
@@ -13,8 +14,66 @@ interface Props {
   onDiagnose?: () => Promise<boolean> | boolean;
   /** Save this reply's Agent loop trace; false when none was recorded. */
   onSaveTrace?: () => Promise<boolean> | boolean;
+  /** Whether this reply has an Agent loop trace (greys out the save item). */
+  onCheckTrace?: () => Promise<boolean> | boolean;
   align?: "start" | "end";
 }
+
+type ReportFeedback = "idle" | "copied" | "saved" | "failed" | "missing";
+
+const CheckIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M5 12.5l4.5 4.5L19 7.5"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const CrossIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M7 7l10 10M17 7L7 17"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const BugIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="7" y="8" width="10" height="12" rx="5" stroke="currentColor" strokeWidth="1.6" />
+    <path
+      d="M9 8.5V7a3 3 0 0 1 6 0v1.5M12 12v8M7 13H3.5M20.5 13H17M7.5 17.5l-3 2M16.5 17.5l3 2M7.5 9.5l-3-2M16.5 9.5l3-2"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const ClipboardIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M9 4h6v3H9zM9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
+const FileDownIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+    />
+    <path d="M12 10.5v6M9.5 14l2.5 2.5 2.5-2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 export function MessageActions({
   text,
@@ -22,13 +81,17 @@ export function MessageActions({
   onCopy,
   onDiagnose,
   onSaveTrace,
+  onCheckTrace,
   align = "end",
 }: Props) {
   const { t } = useLocale();
   const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
-  const [diagnoseFeedback, setDiagnoseFeedback] =
-    useState<CopyTextFeedback>("idle");
-  const [traceFeedback, setTraceFeedback] = useState<"idle" | "saved" | "missing">("idle");
+  const [reportFeedback, setReportFeedback] = useState<ReportFeedback>("idle");
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
+  const [hasTrace, setHasTrace] = useState<boolean | null>(null);
+  const reportButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuOpen = menuStyle !== null;
 
   const copy = async () => {
     const ok = await copyTextToClipboard(text);
@@ -37,26 +100,84 @@ export function MessageActions({
     window.setTimeout(() => setFeedback("idle"), 1400);
   };
 
+  const showReportFeedback = (next: ReportFeedback) => {
+    setReportFeedback(next);
+    window.setTimeout(() => setReportFeedback("idle"), 1800);
+  };
+
+  const closeMenu = () => setMenuStyle(null);
+
   const diagnose = async () => {
+    closeMenu();
     if (!onDiagnose) return;
     const ok = await onDiagnose();
-    setDiagnoseFeedback(ok ? "copied" : "failed");
-    window.setTimeout(() => setDiagnoseFeedback("idle"), 1400);
+    showReportFeedback(ok ? "copied" : "failed");
   };
 
   const saveTrace = async () => {
+    closeMenu();
     if (!onSaveTrace) return;
     const ok = await onSaveTrace();
-    setTraceFeedback(ok ? "saved" : "missing");
-    window.setTimeout(() => setTraceFeedback("idle"), 1800);
+    showReportFeedback(ok ? "saved" : "missing");
   };
 
-  const traceLabel =
-    traceFeedback === "saved"
-      ? t("chat.traceSaved")
-      : traceFeedback === "missing"
-        ? t("chat.traceMissing")
-        : t("chat.saveTrace");
+  const toggleMenu = () => {
+    if (menuOpen) {
+      closeMenu();
+      return;
+    }
+    const rect = reportButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Opens below the button; the layout effect flips / shifts it once measured.
+    setMenuStyle({ left: Math.max(8, rect.left), top: rect.bottom + 4 });
+    setHasTrace(null);
+    if (onCheckTrace) {
+      void Promise.resolve(onCheckTrace()).then(setHasTrace, () => setHasTrace(false));
+    }
+  };
+
+  // Keep the menu on screen: flip above the button or shift left when it overflows.
+  useLayoutEffect(() => {
+    const menu = menuRef.current?.getBoundingClientRect();
+    const button = reportButtonRef.current?.getBoundingClientRect();
+    if (!menu || !button || !menuStyle || menuStyle.bottom !== undefined) return;
+    const flip = menu.bottom > window.innerHeight - 8 && button.top - 4 - menu.height >= 8;
+    const left = Math.max(8, Math.min(menu.left, window.innerWidth - 8 - menu.width));
+    if (!flip && left === menu.left) return;
+    setMenuStyle(flip
+      ? { left, bottom: window.innerHeight - button.top + 4 }
+      : { ...menuStyle, left });
+  }, [menuStyle]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    const onPointerDown = (e: globalThis.MouseEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target) || reportButtonRef.current?.contains(target)) return;
+      closeMenu();
+    };
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      closeMenu();
+      reportButtonRef.current?.focus();
+    };
+    const onScrollOrResize = () => closeMenu();
+    // Defer so the opening click does not immediately dismiss the menu.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", onPointerDown);
+    }, 0);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onScrollOrResize);
+    document.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onScrollOrResize);
+      document.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [menuOpen]);
 
   const label =
     feedback === "copied"
@@ -64,6 +185,19 @@ export function MessageActions({
       : feedback === "failed"
         ? t("chat.copyFailed")
         : t("chat.copy");
+
+  const reportLabel =
+    reportFeedback === "copied"
+      ? t("chat.diagnoseCopied")
+      : reportFeedback === "saved"
+        ? t("chat.traceSaved")
+        : reportFeedback === "missing"
+          ? t("chat.traceMissing")
+          : reportFeedback === "failed"
+            ? t("chat.copyFailed")
+            : t("chat.report");
+  const reportFailed = reportFeedback === "failed" || reportFeedback === "missing";
+  const traceDisabled = hasTrace === false;
 
   return (
     <div
@@ -74,27 +208,12 @@ export function MessageActions({
         className={`fn-msg-action${feedback === "failed" ? " is-copy-failed" : ""}`}
         onClick={() => void copy()}
         aria-label={label}
-        title={label}
+        data-tip={label}
       >
         {feedback === "copied" ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M5 12.5l4.5 4.5L19 7.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <CheckIcon />
         ) : feedback === "failed" ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M7 7l10 10M17 7L7 17"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          </svg>
+          <CrossIcon />
         ) : (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
             <rect
@@ -121,7 +240,7 @@ export function MessageActions({
           className="fn-msg-action"
           onClick={onEdit}
           aria-label={t("chat.edit")}
-          title={t("chat.edit")}
+          data-tip={t("chat.edit")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
@@ -139,74 +258,68 @@ export function MessageActions({
           </svg>
         </button>
       ) : null}
-      {onDiagnose ? (
+      {onDiagnose || onSaveTrace ? (
         <button
+          ref={reportButtonRef}
           type="button"
-          className={`fn-msg-action${diagnoseFeedback === "failed" ? " is-copy-failed" : ""}`}
-          onClick={() => void diagnose()}
-          aria-label={
-            diagnoseFeedback === "copied"
-              ? t("chat.diagnoseCopied")
-              : diagnoseFeedback === "failed"
-                ? t("chat.copyFailed")
-                : t("chat.diagnose")
-          }
-          title={
-            diagnoseFeedback === "copied"
-              ? t("chat.diagnoseCopied")
-              : diagnoseFeedback === "failed"
-                ? t("chat.copyFailed")
-                : t("chat.diagnoseTitle")
-          }
+          className={`fn-msg-action${reportFailed ? " is-copy-failed" : ""}${menuOpen ? " is-active" : ""}`}
+          onClick={toggleMenu}
+          aria-label={reportLabel}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          data-tip={menuOpen ? undefined : reportLabel}
         >
-          {diagnoseFeedback === "copied" ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M5 12.5l4.5 4.5L19 7.5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+          {reportFeedback === "copied" || reportFeedback === "saved" ? (
+            <CheckIcon />
+          ) : reportFailed ? (
+            <CrossIcon />
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M12 3v3M12 18v3M4.22 5.64l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 18.36l2.12-2.12M17.66 6.34l2.12-2.12"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <circle
-                cx="12"
-                cy="12"
-                r="3.5"
-                stroke="currentColor"
-                strokeWidth="1.6"
-              />
-            </svg>
+            <BugIcon />
           )}
         </button>
       ) : null}
-      {onSaveTrace ? (
-        <button
-          type="button"
-          className={`fn-msg-action${traceFeedback === "missing" ? " is-copy-failed" : ""}`}
-          onClick={() => void saveTrace()}
-          aria-label={traceLabel}
-          title={traceFeedback === "idle" ? t("chat.saveTraceTitle") : traceLabel}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      ) : null}
+      {menuStyle
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="fn-session-menu fn-report-menu"
+              role="menu"
+              aria-label={t("chat.report")}
+              style={menuStyle}
+            >
+              {onDiagnose ? (
+                <button type="button" role="menuitem" onClick={() => void diagnose()}>
+                  <span className="fn-session-menu-icon" aria-hidden>
+                    <ClipboardIcon />
+                  </span>
+                  <span className="fn-report-menu-text">
+                    <span>{t("chat.diagnose")}</span>
+                    <span className="fn-report-menu-hint">{t("chat.diagnoseTitle")}</span>
+                  </span>
+                </button>
+              ) : null}
+              {onSaveTrace ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={traceDisabled}
+                  onClick={() => void saveTrace()}
+                >
+                  <span className="fn-session-menu-icon" aria-hidden>
+                    <FileDownIcon />
+                  </span>
+                  <span className="fn-report-menu-text">
+                    <span>{t("chat.saveTrace")}</span>
+                    <span className="fn-report-menu-hint">
+                      {traceDisabled ? t("chat.traceMissing") : t("chat.saveTraceTitle")}
+                    </span>
+                  </span>
+                </button>
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
