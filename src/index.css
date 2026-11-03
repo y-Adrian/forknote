@@ -135,10 +135,13 @@
   --fn-text-ui-lg:      1.05rem;
 
   /* Chat conversation type (bubbles, answer markdown, composer input).
-     `--fn-text-zoom` scales these only — sidebar / chrome stay fixed. */
+     `--fn-text-zoom` scales these only. `--fn-ui-text-zoom` scales the root
+     font size (all rem-based interface text); chat sizes divide it back out
+     so the two settings stay independent. */
   --fn-text-zoom:       1;
-  --fn-text-chat:       calc(1.05rem * var(--fn-text-zoom));
-  --fn-text-chat-sm:    calc(1rem * var(--fn-text-zoom));
+  --fn-ui-text-zoom:    1;
+  --fn-text-chat:       calc(1.05rem * var(--fn-text-zoom) / var(--fn-ui-text-zoom));
+  --fn-text-chat-sm:    calc(1rem * var(--fn-text-zoom) / var(--fn-ui-text-zoom));
 
   /* Typography — IBM Plex (docs/UI) + Dela Gothic (brand mark only) */
   --ds-font-ui:
@@ -255,6 +258,28 @@
   color: var(--ds-text);
   font-size: 0.92rem;
   line-height: 1.45;
+}
+
+.ss-text-size {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: min(100%, 280px);
+  max-width: 320px;
+}
+
+.ss-text-size-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--ds-accent);
+}
+
+.ss-text-size-value {
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-dim);
+  font-size: var(--fn-text-ui-sm);
 }
 
 .ss-font-hint {
@@ -403,6 +428,10 @@
 /* ── Reset ────────────────────────────────────────────────── */
 
 * { box-sizing: border-box; }
+
+html {
+  font-size: calc(100% * var(--fn-ui-text-zoom, 1));
+}
 
 body {
   margin: 0;

@@ -28,6 +28,13 @@ import {
   useUiFont,
   type UiFontPreference,
 } from "../lib/uiFont";
+import {
+  TEXT_ZOOM_DEFAULT,
+  chatTextScale,
+  uiTextScale,
+  useTextScale,
+  type TextScale,
+} from "../lib/textZoom";
 import { useAppStore } from "../store/useAppStore";
 import type { ApiSettings, SettingsTab } from "../types";
 import { AccessibleModal } from "./AccessibleModal";
@@ -160,6 +167,39 @@ function SettingsRow({
         {description ? <p className="ss-row-desc">{description}</p> : null}
       </div>
       <div className="ss-row-control">{children}</div>
+    </div>
+  );
+}
+
+/** Slider + percentage + reset for one text size scale. */
+function TextSizeControl({ scale, label }: { scale: TextScale; label: string }) {
+  const { t } = useLocale();
+  const value = useTextScale(scale);
+  const percent = Math.round(value * 100);
+  return (
+    <div className="ss-text-size">
+      <input
+        type="range"
+        className="ss-text-size-range"
+        min={Math.round(scale.min * 100)}
+        max={Math.round(scale.max * 100)}
+        step={5}
+        value={percent}
+        aria-label={label}
+        aria-valuetext={`${percent}%`}
+        onChange={(e) => scale.apply(Number(e.target.value) / 100)}
+      />
+      <output className="ss-text-size-value" aria-hidden>
+        {percent}%
+      </output>
+      <button
+        type="button"
+        className="btn ghost sm"
+        disabled={value === TEXT_ZOOM_DEFAULT}
+        onClick={() => scale.apply(TEXT_ZOOM_DEFAULT)}
+      >
+        {t("general.textSize.reset")}
+      </button>
     </div>
   );
 }
@@ -357,6 +397,20 @@ function GeneralPanel({
             <p className="ss-font-hint">{t("general.font.sourceFallback")}</p>
           ) : null}
         </div>
+      </SettingsRow>
+
+      <SettingsRow
+        title={t("general.chatTextSize")}
+        description={t("general.chatTextSizeDesc")}
+      >
+        <TextSizeControl scale={chatTextScale} label={t("general.chatTextSize")} />
+      </SettingsRow>
+
+      <SettingsRow
+        title={t("general.uiTextSize")}
+        description={t("general.uiTextSizeDesc")}
+      >
+        <TextSizeControl scale={uiTextScale} label={t("general.uiTextSize")} />
       </SettingsRow>
 
       <SettingsRow
@@ -868,6 +922,12 @@ function DataPanel() {
           </li>
           <li>
             <code>{LOCAL_STORAGE_KEYS.uiFont}</code> — {t("data.key.uiFont")}
+          </li>
+          <li>
+            <code>{LOCAL_STORAGE_KEYS.textZoom}</code> — {t("data.key.textZoom")}
+          </li>
+          <li>
+            <code>{LOCAL_STORAGE_KEYS.uiTextZoom}</code> — {t("data.key.uiTextZoom")}
           </li>
         </ul>
       </div>

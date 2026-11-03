@@ -278,6 +278,8 @@ export const LOCAL_STORAGE_KEYS = {
   theme: "forknote-theme",
   locale: "forknote-locale",
   uiFont: "forknote-ui-font",
+  textZoom: "forknote-text-zoom",
+  uiTextZoom: "forknote-ui-text-zoom",
   userPreferences: "forknote-user-preferences",
   userModel: "forknote-user-model-v1",
   recentFiles: "forknote-recent-files",

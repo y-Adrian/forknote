@@ -1,4 +1,12 @@
-/** Main-session text zoom — scales chat fonts only, not page layout. */
+import { useEffect, useState } from "react";
+
+/**
+ * Text size scales, each a CSS custom property on `<html>` persisted in
+ * localStorage:
+ * - chat (`--fn-text-zoom`): conversation text only; Cmd/Ctrl +/- and Settings.
+ * - interface (`--fn-ui-text-zoom`): root font size, so every rem-based UI
+ *   text follows; chat sizes divide it back out to stay independent.
+ */
 
 export const TEXT_ZOOM_STORAGE_KEY = "forknote-text-zoom";
 export const TEXT_ZOOM_MIN = 0.85;
@@ -6,69 +14,133 @@ export const TEXT_ZOOM_MAX = 1.5;
 export const TEXT_ZOOM_STEP = 0.05;
 export const TEXT_ZOOM_DEFAULT = 1;
 
+export const UI_TEXT_ZOOM_STORAGE_KEY = "forknote-ui-text-zoom";
+export const UI_TEXT_ZOOM_MIN = 0.9;
+/** Capped lower than chat: px-sized controls and rows must still fit the text. */
+export const UI_TEXT_ZOOM_MAX = 1.2;
+
 export type TextZoomAction = "in" | "out" | "reset";
 
-let memoryZoom = TEXT_ZOOM_DEFAULT;
+type ScaleConfig = {
+  storageKey: string;
+  cssVar: string;
+  min: number;
+  max: number;
+};
 
-function clamp(value: number): number {
-  return Math.min(TEXT_ZOOM_MAX, Math.max(TEXT_ZOOM_MIN, value));
+type Listener = (value: number) => void;
+
+export type TextScale = ScaleConfig & {
+  read: () => number;
+  apply: (value: number, persist?: boolean) => number;
+  get: () => number;
+  step: (action: TextZoomAction) => number;
+  subscribe: (fn: Listener) => () => void;
+};
+
+function createTextScale(config: ScaleConfig): TextScale {
+  const { storageKey, cssVar, min, max } = config;
+  let memory = TEXT_ZOOM_DEFAULT;
+  const listeners = new Set<Listener>();
+
+  const round = (value: number) =>
+    Math.round(Math.min(max, Math.max(min, value)) * 100) / 100;
+
+  const read = () => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return TEXT_ZOOM_DEFAULT;
+      const n = Number(raw);
+      return Number.isFinite(n) ? round(n) : TEXT_ZOOM_DEFAULT;
+    } catch {
+      return TEXT_ZOOM_DEFAULT;
+    }
+  };
+
+  const apply = (value: number, persist = true) => {
+    const next = round(value);
+    memory = next;
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty(cssVar, String(next));
+    }
+    if (persist) {
+      try {
+        if (next === TEXT_ZOOM_DEFAULT) localStorage.removeItem(storageKey);
+        else localStorage.setItem(storageKey, String(next));
+      } catch {
+        // ignore quota / private mode
+      }
+    }
+    listeners.forEach((fn) => fn(next));
+    return next;
+  };
+
+  const get = () => {
+    if (typeof document !== "undefined") {
+      const n = Number(
+        getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim(),
+      );
+      if (Number.isFinite(n) && n > 0) return round(n);
+    }
+    return memory;
+  };
+
+  const step = (action: TextZoomAction) => {
+    if (action === "reset") return apply(TEXT_ZOOM_DEFAULT);
+    return apply(get() + (action === "in" ? TEXT_ZOOM_STEP : -TEXT_ZOOM_STEP));
+  };
+
+  const subscribe = (fn: Listener) => {
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  };
+
+  return { ...config, read, apply, get, step, subscribe };
 }
 
-function roundZoom(value: number): number {
-  return Math.round(clamp(value) * 100) / 100;
-}
+/** Conversation text (bubbles, answers, composer). */
+export const chatTextScale = createTextScale({
+  storageKey: TEXT_ZOOM_STORAGE_KEY,
+  cssVar: "--fn-text-zoom",
+  min: TEXT_ZOOM_MIN,
+  max: TEXT_ZOOM_MAX,
+});
+
+/** Interface text (sidebar, settings, menus, buttons). */
+export const uiTextScale = createTextScale({
+  storageKey: UI_TEXT_ZOOM_STORAGE_KEY,
+  cssVar: "--fn-ui-text-zoom",
+  min: UI_TEXT_ZOOM_MIN,
+  max: UI_TEXT_ZOOM_MAX,
+});
 
 export function readStoredTextZoom(): number {
-  try {
-    const raw = localStorage.getItem(TEXT_ZOOM_STORAGE_KEY);
-    if (!raw) return TEXT_ZOOM_DEFAULT;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return TEXT_ZOOM_DEFAULT;
-    return roundZoom(n);
-  } catch {
-    return TEXT_ZOOM_DEFAULT;
-  }
+  return chatTextScale.read();
 }
 
 export function applyTextZoom(value: number, persist = true): number {
-  const next = roundZoom(value);
-  memoryZoom = next;
-  if (typeof document !== "undefined") {
-    document.documentElement.style.setProperty("--fn-text-zoom", String(next));
-  }
-  if (persist) {
-    try {
-      if (next === TEXT_ZOOM_DEFAULT) {
-        localStorage.removeItem(TEXT_ZOOM_STORAGE_KEY);
-      } else {
-        localStorage.setItem(TEXT_ZOOM_STORAGE_KEY, String(next));
-      }
-    } catch {
-      // ignore quota / private mode
-    }
-  }
-  return next;
+  return chatTextScale.apply(value, persist);
 }
 
 export function getTextZoom(): number {
-  if (typeof document !== "undefined") {
-    const raw = getComputedStyle(document.documentElement)
-      .getPropertyValue("--fn-text-zoom")
-      .trim();
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) return roundZoom(n);
-  }
-  return memoryZoom;
+  return chatTextScale.get();
 }
 
 export function stepTextZoom(action: TextZoomAction): number {
-  const current = getTextZoom();
-  if (action === "reset") return applyTextZoom(TEXT_ZOOM_DEFAULT);
-  if (action === "in") return applyTextZoom(current + TEXT_ZOOM_STEP);
-  return applyTextZoom(current - TEXT_ZOOM_STEP);
+  return chatTextScale.step(action);
 }
 
-/** Boot-time apply (call before React render). */
+/** Boot-time apply of both scales (call before React render). */
 export function initTextZoom(): number {
-  return applyTextZoom(readStoredTextZoom(), false);
+  uiTextScale.apply(uiTextScale.read(), false);
+  return chatTextScale.apply(chatTextScale.read(), false);
+}
+
+/** Current value of a scale, updated when it changes (shortcuts, Settings). */
+export function useTextScale(scale: TextScale): number {
+  const [value, setValue] = useState(() => scale.get());
+  useEffect(() => scale.subscribe(setValue), [scale]);
+  return value;
 }
