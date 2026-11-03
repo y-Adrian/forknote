@@ -4967,7 +4967,7 @@ export function nativeToolResultMessage(
     ? "[tool status: ok]"
     : `[tool status: FAILED${errorType ? `; error_type=${errorType}` : ""} — do not claim the file was created]`;
   const followUp = ok
-    ? "\n\n(If the task is not finished, call the next tool. If done, reply with a final summary in Chinese — no more tool calls. Only claim a file exists if this result confirms a successful write.)"
+    ? "\n\n(If the task is not finished, call the next tool. If done, reply with a final summary in the user's language — no more tool calls. Only claim a file exists if this result confirms a successful write.)"
     : "\n\n(Tool failed. Do NOT tell the user the file was created. Fix args and retry, or explain the failure.)";
   return {
     role: "tool",

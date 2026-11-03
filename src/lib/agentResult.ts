@@ -10,6 +10,8 @@ export type ToolErrorType =
   | "invalid_input"
   | "permission"
   | "not_found"
+  /** Same call with same arguments already failed repeatedly; blocked locally. */
+  | "repeated_failure"
   | "unknown";
 
 export interface ToolResult {
@@ -33,6 +35,10 @@ export type LegacyToolExecution = {
 
 const TIMEOUT_RE =
   /timeout|timed?\s*out|ETIMEDOUT|AbortError|aborted/i;
+/** Result text for a call {@link AgentBudget} refuses to run again. */
+export const REPEATED_FAILURE_MESSAGE =
+  "Error: identical tool call repeatedly failed; change its parameters or approach.";
+
 const PERMISSION_RE =
   /permission|EACCES|EPERM|denied|not allowed|outside (the )?project|unauthorized/i;
 const NOT_FOUND_RE =
@@ -47,6 +53,7 @@ export function classifyToolError(
 ): ToolErrorType {
   if (opts?.timedOut) return "timeout";
   const text = message ?? "";
+  if (text.startsWith(REPEATED_FAILURE_MESSAGE)) return "repeated_failure";
   if (TIMEOUT_RE.test(text)) return "timeout";
   if (PERMISSION_RE.test(text)) return "permission";
   if (NOT_FOUND_RE.test(text)) return "not_found";

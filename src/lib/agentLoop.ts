@@ -181,6 +181,9 @@ export class AgentLoopController {
       const et = observed.primaryErrorType ?? "unknown";
       if (et === "permission") {
         decision = "abort";
+      } else if (et === "repeated_failure") {
+        // Retrying the same call is already proven useless — change approach.
+        decision = this.replanCount < this.maxReplans ? "replan" : "abort";
       } else if (
         et === "timeout" ||
         et === "invalid_input" ||
@@ -225,7 +228,9 @@ export class AgentLoopController {
     if (et === "permission") return ["abort"];
     const allowed: ReflectDecision[] = [];
     if (observed.successCount > 0) allowed.push("continue");
-    if (this.stepRetries < this.maxStepRetries) allowed.push("retry");
+    if (et !== "repeated_failure" && this.stepRetries < this.maxStepRetries) {
+      allowed.push("retry");
+    }
     if (this.replanCount < this.maxReplans) allowed.push("replan");
     allowed.push("abort");
     return allowed;
