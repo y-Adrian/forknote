@@ -28,6 +28,7 @@ import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
 import { MainChatMessageList } from "./MainChatMessageList";
 import { ProjectStatusBar } from "./ProjectStatusBar";
 import { NetworkAccessToggle } from "./NetworkAccessToggle";
+import { bindStreamingScroll } from "../lib/streamScroll";
 
 const ForkHistoryMap = lazy(() =>
   import("./ForkHistoryMap").then((mod) => ({ default: mod.ForkHistoryMap })),
@@ -419,14 +420,8 @@ export function MainPanel({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const NEAR_BOTTOM_PX = 96;
-    const onScroll = () => {
-      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      stickToBottomRef.current = distance <= NEAR_BOTTOM_PX;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [activeSessionId]);
+    return bindStreamingScroll(el, stickToBottomRef);
+  }, [activeSessionId, Boolean(thread)]);
 
   // Reset pin when switching session, then jump once.
   // Do not scroll on Live/Archive/Evolution view swaps — that jerks the viewport.
@@ -441,7 +436,11 @@ export function MainPanel({
   useEffect(() => {
     stickToBottomRef.current = true;
     scrollChatToBottom();
-  }, [thread?.messages.length, pendingInline, scrollChatToBottom]);
+  }, [thread?.messages.length, scrollChatToBottom]);
+
+  useEffect(() => {
+    if (pendingInline && stickToBottomRef.current) scrollChatToBottom();
+  }, [pendingInline, scrollChatToBottom]);
 
   // Follow streaming / markdown height growth while pinned.
   useEffect(() => {
@@ -449,13 +448,19 @@ export function MainPanel({
     if (!root) return;
     const messages = root.querySelector(".ds-messages");
     if (!messages) return;
+    let frame: number | null = null;
     const ro = new ResizeObserver(() => {
-      if (stickToBottomRef.current) {
-        root.scrollTop = root.scrollHeight;
-      }
+      if (!stickToBottomRef.current || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (stickToBottomRef.current) root.scrollTop = root.scrollHeight;
+      });
     });
     ro.observe(messages);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [activeSessionId, Boolean(thread)]);
 
   // Context-mode switches remount / resize the message list. Keep the scroll

@@ -22,6 +22,7 @@ import { SelectableMarkdown } from "./SelectableMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { GlassMessageBubble } from "./GlassMessageBubble";
 import { TurnBusyIndicator } from "./TurnBusyIndicator";
+import { bindStreamingScroll } from "../lib/streamScroll";
 
 interface Props {
   branchId: NodeId;
@@ -130,6 +131,7 @@ export function FloatingBranchDetail({
   const panelRef = useRef<HTMLDivElement>(null);
   const answerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const followStreamRef = useRef(true);
   const thread = useAppStore((s) => s.thread);
   const loadingBranchId = useAppStore((s) =>
     s.activeSessionId
@@ -221,6 +223,13 @@ export function FloatingBranchDetail({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    followStreamRef.current = true;
+    return bindStreamingScroll(el, followStreamRef);
+  }, [branchId, Boolean(branch), Boolean(parentMessage)]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !followStreamRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [
     branch?.assistantMessage,
