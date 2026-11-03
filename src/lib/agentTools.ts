@@ -1025,12 +1025,50 @@ export function isAbsoluteOutsideProject(
  * Heuristic: command references paths outside the bound project
  * (`cd /`, `cd ~`, `ls /tmp`, `ls /debris`, any absolute path not under root).
  */
+/**
+ * True when a relative path (resolved from `cwd`, itself relative to the
+ * project root) climbs above the root with `..` segments.
+ */
+function relativePathLeavesProject(
+  candidate: string,
+  projectRoot?: string | null,
+  cwd?: string | null,
+): boolean {
+  let base = normalizePathForCompare(cwd?.trim() || ".");
+  if (base.startsWith("/") || /^[A-Za-z]:\//.test(base)) {
+    const root = projectRoot?.trim() ? normalizePathForCompare(projectRoot) : "";
+    if (!root || !base.toLowerCase().startsWith(root.toLowerCase())) return false;
+    base = base.slice(root.length) || ".";
+  }
+  let depth = 0;
+  for (const seg of `${base}/${normalizePathForCompare(candidate)}`.split("/")) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") {
+      if (--depth < 0) return true;
+    } else {
+      depth += 1;
+    }
+  }
+  return false;
+}
+
 export function commandLeavesProject(
   command: string,
   projectRoot?: string | null,
+  cwd?: string | null,
 ): boolean {
   const raw = command.trim();
   if (!raw) return false;
+
+  // Bare `cd` goes to $HOME.
+  if (/(?:^|[;&|\n(])\s*cd\s*(?=$|[;&|\n)])/i.test(raw)) return true;
+
+  // Relative paths that climb out with `..` (ls .., cat ../x, cd src/../..).
+  for (const token of raw.split(/[\s;|&<>()"'`=]+/)) {
+    if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(token) && relativePathLeavesProject(token, projectRoot, cwd)) {
+      return true;
+    }
+  }
 
   const cdRe =
     /(?:^|[;&|\n]|(?:&&|\|\|))\s*(?:cd|pushd)\s+(?:(?:--|-[LP]\s+)*)([^\s;|&]+)/gi;
@@ -1073,9 +1111,10 @@ export function terminalCallNeedsOutsideApproval(
   if (call.tool !== "run_terminal") return false;
   if (!projectRoot?.trim()) return false;
   const command = call.command?.trim();
-  if (command && commandLeavesProject(command, projectRoot)) return true;
+  if (command && commandLeavesProject(command, projectRoot, call.cwd)) return true;
   const cwdRaw = call.cwd?.trim() || ".";
-  return isAbsoluteOutsideProject(cwdRaw, projectRoot);
+  return isAbsoluteOutsideProject(cwdRaw, projectRoot) ||
+    relativePathLeavesProject(cwdRaw, projectRoot);
 }
 
 /** True when a shell command is obviously inspect-only (ls/pwd/git status/…). */
@@ -4765,7 +4804,7 @@ export async function executeToolCall(
             },
           };
         }
-        if (commandLeavesProject(command, boundRoot) && !allowOutsideProject) {
+        if (commandLeavesProject(command, boundRoot, call.cwd) && !allowOutsideProject) {
           return {
             ok: false,
             resultText:

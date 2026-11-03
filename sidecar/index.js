@@ -2171,17 +2171,22 @@ async function withExpectedProjectRoot(expectedRaw, operation) {
   return requestProjectRoot.run({ root: bound }, operation);
 }
 
+const PARENT_SEGMENT_RE = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
+
 /**
  * Heuristic: does this shell command target paths outside the project?
- * Catches `cd /`, `cd ~`, `ls /tmp`, `ls /debris`, any absolute path not under
- * projectRoot. Used to require allowOutsideProject approval.
+ * Catches `cd /`, `cd ~`, bare `cd`, `ls /tmp`, `ls /debris`, any absolute path
+ * not under projectRoot, and relative `..` paths (from `cwd`) that climb out.
+ * Used to require allowOutsideProject approval.
  * @param {string} command
  * @param {string} root
+ * @param {string} [cwd] absolute starting directory (defaults to root)
  */
-async function commandLeavesProject(command, root) {
+async function commandLeavesProject(command, root, cwd) {
   const raw = String(command ?? "").trim();
   if (!raw) return false;
   const rootAbs = path.resolve(root);
+  const baseAbs = cwd ? path.resolve(cwd) : rootAbs;
 
   /** @param {string} candidate */
   const outside = async (candidate) => {
@@ -2190,8 +2195,9 @@ async function commandLeavesProject(command, root) {
     if (c === "~" || c.startsWith("~/") || c === "$HOME" || c.startsWith("$HOME/") || c.startsWith("${HOME}")) {
       return true;
     }
-    if (!path.isAbsolute(c) && !/^[A-Za-z]:[\\/]/.test(c)) return false;
-    const abs = path.resolve(c);
+    const isAbs = path.isAbsolute(c) || /^[A-Za-z]:[\\/]/.test(c);
+    if (!isAbs && !PARENT_SEGMENT_RE.test(c)) return false;
+    const abs = isAbs ? path.resolve(c) : path.resolve(baseAbs, c.replace(/\\/g, "/"));
     let existing = abs;
     while (true) {
       try {
@@ -2226,6 +2232,14 @@ async function commandLeavesProject(command, root) {
     if ((await outside(target)) || target === "/" || target === "\\") {
       return true;
     }
+  }
+
+  // Bare `cd` goes to $HOME.
+  if (/(?:^|[;&|\n(])\s*cd\s*(?=$|[;&|\n)])/i.test(raw)) return true;
+
+  // Relative paths that climb out with `..` (ls .., cat ../x, cd src/../..).
+  for (const token of raw.split(/[\s;|&<>()"'`=]+/)) {
+    if (PARENT_SEGMENT_RE.test(token) && (await outside(token))) return true;
   }
 
   // Absolute path tokens (any POSIX /…, ~, $HOME, Windows drive) — not only /tmp|/Users.
@@ -2303,7 +2317,7 @@ function handleRun(body, signal) {
     } = await resolveSafe(cwdInput);
 
     if (
-      (await commandLeavesProject(command, requestRoot)) &&
+      (await commandLeavesProject(command, requestRoot, cwd)) &&
       !allowOutsideProject
     ) {
       throw Object.assign(
