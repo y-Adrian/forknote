@@ -198,6 +198,8 @@ interface AppState {
 
   init: () => void;
   setSettings: (settings: ApiSettings) => void;
+  /** Forget a reply's rollback checkpoint (after restore, or when it is gone). */
+  clearMessageCheckpoint: (messageId: NodeId) => void;
   setSettingsOpen: (open: boolean, tab?: SettingsTab) => void;
   setSettingsTab: (tab: SettingsTab) => void;
   setProjectOpen: (open: boolean) => void;
@@ -1035,6 +1037,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSettings: (settings) => set({ settings }),
+  clearMessageCheckpoint: (messageId) => {
+    const { activeSessionId, thread } = get();
+    if (!activeSessionId || !thread) return;
+    commitSessionThread(
+      get, set, activeSessionId,
+      patchMessage(thread, messageId, { checkpointId: undefined }),
+    );
+  },
   setSettingsOpen: (open, tab) =>
     set({
       settingsOpen: open,
@@ -2786,7 +2796,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const patchAssistantState = (patch: {
       content?: string;
       reasoning?: string;
-        thinkingSeconds?: number;
+      thinkingSeconds?: number;
+      checkpointId?: string;
     }) => {
       if (!isOwned()) return;
       const current = getSessionThread(get, sessionId);

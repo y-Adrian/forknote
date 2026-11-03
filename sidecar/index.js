@@ -14,6 +14,11 @@ import { promisify } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isDeniedTerminalCommand } from "../shared/terminalDenyList.mjs";
 import {
+  captureCheckpoint,
+  readCheckpoint,
+  restoreCheckpoint,
+} from "./checkpoints.mjs";
+import {
   extractImports,
   extractSymbols,
   findIdentifierRefs,
@@ -2449,6 +2454,34 @@ async function dispatchRequest(req, res, url, pathname, signal) {
     }
     if (req.method === "GET" && pathname === "/fs/read") {
       return sendJson(res, 200, await handleRead(url.searchParams, signal));
+    }
+    if (req.method === "POST" && pathname === "/fs/checkpoint/capture") {
+      // Body: { checkpointId, paths: string[] } — snapshot before a mutation.
+      const body = await readBody(req);
+      const rels = Array.isArray(body?.paths) ? body.paths.map(String) : [];
+      const abs = [];
+      for (const rel of rels.slice(0, 20)) {
+        if (!rel.trim()) continue;
+        abs.push((await resolveSafe(rel, { followFinal: false })).resolved);
+      }
+      return sendJson(
+        res,
+        200,
+        await captureCheckpoint(currentProjectRoot(), body?.checkpointId, abs),
+      );
+    }
+    if (req.method === "POST" && pathname === "/fs/checkpoint/info") {
+      const body = await readBody(req);
+      const info = await readCheckpoint(currentProjectRoot(), body?.checkpointId);
+      return sendJson(res, 200, info ?? { id: body?.checkpointId ?? null, paths: [], missing: true });
+    }
+    if (req.method === "POST" && pathname === "/fs/checkpoint/restore") {
+      const body = await readBody(req);
+      return sendJson(
+        res,
+        200,
+        await restoreCheckpoint(currentProjectRoot(), body?.checkpointId),
+      );
     }
     if (req.method === "POST" && pathname === "/fs/write") {
       const body = await readBody(req);
