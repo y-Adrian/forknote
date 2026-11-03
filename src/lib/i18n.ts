@@ -344,6 +344,9 @@ const en = {
   "projectSettings.agentAutoDiagnostics": "Auto typecheck after code edits",
   "projectSettings.agentAutoDiagnosticsHint":
     "After successful TypeScript/JavaScript edits, automatically run run_diagnostics and feed errors back into the agent loop. Default on.",
+  "projectSettings.agentTraceDetailed": "Detailed Agent loop trace",
+  "projectSettings.agentTraceDetailedHint":
+    "Every Agent turn records a loop trace (phases, tool calls, decisions, errors) for bug reports. Turn this on to also keep the full prompts and model replies, which can include file contents. API keys are always removed. Default off.",
   "projectSettings.agentPlanModel": "Plan-phase model (optional)",
   "projectSettings.agentPlanModelHint":
     "Used when drafting the approval plan. Leave blank to use the session API model.",
@@ -530,6 +533,10 @@ const en = {
   "chat.diagnose": "Diagnose",
   "chat.diagnoseTitle": "Copy a diagnostic packet for this turn",
   "chat.diagnoseCopied": "Diagnostic copied",
+  "chat.saveTrace": "Save Agent trace",
+  "chat.saveTraceTitle": "Save this reply's Agent loop trace as a .json file to attach to a bug report",
+  "chat.traceSaved": "Agent trace saved",
+  "chat.traceMissing": "No Agent trace for this reply",
   "chat.diagram.rendering": "Rendering diagram…",
   "chat.diagram.renderFailed": "Could not render diagram — showing source. {detail}",
   "chat.diagram.viewSource": "View source",
@@ -1113,6 +1120,9 @@ const zh: Record<MessageKey, string> = {
   "projectSettings.agentAutoDiagnostics": "改代码后自动类型检查",
   "projectSettings.agentAutoDiagnosticsHint":
     "成功改写 TypeScript/JavaScript 后自动跑 run_diagnostics，并把错误喂回 Agent 循环。默认开启。",
+  "projectSettings.agentTraceDetailed": "详细记录 Agent 工作循环",
+  "projectSettings.agentTraceDetailedHint":
+    "每轮 Agent 都会记录工作循环（阶段、工具调用、决策、错误），用于反馈问题。开启后还会保存完整提示词和模型回复，其中可能包含文件内容。API Key 始终会被移除。默认关闭。",
   "projectSettings.agentPlanModel": "计划阶段模型（可选）",
   "projectSettings.agentPlanModelHint":
     "用于起草待批准计划。留空则使用会话 API 模型。",
@@ -1296,6 +1306,10 @@ const zh: Record<MessageKey, string> = {
   "chat.diagnose": "诊断",
   "chat.diagnoseTitle": "复制这一轮的诊断包",
   "chat.diagnoseCopied": "诊断包已复制",
+  "chat.saveTrace": "保存 Agent 记录",
+  "chat.saveTraceTitle": "把这一轮的 Agent 工作循环记录保存为 .json 文件，用于反馈问题",
+  "chat.traceSaved": "Agent 记录已保存",
+  "chat.traceMissing": "这条回复没有 Agent 记录",
   "chat.diagram.rendering": "正在渲染图示…",
   "chat.diagram.renderFailed": "图示渲染失败 — 显示源码。{detail}",
   "chat.diagram.viewSource": "查看源码",

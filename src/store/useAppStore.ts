@@ -2835,6 +2835,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       await runLoadedAgentTurn({
         llm,
+        traceKey: assistantId,
         settings,
         locale: getLocale(),
         session: getActiveSession(get()),

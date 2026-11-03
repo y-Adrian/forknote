@@ -11,6 +11,8 @@ interface Props {
   /** Fired after a successful copy (e.g. passive-use feedback signal). */
   onCopy?: () => void;
   onDiagnose?: () => Promise<boolean> | boolean;
+  /** Save this reply's Agent loop trace; false when none was recorded. */
+  onSaveTrace?: () => Promise<boolean> | boolean;
   align?: "start" | "end";
 }
 
@@ -19,12 +21,14 @@ export function MessageActions({
   onEdit,
   onCopy,
   onDiagnose,
+  onSaveTrace,
   align = "end",
 }: Props) {
   const { t } = useLocale();
   const [feedback, setFeedback] = useState<CopyTextFeedback>("idle");
   const [diagnoseFeedback, setDiagnoseFeedback] =
     useState<CopyTextFeedback>("idle");
+  const [traceFeedback, setTraceFeedback] = useState<"idle" | "saved" | "missing">("idle");
 
   const copy = async () => {
     const ok = await copyTextToClipboard(text);
@@ -39,6 +43,20 @@ export function MessageActions({
     setDiagnoseFeedback(ok ? "copied" : "failed");
     window.setTimeout(() => setDiagnoseFeedback("idle"), 1400);
   };
+
+  const saveTrace = async () => {
+    if (!onSaveTrace) return;
+    const ok = await onSaveTrace();
+    setTraceFeedback(ok ? "saved" : "missing");
+    window.setTimeout(() => setTraceFeedback("idle"), 1800);
+  };
+
+  const traceLabel =
+    traceFeedback === "saved"
+      ? t("chat.traceSaved")
+      : traceFeedback === "missing"
+        ? t("chat.traceMissing")
+        : t("chat.saveTrace");
 
   const label =
     feedback === "copied"
@@ -168,6 +186,25 @@ export function MessageActions({
               />
             </svg>
           )}
+        </button>
+      ) : null}
+      {onSaveTrace ? (
+        <button
+          type="button"
+          className={`fn-msg-action${traceFeedback === "missing" ? " is-copy-failed" : ""}`}
+          onClick={() => void saveTrace()}
+          aria-label={traceLabel}
+          title={traceFeedback === "idle" ? t("chat.saveTraceTitle") : traceLabel}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       ) : null}
     </div>

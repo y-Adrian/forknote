@@ -56,6 +56,8 @@ export interface AgentLoopOptions {
   /** Keep this many recent working-memory steps fully; older ones compress. */
   workingMemoryKeepRecent?: number;
   workingMemoryCompressAt?: number;
+  /** Observes every phase change (Agent loop trace). */
+  onTransition?: (from: AgentPhase, to: AgentPhase, summary?: string) => void;
 }
 
 export interface ReflectInput {
@@ -98,7 +100,10 @@ export class AgentLoopController {
     this.maxReplans = options.maxReplans ?? 3;
     this.workingMemoryKeepRecent = options.workingMemoryKeepRecent ?? 3;
     this.workingMemoryCompressAt = options.workingMemoryCompressAt ?? 8;
+    this.onTransition = options.onTransition;
   }
+
+  private readonly onTransition: AgentLoopOptions["onTransition"];
 
   enter(next: AgentPhase, summary?: string): void {
     const allowed = ALLOWED[this.phase];
@@ -109,8 +114,10 @@ export class AgentLoopController {
         this.pushMemory(this.phase, `transition ${this.phase}→${next} (soft)`);
       }
     }
+    const from = this.phase;
     this.phase = next;
     if (summary) this.pushMemory(next, summary);
+    this.onTransition?.(from, next, summary);
   }
 
   setStructuredPlan(steps: StructuredPlanStep[]): void {

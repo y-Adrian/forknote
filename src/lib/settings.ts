@@ -228,6 +228,7 @@ export function normalizeApiSettings(raw: Partial<ApiSettings>): ApiSettings {
     agentCommandDeny: normalizeCommandRules(raw.agentCommandDeny),
     agentAutoDiagnostics:
       raw.agentAutoDiagnostics ?? APP_DEFAULTS.agentAutoDiagnostics,
+    agentTraceDetailed: raw.agentTraceDetailed === true,
     agentPlanModel:
       typeof raw.agentPlanModel === "string"
         ? raw.agentPlanModel.trim()

@@ -99,6 +99,8 @@ import {
 } from "./agentLoop";
 import { buildToolSelectionDecisionEvents } from "./decisionFeedback";
 import { reflectWithOptionalLlm } from "./llmReflect";
+import { AgentTraceRecorder, safeUrlHost, type AgentTrace } from "./agentTrace";
+import { saveAgentTrace } from "./agentTraceStore";
 import { withAgentPhaseModel } from "./agentModelRouting";
 import { AgentPlanProgress } from "./agentPlanProgress";
 import { AgentBudget } from "./agentBudget";
@@ -164,6 +166,10 @@ export type RunAgentTurnOptions = {
    * Caller persists into session.feedbackLog / User Model.
    */
   onDecisionFeedback?: (events: FeedbackEvent[]) => void;
+  /** Assistant reply id; when set, the turn's Agent loop trace is stored under it. */
+  traceKey?: string;
+  /** Where trace snapshots go; defaults to IndexedDB storage. */
+  persistTrace?: (trace: AgentTrace) => void;
 };
 
 /** Plain-chat asks that still need injected memory/project orientation. */
@@ -194,8 +200,83 @@ export function groupCallsForExecution<T>(
   return groups;
 }
 
+/**
+ * Runs one Agent turn. With `traceKey`, also records the loop (phases, model
+ * and tool calls, Reflect, approvals, errors) and stores it for bug reports;
+ * a paused turn keeps recording into the same trace when it resumes.
+ */
 export async function runAgentTurn(
   options: RunAgentTurnOptions,
+): Promise<AgentTurnOutcome> {
+  if (!options.traceKey) return runAgentTurnInner(options, null);
+  const trace = new AgentTraceRecorder({
+    id: options.traceKey,
+    sessionId: options.session?.id ?? null,
+    userText: options.userText,
+    detailed: Boolean(options.settings.agentTraceDetailed),
+    env: {
+      model: options.llm.model?.trim() || "(empty)",
+      baseUrlHost: safeUrlHost(options.llm.baseUrl),
+      locale: options.locale,
+      projectBound: Boolean(options.projectRoot),
+    },
+  });
+  const persist = () => {
+    const snap = trace.snapshot();
+    if (options.persistTrace) options.persistTrace(snap);
+    else void saveAgentTrace(snap);
+  };
+  trace.event("turn_start", {
+    allowTerminal: resolveAgentAllowTerminal(options.settings),
+    maxRounds: resolveAgentMaxRounds(options.settings),
+    includeFiles: options.includeFiles?.length ?? 0,
+  });
+  const traced: RunAgentTurnOptions = {
+    ...options,
+    onAgentActivity: (activity) => {
+      trace.event("activity", { kind: activity.kind, message: activity.message });
+      options.onAgentActivity(activity);
+    },
+    onAwaitPlanApproval: (args) => {
+      trace.event("approval_requested", {
+        steps: args.steps.slice(0, 20),
+        ...(args.commands?.length ? { commands: args.commands } : {}),
+      });
+      persist();
+      options.onAwaitPlanApproval({
+        ...args,
+        continueExecution: async () => {
+          trace.event("approval_resumed");
+          try {
+            await args.continueExecution();
+          } catch (e) {
+            trace.error("resume", e);
+            throw e;
+          } finally {
+            trace.event("segment_end", { aborted: options.signal.aborted });
+            persist();
+          }
+        },
+      });
+    },
+  };
+  try {
+    const outcome = await runAgentTurnInner(traced, trace);
+    if (outcome === "waiting_plan") trace.event("paused", { outcome });
+    else trace.finish(outcome);
+    return outcome;
+  } catch (e) {
+    trace.error("turn", e);
+    trace.finish("error");
+    throw e;
+  } finally {
+    persist();
+  }
+}
+
+async function runAgentTurnInner(
+  options: RunAgentTurnOptions,
+  trace: AgentTraceRecorder | null,
 ): Promise<AgentTurnOutcome> {
   const {
     llm,
@@ -400,6 +481,7 @@ export async function runAgentTurn(
             ? "The latest user message is a chat diagram request (e.g. draw a diagram, flowchart, architecture). Answer that message only: emit the diagram in Markdown. Default to a ```mermaid fence (client renders live); use ```plantuml only if the user explicitly asked for PlantUML/puml (opt-in server/local render in Settings, otherwise source-only). Optionally add one short sentence. Do not call or mention project tools (list_dir/read_file/write_file/run_terminal, etc.), do not explore the repo, do not continue old build/verify/CMake/git work from memory or history, and do not dump an unrelated summary."
             : "The latest user message is ordinary Q&A / advice / conceptual discussion, not an explicit request to change the repo, run commands, or create files. Answer the core goal directly and concisely in Markdown (lead with the answer; minimal preamble). Do not call project tools, do not explore/read/modify the repo, do not write_file or 'land' documents on disk, do not treat older memory tasks as this turn's goal, and do not write a long report.",
     });
+    trace?.event("route", { route: "plain_chat" });
     return streamPlainChatAnswer({
       onModelMetrics,
       llm: summaryLlm,
@@ -617,7 +699,42 @@ export async function runAgentTurn(
   const agentLoop = new AgentLoopController({
     maxStepRetries: 2,
     maxReplans: 3,
+    onTransition: trace ? (from, to, summary) => trace.enterPhase(from, to, summary) : undefined,
   });
+
+  /** Tool and model calls go through these so the loop trace sees them. */
+  const execTool: typeof executeToolCall = trace
+    ? async (...args) => {
+        const started = Date.now();
+        try {
+          const r = await executeToolCall(...args);
+          trace.toolCall({ call: args[0], durationMs: Date.now() - started, ok: r.ok, resultText: r.resultText });
+          return r;
+        } catch (e) {
+          trace.toolCall({ call: args[0], durationMs: Date.now() - started, error: e });
+          throw e;
+        }
+      }
+    : executeToolCall;
+  const chat: typeof streamChat = trace
+    ? async (...args) => {
+        const started = Date.now();
+        const opts = args[3] instanceof AbortSignal ? undefined : args[3];
+        const base = {
+          messages: args[1],
+          toolsOffered: opts?.tools?.length,
+          toolChoice: opts?.toolChoice,
+        };
+        try {
+          const result = await streamChat(...args);
+          trace.llmCall({ ...base, durationMs: Date.now() - started, result });
+          return result;
+        } catch (e) {
+          trace.llmCall({ ...base, durationMs: Date.now() - started, error: e });
+          throw e;
+        }
+      }
+    : streamChat;
 
   const patchAssistantContent = (content: string) => {
     if (!isOwned() || signal.aborted) return;
@@ -711,7 +828,7 @@ export async function runAgentTurn(
           t("agent.status.terminal", { command: shellIntent.command }, locale),
         );
         const pre = await abortable(
-          executeToolCall(shellCall, sidecarUrl, signal, projectRoot, locale, {
+          execTool(shellCall, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
             allowNetwork: allowNetworkTools,
@@ -759,7 +876,7 @@ export async function runAgentTurn(
             : { tool: "list_dir", path: multiStepPlan[0]?.path ?? "." };
         patchAssistantContent(t("agent.status.listRoot", undefined, locale));
         const pre = await abortable(
-          executeToolCall(listCall, sidecarUrl, signal, projectRoot, locale, {
+          execTool(listCall, sidecarUrl, signal, projectRoot, locale, {
             allowTerminal,
             allowOutsideProject,
             allowNetwork: allowNetworkTools,
@@ -799,7 +916,7 @@ export async function runAgentTurn(
           if (step.tool !== "read_file" || !step.path) continue;
           patchAssistantContent(t("agent.status.reading", { path: step.path }, locale));
           const readExec = await abortable(
-            executeToolCall(step, sidecarUrl, signal, projectRoot, locale, {
+            execTool(step, sidecarUrl, signal, projectRoot, locale, {
               allowTerminal,
               allowOutsideProject,
               allowNetwork: allowNetworkTools,
@@ -861,7 +978,7 @@ export async function runAgentTurn(
       let roundText = "";
       let streamResult: Awaited<ReturnType<typeof streamChat>>;
       try {
-        streamResult = await streamChat(
+        streamResult = await chat(
           codeLlm,
           apiMessages,
           (delta) => {
@@ -1429,7 +1546,7 @@ export async function runAgentTurn(
         }
         return (
         abortable(
-          executeToolCall(item.agent, sidecarUrl, signal, projectRoot, locale, {
+          execTool(item.agent, sidecarUrl, signal, projectRoot, locale, {
             checkpointId,
             allowTerminal,
             allowOutsideProject: allowOutsideProject || permission === "allow",
@@ -1543,6 +1660,12 @@ export async function runAgentTurn(
           onMetrics: m => onModelMetrics?.({ ...m, phase: "reflect" }),
         });
         batchDecision = decision;
+        trace?.event("reflect", {
+          decision,
+          source: reflectSource,
+          ...(expected ? { expected } : {}),
+          observed: { ok: observed.successCount, failed: observed.errorCount },
+        });
 
         // Decision-bound tool_selection logging (observe outcome → feedback log).
         if (onDecisionFeedback) {
@@ -1679,7 +1802,7 @@ export async function runAgentTurn(
       const synth = synthesizeOfficeFromIntent(officeIntent, trimmed);
       patchAssistantContent(t("agent.status.creating", { path: officeIntent.path }, locale));
       const executed = await abortable(
-        executeToolCall(synth, sidecarUrl, signal, projectRoot, locale, {
+        execTool(synth, sidecarUrl, signal, projectRoot, locale, {
           checkpointId,
           allowTerminal,
           allowOutsideProject,
@@ -1798,7 +1921,7 @@ export async function runAgentTurn(
     const draftPlanFromModel = async (): Promise<DraftedPlan | null> => {
       // Leave content empty until plan tokens arrive (typing indicator).
       let planRaw = "";
-      await streamChat(
+      await chat(
         planLlm,
         apiMessages,
         (delta) => {
