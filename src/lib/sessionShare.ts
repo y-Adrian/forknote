@@ -341,95 +341,6 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function inlineMarkdownToSafeHtml(text: string): string {
-  const code: string[] = [];
-  let safe = escapeHtml(text).replace(/`([^`]+)`/g, (_match, value: string) => {
-    const token = `\u0000CODE${code.length}\u0000`;
-    code.push(`<code>${value}</code>`);
-    return token;
-  });
-  safe = safe
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  return safe.replace(
-    /\u0000CODE(\d+)\u0000/g,
-    (_match, index: string) => code[Number(index)] ?? "",
-  );
-}
-
-/** Small, dependency-free renderer for the self-contained offline export. */
-export function markdownToSafeHtml(markdown: string): string {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-  const out: string[] = [];
-  let list: "ul" | "ol" | null = null;
-  let fence: { language: string; lines: string[] } | null = null;
-  const closeList = () => {
-    if (!list) return;
-    out.push(`</${list}>`);
-    list = null;
-  };
-
-  for (const line of lines) {
-    const fenceMatch = line.match(/^```([\w+-]*)\s*$/);
-    if (fence) {
-      if (fenceMatch) {
-        const language = fence.language
-          ? ` class="language-${escapeHtml(fence.language)}"`
-          : "";
-        out.push(
-          `<pre><code${language}>${escapeHtml(fence.lines.join("\n"))}</code></pre>`,
-        );
-        fence = null;
-      } else {
-        fence.lines.push(line);
-      }
-      continue;
-    }
-    if (fenceMatch) {
-      closeList();
-      fence = { language: fenceMatch[1] ?? "", lines: [] };
-      continue;
-    }
-    const heading = line.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) {
-      closeList();
-      const level = heading[1].length;
-      out.push(
-        `<h${level}>${inlineMarkdownToSafeHtml(heading[2])}</h${level}>`,
-      );
-      continue;
-    }
-    const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
-    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-    if (unordered || ordered) {
-      const next = unordered ? "ul" : "ol";
-      if (list !== next) {
-        closeList();
-        list = next;
-        out.push(`<${list}>`);
-      }
-      out.push(
-        `<li>${inlineMarkdownToSafeHtml((unordered ?? ordered)![1])}</li>`,
-      );
-      continue;
-    }
-    closeList();
-    if (!line.trim()) continue;
-    if (line.startsWith("> ")) {
-      out.push(
-        `<blockquote>${inlineMarkdownToSafeHtml(line.slice(2))}</blockquote>`,
-      );
-    } else {
-      out.push(`<p>${inlineMarkdownToSafeHtml(line)}</p>`);
-    }
-  }
-  if (fence) {
-    out.push(`<pre><code>${escapeHtml(fence.lines.join("\n"))}</code></pre>`);
-  }
-  closeList();
-  return out.join("\n");
-}
-
 export interface ShareHtmlLabels {
   brand?: string;
   lang?: "en" | "zh";
@@ -470,16 +381,8 @@ export function sharePayloadToHtml(
   return shareHtmlDocument(titleRaw, body, labels);
 }
 
-export function shareMarkdownToHtml(
-  title: string,
-  markdown: string,
-  labels: ShareHtmlLabels,
-): string {
-  const body = `<article class="msg markdown-body">${markdownToSafeHtml(markdown)}</article>`;
-  return shareHtmlDocument(title.trim() || "Untitled", body, labels);
-}
-
-function shareHtmlDocument(
+/** Wrap pre-rendered body HTML in the self-contained export document. */
+export function shareHtmlDocument(
   titleRaw: string,
   body: string,
   labels: ShareHtmlLabels,
@@ -575,8 +478,25 @@ function shareHtmlDocument(
     line-height: 1.3;
   }
   .markdown-body h1:first-child { margin-top: 0; }
-  .markdown-body p { margin: 0.65em 0; white-space: pre-wrap; }
+  .markdown-body p { margin: 0.65em 0; }
   .markdown-body ul, .markdown-body ol { padding-left: 1.5rem; }
+  .markdown-body li > ul, .markdown-body li > ol { margin: 0.2em 0; }
+  .markdown-body li.task-list-item { list-style: none; margin-left: -1.3rem; }
+  .markdown-body a { color: var(--accent); }
+  .markdown-body img { max-width: 100%; height: auto; border-radius: 6px; }
+  .markdown-body hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+  .markdown-body table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 0.8em 0;
+  }
+  .markdown-body th, .markdown-body td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  .markdown-body th { background: var(--user-soft); font-weight: 600; }
   .markdown-body blockquote {
     margin: 0.8em 0;
     padding: 0.2em 0.9em;

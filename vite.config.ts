@@ -292,6 +292,10 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("/node_modules/")) return;
+          // SSR renderer is only used by the lazy HTML note export.
+          if (/\/node_modules\/react-dom\/(?:cjs\/react-dom-server|server)/.test(id)) {
+            return "vendor-react-server";
+          }
           if (id.includes("/node_modules/react")) return "vendor-react";
           if (id.includes("/node_modules/react-dom")) return "vendor-react";
           if (id.includes("/node_modules/zustand")) return "vendor-state";
