@@ -1,11 +1,13 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { ForkNoteLogo } from "./BranchLogo";
@@ -25,7 +27,33 @@ import { useAppStore } from "../store/useAppStore";
 import type { NodeId } from "../types";
 import { ShareSessionDialog } from "./ShareSessionDialog";
 
-type MenuPos = { top: number; right: number };
+/** Popup position below its trigger; `anchorTop` is the trigger's top edge. */
+type MenuPos = { top: number; right: number; anchorTop: number };
+
+/** Margin kept between a popup and the window edge. */
+const POPUP_EDGE = 8;
+
+/**
+ * Top for a popup opened below its trigger: flips it above the trigger when it
+ * would run past the bottom of the window (sessions near the bottom of the list).
+ */
+function usePopupTop(
+  ref: RefObject<HTMLElement | null>,
+  pos: MenuPos | null,
+): number | undefined {
+  const [top, setTop] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!pos || !el) {
+      setTop(undefined);
+      return;
+    }
+    const height = el.getBoundingClientRect().height;
+    const fits = pos.top + height <= window.innerHeight - POPUP_EDGE;
+    setTop(fits ? pos.top : Math.max(POPUP_EDGE, pos.anchorTop - 4 - height));
+  }, [ref, pos]);
+  return pos ? (top ?? pos.top) : undefined;
+}
 
 interface Props {
   collapsed: boolean;
@@ -292,6 +320,10 @@ export function SessionSidebar({
     useState(false);
   const [shareSessionId, setShareSessionId] = useState<NodeId | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const menuTop = usePopupTop(menuRef, menuPos);
+  const confirmTop = usePopupTop(confirmRef, confirmDelete?.pos ?? null);
   const skipBlurCommit = useRef(false);
 
   const groups = useMemo(
@@ -528,6 +560,7 @@ export function SessionSidebar({
     setMenuPos({
       top: rect.bottom + 4,
       right: window.innerWidth - rect.right,
+      anchorTop: rect.top,
     });
     setMenuId(id);
   };
@@ -705,9 +738,10 @@ export function SessionSidebar({
           {menuSession && menuPos
             ? createPortal(
                 <div
+                  ref={menuRef}
                   className="fn-session-menu"
                   role="menu"
-                  style={{ top: menuPos.top, right: menuPos.right }}
+                  style={{ top: menuTop, right: menuPos.right }}
                 >
                   <MenuItem
                     icon={<IconRename />}
@@ -754,12 +788,13 @@ export function SessionSidebar({
           {confirmDelete
             ? createPortal(
                 <div
+                  ref={confirmRef}
                   className="fn-session-delete-confirm"
                   role="alertdialog"
                   aria-modal="true"
                   aria-labelledby="fn-session-delete-title"
                   style={{
-                    top: confirmDelete.pos.top,
+                    top: confirmTop,
                     right: confirmDelete.pos.right,
                   }}
                 >
