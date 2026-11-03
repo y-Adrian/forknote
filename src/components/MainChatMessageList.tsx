@@ -123,6 +123,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   onAskBranch,
   onCopyMessage,
   onDiagnoseMessage,
+  onSaveMessageTrace,
   pendingInline,
   pendingInlineAssistantId,
 }: {
@@ -137,6 +138,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   onAskBranch: AskBranch;
   onCopyMessage: (messageId: NodeId) => void;
   onDiagnoseMessage: (messageId: NodeId) => Promise<boolean>;
+  onSaveMessageTrace: (messageId: NodeId) => Promise<boolean>;
   pendingInline: boolean;
   pendingInlineAssistantId: string | null | undefined;
 }) {
@@ -191,6 +193,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               align="start"
               onCopy={() => onCopyMessage(msg.id)}
               onDiagnose={() => onDiagnoseMessage(msg.id)}
+              onSaveTrace={() => onSaveMessageTrace(msg.id)}
             />
             {msg.checkpointId && !(loadingMain && isTail) ? (
               <CheckpointRollbackButton
@@ -243,6 +246,7 @@ export interface MainChatMessageListProps {
   onEditUserMessage: (text: string) => void;
   onCopyMessage: (messageId: NodeId) => void;
   onDiagnoseMessage: (messageId: NodeId) => Promise<boolean>;
+  onSaveMessageTrace: (messageId: NodeId) => Promise<boolean>;
   onSwitchToLiveConversation: () => void;
 }
 
@@ -271,6 +275,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
   onEditUserMessage,
   onCopyMessage,
   onDiagnoseMessage,
+  onSaveMessageTrace,
   onSwitchToLiveConversation,
 }: MainChatMessageListProps) {
   const { t } = useLocale();
@@ -366,6 +371,7 @@ export const MainChatMessageList = memo(function MainChatMessageList({
               onAskBranch={onAskBranch}
               onCopyMessage={onCopyMessage}
               onDiagnoseMessage={onDiagnoseMessage}
+              onSaveMessageTrace={onSaveMessageTrace}
               pendingInline={pendingInline}
               pendingInlineAssistantId={pendingInlineAssistantId}
             />

@@ -54,6 +54,7 @@ React + Zustand + localStorage
 - `src/lib/projectRules.ts`：读取仓库提交的 AGENTS.md / CLAUDE.md / .cursorrules / copilot-instructions，按字符预算作为项目规则注入每个项目回合。
 - `sidecar/checkpoints.mjs`：每轮 Agent 修改的文件检查点。修改类工具执行前先快照目标文件（失败则不执行修改），回复上的「回滚本轮修改」恢复到回合前状态；终端命令不覆盖，保留最近 30 个检查点。
 - `src/lib/agentPermissions.ts`：设置中的终端命令允许/禁止规则（前缀匹配、串联命令逐段判断、禁止优先）；允许的命令跳过批准卡片，禁止的命令不会执行。
+- `src/lib/agentTrace.ts`、`src/lib/agentTraceStore.ts`：每轮 Agent 工作循环记录（阶段、模型与工具调用、Reflect、批准、错误），去除 API Key、限制大小，按回复存入 IndexedDB（保留最近 30 条）；「诊断」复制的诊断包附带摘要，「保存 Agent 记录」导出完整 .json。设置中可开启详细模式以保存完整提示词。
 - `src/lib/agentBudget.ts`：同一条用户消息跨批准/分批共享的总执行轮数，以及相同参数失败调用的限制。
 - `src/lib/modelMetrics.ts`：供应商真实用量解码、按阶段会话累计和持久化校验。未返回用量的请求记为未知。
 - `src/lib/abortable.ts`：在传输层忽略取消时仍能及时结束等待；Reflect 的独立超时为 8 秒。

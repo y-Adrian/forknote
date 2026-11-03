@@ -591,6 +591,11 @@ export function downloadShareHtml(html: string, filename: string): void {
   downloadShareText(html, filename, "text/html;charset=utf-8");
 }
 
+/** Trigger a browser download of any UTF-8 text file. */
+export function downloadTextFile(text: string, filename: string, type: string): void {
+  downloadShareText(text, filename, type);
+}
+
 function downloadShareText(text: string, filename: string, type: string): void {
   const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);

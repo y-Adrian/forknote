@@ -898,6 +898,9 @@ function ProjectSettingsPanel() {
   const [autoDiagDraft, setAutoDiagDraft] = useState(
     settings.agentAutoDiagnostics ?? true,
   );
+  const [traceDetailedDraft, setTraceDetailedDraft] = useState(
+    settings.agentTraceDetailed ?? false,
+  );
   const [allowRulesDraft, setAllowRulesDraft] = useState(
     (settings.agentCommandAllow ?? []).join("\n"),
   );
@@ -940,6 +943,7 @@ function ProjectSettingsPanel() {
     setApprovalDraft(settings.agentRequireApproval ?? true);
     setTerminalDraft(settings.agentAllowTerminal ?? true);
     setAutoDiagDraft(settings.agentAutoDiagnostics ?? true);
+    setTraceDetailedDraft(settings.agentTraceDetailed ?? false);
     setAllowRulesDraft((settings.agentCommandAllow ?? []).join("\n"));
     setDenyRulesDraft((settings.agentCommandDeny ?? []).join("\n"));
     setPlanModelDraft(settings.agentPlanModel ?? "");
@@ -960,6 +964,7 @@ function ProjectSettingsPanel() {
     settings.agentRequireApproval,
     settings.agentAllowTerminal,
     settings.agentAutoDiagnostics,
+    settings.agentTraceDetailed,
     settings.agentCommandAllow,
     settings.agentCommandDeny,
     settings.agentPlanModel,
@@ -990,6 +995,7 @@ function ProjectSettingsPanel() {
       agentRequireApproval: approvalDraft,
       agentAllowTerminal: terminalDraft,
       agentAutoDiagnostics: autoDiagDraft,
+      agentTraceDetailed: traceDetailedDraft,
       agentCommandAllow: allowRulesDraft.split("\n"),
       agentCommandDeny: denyRulesDraft.split("\n"),
       agentPlanModel: planModelDraft.trim(),
@@ -1116,6 +1122,21 @@ function ProjectSettingsPanel() {
       </label>
       <p className="hint local-hint">
         {t("projectSettings.agentAutoDiagnosticsHint")}
+      </p>
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={traceDetailedDraft}
+          onChange={(e) => {
+            setTraceDetailedDraft(e.target.checked);
+            setSaved(false);
+          }}
+        />
+        <span>{t("projectSettings.agentTraceDetailed")}</span>
+      </label>
+      <p className="hint local-hint">
+        {t("projectSettings.agentTraceDetailedHint")}
       </p>
 
       <label>

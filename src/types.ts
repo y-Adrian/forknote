@@ -373,6 +373,11 @@ export interface ApiSettings {
    */
   agentAutoDiagnostics?: boolean;
   /**
+   * Agent loop trace also keeps full prompts and model replies (size-capped).
+   * Off = summary trace only. Default false.
+   */
+  agentTraceDetailed?: boolean;
+  /**
    * Optional model id for the planning phase. Empty = use {@link model}.
    */
   agentPlanModel?: string;

@@ -16,6 +16,7 @@ import type {
   NodeId,
   ThreadRoot,
 } from "../types";
+import { formatAgentTraceSummary, type AgentTrace } from "./agentTrace";
 
 const SNIP = 1600;
 const SMALL_SNIP = 420;
@@ -242,6 +243,8 @@ export function buildTurnDiagnosticPacket(options: {
   agentActivity: AgentActivity[];
   agentChanges: AgentFileChange[];
   settings?: ApiSettings | null;
+  /** Agent loop trace recorded for the target reply, when one exists. */
+  agentTrace?: AgentTrace | null;
   generatedAt?: number;
 }): string {
   const {
@@ -259,6 +262,7 @@ export function buildTurnDiagnosticPacket(options: {
     agentActivity,
     agentChanges,
     settings,
+    agentTrace,
   } = options;
   const messages = thread?.messages ?? [];
   const targetIndex = messages.findIndex((m) => m.id === targetMessageId);
@@ -339,6 +343,7 @@ export function buildTurnDiagnosticPacket(options: {
     `- agentAllowTerminal: ${settingBool(settings?.agentAllowTerminal)}`,
     `- agentAllowNetwork: ${settingBool(settings?.agentAllowNetwork, false)}`,
     `- agentAutoDiagnostics: ${settingBool(settings?.agentAutoDiagnostics)}`,
+    `- agentTraceDetailed: ${settingBool(settings?.agentTraceDetailed, false)}`,
     "",
     "## Memory / Archive",
     `- shareMemory: ${session?.shareMemory === false ? "no" : "yes/default"}`,
@@ -415,5 +420,15 @@ export function buildTurnDiagnosticPacket(options: {
     "```md",
     truncate(memory?.coding, SMALL_SNIP),
     "```",
+    "",
+    "## Agent Loop Trace",
+    ...(agentTrace
+      ? [
+          "One line per loop event; attach the saved trace file for full arguments and results.",
+          "```text",
+          formatAgentTraceSummary(agentTrace),
+          "```",
+        ]
+      : ["- (no Agent loop trace for this reply)"]),
   ].join("\n");
 }

@@ -13,7 +13,7 @@ const tests = [
   "test-agent-activity-by-session", "test-session-summary-jobs",
   "test-clarification-shared-memory", "test-model-routing",
   "test-agent-loop-hygiene", "test-project-rules", "test-checkpoints", "test-agent-permissions",
-  "test-terminal-parent-escape",
+  "test-terminal-parent-escape", "test-agent-trace",
 ];
 for (const test of tests) {
   const result = spawnSync(process.execPath, ["--import", "tsx", `scripts/${test}.mts`], {

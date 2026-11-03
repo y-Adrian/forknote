@@ -721,9 +721,11 @@ export function MainPanel({
     const state = useAppStore.getState();
     const session = state.sessions.find((s) => s.id === state.activeSessionId);
     const activeId = state.activeSessionId;
-    const { buildTurnDiagnosticPacket } = await import(
-      "../lib/conversationDiagnostic"
-    );
+    const [{ buildTurnDiagnosticPacket }, { getAgentTrace }] = await Promise.all([
+      import("../lib/conversationDiagnostic"),
+      import("../lib/agentTraceStore"),
+    ]);
+    const agentTrace = await getAgentTrace(messageId);
     const packet = buildTurnDiagnosticPacket({
       session,
       thread: state.thread,
@@ -745,9 +747,22 @@ export function MainPanel({
         ? state.agentChangesBySession[activeId] ?? []
         : [],
       settings: state.settings,
+      agentTrace,
     });
     return copyTextToClipboard(packet);
   }, [sourceMode]);
+
+  const saveMessageTrace = useCallback(async (messageId: NodeId) => {
+    const [{ getAgentTrace }, { agentTraceFilename }, { downloadTextFile }] = await Promise.all([
+      import("../lib/agentTraceStore"),
+      import("../lib/agentTrace"),
+      import("../lib/sessionShare"),
+    ]);
+    const trace = await getAgentTrace(messageId);
+    if (!trace) return false;
+    downloadTextFile(JSON.stringify(trace, null, 2), agentTraceFilename(trace), "application/json;charset=utf-8");
+    return true;
+  }, []);
 
   const editUserMessage = useCallback((text: string) => {
     lastSentPromptRef.current = text;
@@ -991,6 +1006,7 @@ export function MainPanel({
             onEditUserMessage={editUserMessage}
             onCopyMessage={copyMessage}
             onDiagnoseMessage={diagnoseMessage}
+            onSaveMessageTrace={saveMessageTrace}
             onSwitchToLiveConversation={switchToLiveConversation}
           />
 
