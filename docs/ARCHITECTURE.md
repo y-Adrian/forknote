@@ -50,6 +50,7 @@ React + Zustand + localStorage
 - `src/lib/agentTurn.ts`：意图判断、记忆组装、模型流、工具循环和批准暂停。
 - `src/lib/agentAnswer.ts`：普通回答的流式显示与思考计时。
 - `src/lib/agentPlanProgress.ts`：批准计划的逐步骤执行证据与预期结果匹配；无法解析的步骤保持待确认。
+- `src/lib/projectRules.ts`：读取仓库提交的 AGENTS.md / CLAUDE.md / .cursorrules / copilot-instructions，按字符预算作为项目规则注入每个项目回合。
 - `src/lib/agentBudget.ts`：同一条用户消息跨批准/分批共享的总执行轮数，以及相同参数失败调用的限制。
 - `src/lib/modelMetrics.ts`：供应商真实用量解码、按阶段会话累计和持久化校验。未返回用量的请求记为未知。
 - `src/lib/abortable.ts`：在传输层忽略取消时仍能及时结束等待；Reflect 的独立超时为 8 秒。
