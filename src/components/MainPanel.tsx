@@ -863,7 +863,9 @@ export function MainPanel({
               <AgentPlanReview scope={{ kind: "main" }} />
             </Suspense>
           ) : null}
+        </div>
 
+        <footer className="ds-chat-footer fn-empty-footer">
           <ChatComposer
             ref={composerRef}
             value={input}
@@ -889,7 +891,7 @@ export function MainPanel({
             onRemoveInclude={removeFileInclude}
           />
           {error && <p className="ds-error">{error}</p>}
-        </div>
+        </footer>
       </main>
     );
   }
